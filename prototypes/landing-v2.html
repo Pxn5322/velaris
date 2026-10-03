@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" class="scroll-smooth scroll-pt-10">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VELARIS // Intelligent Customer Operations Platform</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Space+Grotesk:wght@500;700;800&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: ['class', '[data-theme="dark"]'],
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Space Grotesk', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            purple: '#2563EB',
+                            purpleLight: '#3B82F6',
+                            cyan: '#38BDF8',
+                            cyanLight: '#0284C7',
+                            emerald: '#10B981',
+                            emeraldLight: '#059669',
+                            darkBg: '#0F172A',
+                            lightBg: '#F1F5F9',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- 3D & UI Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        :root[data-theme="dark"] {
+            --bg-color: #0F172A;
+            --card-bg: rgba(30, 41, 59, 0.78);
+            --card-border: rgba(255, 255, 255, 0.12);
+            --text-heading: #F8FAFC;
+            --text-main: #E2E8F0;
+            --text-muted: #94A3B8;
+            --text-code: #38BDF8;
+            --grid-line: rgba(255, 255, 255, 0.04);
+            --glow-color: rgba(37, 99, 235, 0.22);
+            --pill-bg: rgba(37, 99, 235, 0.15);
+            --pill-border: rgba(37, 99, 235, 0.4);
+            --accent-cyan: #38BDF8;
+            --accent-purple: #3B82F6;
+        }
+
+        :root[data-theme="light"] {
+            --bg-color: #F8FAFC;
+            --card-bg: rgba(255, 255, 255, 0.92);
+            --card-border: #CBD5E1;
+            --text-heading: #020617;
+            --text-main: #1E293B;
+            --text-muted: #475569;
+            --text-code: #0284C7;
+            --grid-line: rgba(15, 23, 42, 0.06);
+            --glow-color: rgba(2, 132, 199, 0.12);
+            --pill-bg: rgba(2, 132, 199, 0.08);
+            --pill-border: rgba(2, 132, 199, 0.3);
+            --accent-cyan: #0284C7;
+            --accent-purple: #2563EB;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            transition: background-color 0.3s ease, color 0.3s ease;
+            background-image: 
+                radial-gradient(circle at 50% 0%, var(--glow-color) 0%, transparent 70%),
+                linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+                linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+            background-size: 100% 100%, 32px 32px, 32px 32px;
+        }
+
+        .text-heading { color: var(--text-heading); }
+        .text-body-custom { color: var(--text-main); }
+        .text-muted-custom { color: var(--text-muted); }
+
+        .glass-panel {
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.15);
+        }
+
+        .glass-pill {
+            background: var(--pill-bg);
+            border: 1px solid var(--pill-border);
+        }
+
+        #webgl-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-cyan) 60%, #10B981 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .pattern-btn {
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .pattern-btn.active {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.25) 0%, rgba(56, 189, 248, 0.25) 100%);
+            border-color: var(--accent-cyan);
+            color: var(--text-heading);
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--card-border);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="min-h-screen overflow-x-hidden selection:bg-brand-purple selection:text-white">
+
+    <!-- Global SVG Gradient & Filter Definitions -->
+    <svg width="0" height="0" class="absolute">
+      <defs>
+        <linearGradient id="velaris-grad-1" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#00F2FE" />
+          <stop offset="50%" stop-color="#4FACFE" />
+          <stop offset="100%" stop-color="#6B11FF" />
+        </linearGradient>
+        <linearGradient id="velaris-grad-2" x1="100%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#7F00FF" />
+          <stop offset="100%" stop-color="#E100FF" />
+        </linearGradient>
+        <filter id="velaris-glow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#4FACFE" flood-opacity="0.35"/>
+        </filter>
+      </defs>
+    </svg>
+
+    <div id="webgl-container"></div>
+
+    <header class="fixed top-0 left-0 w-full z-50 px-4 md:px-8 py-4 transition-all duration-300">
+        <div class="max-w-7xl mx-auto flex items-center justify-between glass-panel rounded-2xl px-5 py-3">
+            
+            <!-- Brand Logo -->
+            <a href="#" class="flex items-center gap-3 group">
+                <!-- Synchronized Logo Icon Mark -->
+                <div class="w-9 h-9 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <svg viewBox="0 0 512 512" class="w-full h-full">
+                      <g filter="url(#velaris-glow)">
+                        <path d="M 256 420 L 390 120 L 310 120 L 256 250 L 202 120 L 122 120 Z" fill="url(#velaris-grad-2)" opacity="0.85" />
+                        <path d="M 256 420 L 122 120 L 202 120 L 256 240 L 310 120 L 390 120 Z" fill="url(#velaris-grad-1)" />
+                        <circle cx="256" cy="210" r="130" fill="none" stroke="url(#velaris-grad-1)" stroke-width="20" stroke-dasharray="210 60" stroke-linecap="round" />
+                        <circle cx="256" cy="210" r="22" fill="#00F2FE" />
+                        <circle cx="256" cy="210" r="10" fill="#FFFFFF" />
+                      </g>
+                    </svg>
+                </div>
+                <span class="font-display font-bold text-lg md:text-xl tracking-tight text-heading">VELARIS</span>
+            </a>
+
+            <!-- Desktop Nav Items -->
+            <nav class="hidden lg:flex items-center gap-8 text-sm font-medium">
+                <a href="#product" class="text-muted-custom hover:text-brand-cyan transition-colors">Product</a>
+                <a href="#solutions" class="text-muted-custom hover:text-brand-cyan transition-colors">Solutions</a>
+                <a href="#security" class="text-muted-custom hover:text-brand-cyan transition-colors">Security</a>
+                <a href="#pricing" class="text-muted-custom hover:text-brand-cyan transition-colors">Pricing</a>
+                <a href="#resources" class="text-muted-custom hover:text-brand-cyan transition-colors">Resources</a>
+            </nav>
+
+            <!-- Actions Right -->
+            <div class="flex items-center gap-3">
+                <!-- Light / Dark Mode Toggle -->
+                <button id="theme-toggle" class="p-2.5 rounded-xl glass-panel hover:border-brand-purple transition-all duration-300 text-heading" aria-label="Toggle Theme">
+                    <i data-lucide="sun" class="w-4 h-4 hidden [html[data-theme='dark']_&]:block text-amber-400"></i>
+                    <i data-lucide="moon" class="w-4 h-4 block [html[data-theme='dark']_&]:hidden text-slate-700"></i>
+                </button>
+
+                <button onclick="openAuthModal('signin')" class="hidden sm:inline-flex text-xs md:text-sm font-semibold text-heading hover:text-brand-cyan px-3 py-2">
+                    Sign In
+                </button>
+
+                <button onclick="openAuthModal('signup')" class="hidden sm:inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-purple to-brand-cyan text-white text-xs md:text-sm font-semibold shadow-lg shadow-blue-500/20 hover:opacity-90 transition-opacity">
+                    Start Free
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+
+                <!-- Mobile & Tablet Hamburger Toggle -->
+                <button id="mobile-menu-btn" class="lg:hidden p-2.5 rounded-xl glass-panel text-heading hover:border-brand-cyan transition-colors" aria-label="Toggle Mobile Navigation">
+                    <i data-lucide="menu" id="menu-icon-open" class="w-5 h-5"></i>
+                    <i data-lucide="x" id="menu-icon-close" class="w-5 h-5 hidden"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile / Tablet Drawer Menu -->
+        <div id="mobile-menu-drawer" class="hidden lg:hidden max-w-7xl mx-auto mt-2 glass-panel rounded-2xl p-6 flex-col gap-4 shadow-2xl transition-all border border-white/20">
+            <nav class="flex flex-col gap-3 font-medium text-sm">
+                <a href="#product" class="mobile-nav-link text-body-custom hover:text-brand-cyan py-2 border-b border-slate-700/20">Product</a>
+                <a href="#solutions" class="mobile-nav-link text-body-custom hover:text-brand-cyan py-2 border-b border-slate-700/20">Solutions</a>
+                <a href="#security" class="mobile-nav-link text-body-custom hover:text-brand-cyan py-2 border-b border-slate-700/20">Security & RBAC</a>
+                <a href="#pricing" class="mobile-nav-link text-body-custom hover:text-brand-cyan py-2 border-b border-slate-700/20">Pricing & Calculator</a>
+                <a href="#resources" class="mobile-nav-link text-body-custom hover:text-brand-cyan py-2 border-b border-slate-700/20">Resources & FAQ</a>
+            </nav>
+            <div class="pt-2 flex flex-col gap-2">
+                <button onclick="openAuthModal('signin')" class="w-full text-center py-2.5 glass-panel rounded-xl text-xs font-bold text-heading">
+                    Sign In
+                </button>
+                <button onclick="openAuthModal('signup')" class="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-brand-purple to-brand-cyan text-white text-sm font-semibold shadow-lg">
+                    Start Free Platform Trial
+                    <i data-lucide="zap" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="relative min-h-screen flex items-center justify-center pt-28 pb-16 px-4 md:px-8 z-10">
+        <div class="max-w-5xl mx-auto text-center space-y-8">
+            
+            <!-- Telemetry Pill -->
+            <div class="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full glass-pill text-xs font-mono font-semibold text-brand-cyan stagger-anim">
+                <span class="w-2 h-2 rounded-full bg-brand-emerald animate-ping"></span>
+                <span id="active-mode-label" class="tracking-wide">VELARIS OS :: GOVERNED AI AGENT MATRIX</span>
+            </div>
+
+            <!-- Headline -->
+            <h1 class="font-display text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight leading-[1.1] text-heading stagger-anim">
+                Intelligent Customer Operations <br>
+                <span class="gradient-text">Powered by Governed AI</span>
+            </h1>
+
+            <!-- Subtitle -->
+            <p class="max-w-2xl mx-auto text-base sm:text-lg md:text-xl text-muted-custom font-normal leading-relaxed stagger-anim">
+                Combine human support workflows with governed AI agents, RAG knowledge retrieval, automation, analytics, and enterprise security in one unified platform.
+            </p>
+
+            <!-- Pattern Selector Buttons -->
+            <div id="shader-modes" class="max-w-lg mx-auto glass-panel p-2 rounded-2xl flex items-center justify-between gap-2 border border-white/10 stagger-anim">
+                <button id="mode-icosa" class="pattern-btn active flex-1 py-2.5 px-3 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-1.5 border border-transparent">
+                    <i data-lucide="box" class="w-4 h-4"></i>
+                    AGENT
+                </button>
+                <button id="mode-wave" class="pattern-btn flex-1 py-2.5 px-3 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-1.5 border border-transparent text-muted-custom hover:text-heading">
+                    <i data-lucide="waves" class="w-4 h-4"></i>
+                    WORKFLOW
+                </button>
+                <button id="mode-galaxy" class="pattern-btn flex-1 py-2.5 px-3 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-1.5 border border-transparent text-muted-custom hover:text-heading">
+                    <i data-lucide="disc" class="w-4 h-4"></i>
+                    RAG GRID
+                </button>
+            </div>
+
+            <!-- CTA Controls -->
+            <div class="flex flex-wrap items-center justify-center gap-4 pt-2 stagger-anim">
+                <button id="trigger-motion" onclick="openAuthModal('signup')" class="px-7 py-3.5 rounded-xl bg-gradient-to-r from-brand-purple to-brand-cyan text-white font-semibold shadow-xl shadow-blue-500/25 hover:scale-105 active:scale-95 transition-all duration-200 flex items-center gap-2.5 text-sm">
+                    <i data-lucide="zap" class="w-4 h-4 fill-current"></i>
+                    Start Free
+                </button>
+                <a href="#telemetry" class="px-7 py-3.5 rounded-xl glass-panel font-semibold text-heading hover:border-brand-cyan transition-all duration-200 text-sm flex items-center gap-2">
+                    <i data-lucide="terminal" class="w-4 h-4 text-brand-cyan"></i>
+                    View Demo
+                </a>
+            </div>
+
+            <p class="text-xs text-muted-custom font-mono">Enterprise-grade security with strict multi-tenant isolation and complete human-in-the-loop control.</p>
+
+            <!-- Scroll Indicator -->
+            <div class="pt-6 flex flex-col items-center gap-2 text-muted-custom text-xs font-mono animate-bounce opacity-80">
+                <span>SCROLL DOWN TO EXPLORE PLATFORM CAPABILITIES</span>
+                <i data-lucide="chevron-down" class="w-4 h-4"></i>
+            </div>
+        </div>
+    </section>
+
+    <!-- Key Product Capabilities -->
+    <section id="product" class="py-24 px-4 md:px-8 relative z-10 max-w-7xl mx-auto">
+        <div class="text-center max-w-3xl mx-auto mb-16 space-y-4">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-pill text-xs font-mono text-brand-cyan">
+                <span>// CORE CAPABILITIES</span>
+            </div>
+            <h2 class="font-display text-3xl md:text-5xl font-bold text-heading">
+                Enterprise Platform <br>
+                <span class="gradient-text">Engineered for Reliability</span>
+            </h2>
+            <p class="text-muted-custom text-base">
+                Built from the ground up for modern enterprise operations, customer success, and security compliance.
+            </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div class="glass-panel p-8 rounded-3xl border border-white/10 hover:border-brand-cyan/50 transition-all">
+                <div class="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-brand-purple mb-4">
+                    <i data-lucide="bot" class="w-5 h-5"></i>
+                </div>
+                <h3 class="font-display font-bold text-xl text-heading mb-3">Autonomous AI Support Agents</h3>
+                <p class="text-xs text-muted-custom leading-relaxed mb-4">
+                    Deploy AI agents built on LangGraph orchestration to handle customer conversations, classify intent, and execute approved API tools safely.
+                </p>
+                <ul class="space-y-2 text-xs text-body-custom border-t border-slate-700/30 pt-4">
+                    <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Application-level permission checks before consequential tool execution</li>
+                    <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Seamless human escalation with full conversation state preserved</li>
+                    <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Evaluation gates and regression tests before production deployments</li>
+                </ul>
+            </div>
+
+            <div class="glass-panel p-8 rounded-3xl border border-white/10 hover:border-brand-cyan/50 transition-all">
+                <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-brand-cyan mb-4">
+                    <i data-lucide="users" class="w-5 h-5"></i>
+                </div>
+                <h3 class="font-display font-bold text-xl text-heading mb-3">AI-Augmented Human Workspace</h3>
+                <p class="text-xs text-muted-custom leading-relaxed mb-4">
+                    Empower human support teams with immediate ticket context, automated drafts, and real-time knowledge synthesis.
+                </p>
+                <ul class="space-y-2 text-xs text-body-custom border-t border-slate-700/30 pt-4">
+                    <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Unified Inbox with "Assigned to Me" views and real-time timelines</li>
+                    <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> AI Copilot offering summary briefs, suggested replies, and RAG docs</li>
+                    <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Smooth transition from AI automation to human agent taking control</li>
+                </ul>
+            </div>
+
+            <div class="glass-panel p-8 rounded-3xl border border-white/10 hover:border-brand-cyan/50 transition-all">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-brand-emerald mb-4">
+                    <i data-lucide="book-open" class="w-5 h-5"></i>
+                </div>
+                <h3 class="font-display font-bold text-xl text-heading mb-3">Permission-Aware Knowledge (RAG)</h3>
+                <p class="text-xs text-muted-custom leading-relaxed mb-4">
+                    Ingest websites, PDFs, Markdown docs, FAQs, and ticket history into a high-precision vector store with strict access filters.
+                </p>
+                <ul class="space-y-2 text-xs text-body-custom border-t border-slate-700/30 pt-4">
+                    <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Multi-tenant vector retrieval ensuring users only query authorized files</li>
+                    <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Automated chunking, re-indexing pipelines, and retrieval quality scores</li>
+                    <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Direct links to source documents attached to generated agent responses</li>
+                </ul>
+            </div>
+
+            <div class="glass-panel p-8 rounded-3xl border border-white/10 hover:border-brand-cyan/50 transition-all">
+                <div class="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-brand-purple mb-4">
+                    <i data-lucide="lock" class="w-5 h-5"></i>
+                </div>
+                <h3 class="font-display font-bold text-xl text-heading mb-3">Multi-Tenant Isolation & Security</h3>
+                <p class="text-xs text-muted-custom leading-relaxed mb-4">
+                    Security is enforced server-side at application boundaries rather than relying on frontend filtering.
+                </p>
+                <ul class="space-y-2 text-xs text-body-custom border-t border-slate-700/30 pt-4">
+                    <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Strict tenant context enforced across 100% of data queries</li>
+                    <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Fine-grained Role-Based Access Control (RBAC) mapping team permissions</li>
+                    <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Immutable audit logging for all administrative, security, and AI events</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+	<!-- Solutions / Value Proposition -->
+    <section id="solutions" class="py-24 px-4 md:px-8 relative z-10 max-w-7xl mx-auto">
+        <div class="text-center max-w-3xl mx-auto mb-16 space-y-4">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-pill text-xs font-mono text-brand-cyan">
+                <span>// UNIFIED OPERATIONS</span>
+            </div>
+            <h2 class="font-display text-3xl md:text-5xl font-bold text-heading">
+                Break Free from Disconnected <br>
+                <span class="gradient-text">Customer Support Tools</span>
+            </h2>
+            <p class="text-muted-custom text-base">
+                Stop switching between fragmented tickets, isolated knowledge bases, and ungoverned automation scripts.
+            </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div class="glass-panel p-8 rounded-3xl relative overflow-hidden group hover:border-brand-cyan transition-colors">
+                <div class="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-brand-purple mb-6 group-hover:scale-110 transition-transform">
+                    <i data-lucide="layout-grid" class="w-6 h-6"></i>
+                </div>
+                <h3 class="font-display font-bold text-xl text-heading mb-3">Unified Workspace</h3>
+                <p class="text-sm text-muted-custom leading-relaxed mb-6">
+                    Eliminate repetitive manual work and slow resolutions by bringing human agents, AI agents, and internal APIs into a single workspace.
+                </p>
+                <div class="font-mono text-xs text-brand-cyan flex items-center gap-2">
+                    <span>ZERO CONTEXT SWITCHING</span>
+                </div>
+            </div>
+
+            <div class="glass-panel p-8 rounded-3xl relative overflow-hidden group hover:border-brand-cyan transition-colors">
+                <div class="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-brand-cyan mb-6 group-hover:scale-110 transition-transform">
+                    <i data-lucide="database" class="w-6 h-6"></i>
+                </div>
+                <h3 class="font-display font-bold text-xl text-heading mb-3">Grounded AI Answers</h3>
+                <p class="text-sm text-muted-custom leading-relaxed mb-6">
+                    Retrieve answers exclusively from authorized, tenant-isolated knowledge sources with built-in citation provenance.
+                </p>
+                <div class="font-mono text-xs text-brand-purple flex items-center gap-2">
+                    <span>100% SOURCE CITATION VERIFIED</span>
+                </div>
+            </div>
+
+            <div class="glass-panel p-8 rounded-3xl relative overflow-hidden group hover:border-brand-cyan transition-colors">
+                <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-brand-emerald mb-6 group-hover:scale-110 transition-transform">
+                    <i data-lucide="shield-alert" class="w-6 h-6"></i>
+                </div>
+                <h3 class="font-display font-bold text-xl text-heading mb-3">Governed & Observable</h3>
+                <p class="text-sm text-muted-custom leading-relaxed mb-6">
+                    Retain total control with deterministic application policies, human approval checkpoints, and complete audit logging.
+                </p>
+                <div class="font-mono text-xs text-brand-emerald flex items-center gap-2">
+                    <span>DETERMINISTIC SAFETY GATES</span>
+                </div>
+            </div>
+        </div>
+    </section>
+	
+	<!-- Security & Compliance Matrix Section -->
+    <section id="security" class="py-24 px-4 md:px-8 relative z-10 max-w-7xl mx-auto space-y-12">
+        <div class="text-center max-w-3xl mx-auto space-y-4">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-pill text-xs font-mono text-brand-purple">
+                <span>// ENTERPRISE GOVERNANCE MATRIX</span>
+            </div>
+            <h2 class="font-display text-3xl md:text-5xl font-bold text-heading">
+                Enterprise Security & Data Isolation
+            </h2>
+            <p class="text-muted-custom text-base">
+                Architected from the bottom up to guarantee multi-tenant boundaries and audit compliance.
+            </p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 font-mono text-xs">
+            <div class="glass-panel p-6 rounded-2xl border border-white/10 space-y-3">
+                <i data-lucide="lock" class="w-6 h-6 text-brand-cyan"></i>
+                <div class="font-bold text-heading text-sm">Tenant Isolation</div>
+                <p class="text-muted-custom text-[11px] leading-relaxed">Server-side contextual injection for all DB & Vector queries. Zero leakage risk.</p>
+            </div>
+            <div class="glass-panel p-6 rounded-2xl border border-white/10 space-y-3">
+                <i data-lucide="file-check" class="w-6 h-6 text-brand-purple"></i>
+                <div class="font-bold text-heading text-sm">SOC 2 & ISO 27001</div>
+                <p class="text-muted-custom text-[11px] leading-relaxed">Fully compliant logging, encrypted backups, and automated key rotation pipelines.</p>
+            </div>
+            <div class="glass-panel p-6 rounded-2xl border border-white/10 space-y-3">
+                <i data-lucide="user-x" class="w-6 h-6 text-brand-emerald"></i>
+                <div class="font-bold text-heading text-sm">Session Flush</div>
+                <p class="text-muted-custom text-[11px] leading-relaxed">Immediate client-side memory and token wipe on switching organization contexts.</p>
+            </div>
+            <div class="glass-panel p-6 rounded-2xl border border-white/10 space-y-3">
+                <i data-lucide="activity" class="w-6 h-6 text-brand-rose"></i>
+                <div class="font-bold text-heading text-sm">Immutable Audit Logs</div>
+                <p class="text-muted-custom text-[11px] leading-relaxed">Every administrative action and agent execution logged with cryptographic hashes.</p>
+            </div>
+        </div>
+    </section>
+	
+    <!-- Telemetry & Live Execution Stream -->
+    <section id="telemetry" class="py-20 px-4 md:px-8 relative z-10 max-w-7xl mx-auto">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            
+            <div class="lg:col-span-5 space-y-6">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-pill text-xs font-mono text-brand-cyan">
+                    <span>// SYSTEM OBSERVABILITY</span>
+                </div>
+                <h2 class="font-display text-3xl sm:text-4xl font-bold text-heading">
+                    Live Operational Traceability
+                </h2>
+                <p class="text-muted-custom text-sm md:text-base leading-relaxed">
+                    Monitor autonomous agent execution, inspect prompt traces, track model latency, and maintain complete audit compliance.
+                </p>
+
+                <div class="grid grid-cols-2 gap-4 pt-2">
+                    <div class="glass-panel p-4 rounded-2xl border-l-4 border-l-brand-cyan">
+                        <div class="text-xs text-muted-custom font-mono">RESOLVED TODAY</div>
+                        <div class="text-2xl font-bold font-mono text-heading mt-1" id="stat-sessions">18,420</div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-2xl border-l-4 border-l-brand-purple">
+                        <div class="text-xs text-muted-custom font-mono">TRACE COVERAGE</div>
+                        <div class="text-2xl font-bold font-mono text-heading mt-1" id="stat-latency">100%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terminal Output Box -->
+            <div class="lg:col-span-7 glass-panel rounded-3xl p-6 font-mono text-xs border border-white/10 shadow-2xl overflow-hidden">
+                <div class="flex items-center justify-between border-b border-slate-700/30 pb-4 mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-rose-500/80 inline-block"></span>
+                        <span class="w-3 h-3 rounded-full bg-amber-500/80 inline-block"></span>
+                        <span class="w-3 h-3 rounded-full bg-emerald-500/80 inline-block"></span>
+                        <span class="ml-2 text-muted-custom">velaris-agent-trace // stream0</span>
+                    </div>
+                    <span class="text-emerald-500 font-bold flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                        LIVE AGENTS
+                    </span>
+                </div>
+
+                <div id="terminal-stream" class="space-y-2 h-56 overflow-y-auto pr-2 text-body-custom">
+                    <!-- Dynamic log items inserted here -->
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- Pricing Section: 3 Cards + Interactive Calculator -->
+    <section id="pricing" class="py-24 px-4 md:px-8 relative z-10 max-w-7xl mx-auto">
+        <div class="text-center space-y-4 mb-16">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-pill text-xs font-mono text-brand-cyan">
+                <span>// TRANSPARENT ENTERPRISE PRICING</span>
+            </div>
+            <h2 class="font-display text-3xl md:text-5xl font-bold text-heading">
+                Plans for Teams of Any Scale
+            </h2>
+            <p class="text-muted-custom text-base max-w-xl mx-auto">
+                Choose a plan calibrated to your resolution volume or calculate customized capacity below.
+            </p>
+        </div>
+
+        <!-- 3 SEPARATE PRICING CARDS -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+            
+            <!-- Card 1: Starter Tier -->
+            <div class="glass-panel p-8 rounded-3xl flex flex-col justify-between border border-white/10 hover:border-brand-purple/50 transition-all">
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-mono text-muted-custom uppercase font-semibold">STARTER</span>
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-mono bg-blue-500/10 text-brand-purple border border-blue-500/20">GROWTH</span>
+                    </div>
+                    <div>
+                        <div class="text-4xl font-extrabold font-display text-heading">$99</div>
+                        <div class="text-xs text-muted-custom mt-1">per month / billed annually</div>
+                    </div>
+                    <p class="text-xs text-muted-custom leading-relaxed">
+                        Essential AI agent support and RAG knowledge search for growing support teams.
+                    </p>
+                    <ul class="space-y-3 text-xs text-body-custom pt-4 border-t border-slate-700/30">
+                        <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Up to 5,000 Resolutions/mo</li>
+                        <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> 5 Human Agent Seats</li>
+                        <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Standard Knowledge RAG Ingestion</li>
+                        <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Community Support & Docs</li>
+                    </ul>
+                </div>
+                <button class="w-full mt-8 py-3 rounded-xl glass-panel text-heading text-xs font-bold hover:border-brand-purple transition-all">
+                    Start Free Trial
+                </button>
+            </div>
+
+            <!-- Card 2: Professional (Featured) -->
+            <div class="glass-panel p-8 rounded-3xl flex flex-col justify-between border-2 border-brand-cyan relative shadow-2xl scale-105 z-10">
+                <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-brand-purple to-brand-cyan text-white text-[10px] font-bold font-mono tracking-wider shadow-md">
+                    RECOMMENDED
+                </div>
+                <div class="space-y-6 pt-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-mono text-brand-cyan uppercase font-semibold">PROFESSIONAL</span>
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-mono bg-cyan-500/10 text-brand-cyan border border-cyan-500/20">SCALE</span>
+                    </div>
+                    <div>
+                        <div class="text-4xl font-extrabold font-display text-heading">$299</div>
+                        <div class="text-xs text-muted-custom mt-1">per month / billed annually</div>
+                    </div>
+                    <p class="text-xs text-muted-custom leading-relaxed">
+                        Advanced AI workflows, tool integration execution, and AI Copilot workspace tools.
+                    </p>
+                    <ul class="space-y-3 text-xs text-body-custom pt-4 border-t border-slate-700/30">
+                        <li class="flex items-center gap-2"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i> Up to 25,000 Resolutions/mo</li>
+                        <li class="flex items-center gap-2"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i> 15 Human Agent Seats</li>
+                        <li class="flex items-center gap-2"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i> LangGraph Custom Tool Integration</li>
+                        <li class="flex items-center gap-2"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i> Full Multi-Tenant Security & RBAC</li>
+                        <li class="flex items-center gap-2"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i> AI Agent Copilot in Unified Inbox</li>
+                    </ul>
+                </div>
+                <button class="w-full mt-8 py-3 rounded-xl bg-gradient-to-r from-brand-purple to-brand-cyan text-white text-xs font-bold shadow-lg shadow-blue-500/25 hover:opacity-90 transition-opacity">
+                    Start Professional Trial
+                </button>
+            </div>
+
+            <!-- Card 3: Enterprise -->
+            <div class="glass-panel p-8 rounded-3xl flex flex-col justify-between border border-white/10 hover:border-brand-purple/50 transition-all">
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-mono text-muted-custom uppercase font-semibold">ENTERPRISE</span>
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-mono bg-emerald-500/10 text-brand-emerald border border-emerald-500/20">CUSTOM</span>
+                    </div>
+                    <div>
+                        <div class="text-4xl font-extrabold font-display text-heading">$699+</div>
+                        <div class="text-xs text-muted-custom mt-1">per month / tailored capacity</div>
+                    </div>
+                    <p class="text-xs text-muted-custom leading-relaxed">
+                        Dedicated infrastructure, custom SLAs, custom evaluations, and hands-on governance support.
+                    </p>
+                    <ul class="space-y-3 text-xs text-body-custom pt-4 border-t border-slate-700/30">
+                        <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> 100,000+ Resolutions/mo</li>
+                        <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Unlimited Human Seats</li>
+                        <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Dedicated Success Manager & SLA</li>
+                        <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i> Custom RAG Pipelines & Data Connectors</li>
+                    </ul>
+                </div>
+                <button class="w-full mt-8 py-3 rounded-xl glass-panel text-heading text-xs font-bold hover:border-brand-cyan transition-all">
+                    Contact Enterprise Team
+                </button>
+            </div>
+
+        </div>
+
+        <!-- INTERACTIVE CAPACITY CALCULATOR -->
+        <div class="max-w-5xl mx-auto glass-panel rounded-3xl p-8 sm:p-10 shadow-2xl border border-white/10 space-y-8">
+            <div class="text-center space-y-2">
+                <h3 class="font-display text-2xl font-bold text-heading">Resolution Capacity Estimator</h3>
+                <p class="text-xs text-muted-custom">Adjust monthly ticket/resolution volume to determine your tier allocation.</p>
+            </div>
+
+            <!-- Billing Toggle -->
+            <div class="flex items-center justify-center gap-4 text-sm font-medium pt-2">
+                <span id="billing-monthly-label" class="text-heading font-semibold">Monthly Billing</span>
+                <button id="billing-toggle" class="relative w-14 h-8 rounded-full bg-slate-700/40 border border-slate-500/40 p-1 transition-colors">
+                    <div id="billing-toggle-dot" class="w-6 h-6 rounded-full bg-gradient-to-r from-brand-purple to-brand-cyan shadow-md transition-transform"></div>
+                </button>
+                <span id="billing-annual-label" class="text-muted-custom">Annual Billing <span class="text-emerald-500 text-xs font-bold">(Save 20%)</span></span>
+            </div>
+
+            <!-- Ticket Slider Header -->
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <label for="ticket-slider" class="text-sm font-mono text-muted-custom font-semibold">ESTIMATED MONTHLY RESOLUTIONS</label>
+                    <span id="slider-ticket-count" class="font-mono text-2xl font-bold text-brand-cyan">25,000 Resolutions/mo</span>
+                </div>
+                <input type="range" id="ticket-slider" min="5000" max="200000" step="5000" value="25000" class="w-full h-3 bg-slate-700/50 rounded-lg appearance-none cursor-pointer accent-brand-cyan">
+                <div class="flex justify-between text-xs font-mono text-muted-custom">
+                    <span>5K</span>
+                    <span>50K</span>
+                    <span>100K</span>
+                    <span>200K+</span>
+                </div>
+            </div>
+
+            <!-- Price Output Box -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6 border-t border-slate-700/30 items-center">
+                <div class="md:col-span-2 space-y-2">
+                    <div class="text-xs font-mono text-muted-custom">RECOMMENDED VELARIS TIER</div>
+                    <div id="recommended-tier" class="text-2xl font-display font-bold text-heading">PROFESSIONAL PLAN</div>
+                    <p id="tier-description" class="text-xs text-muted-custom leading-relaxed">
+                        Includes agent Copilot, LangGraph custom action tools, automated escalation, and RBAC governance.
+                    </p>
+                </div>
+
+                <div class="glass-panel p-6 rounded-2xl text-center space-y-2 border border-brand-cyan/30">
+                    <div class="text-xs font-mono text-muted-custom">ESTIMATED PRICE</div>
+                    <div class="flex items-baseline justify-center gap-1">
+                        <span class="text-4xl font-extrabold font-display text-heading" id="calculated-price">$299</span>
+                        <span class="text-xs text-muted-custom" id="billing-cycle-text">/month</span>
+                    </div>
+                    <button class="w-full mt-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-purple to-brand-cyan text-white text-xs font-bold shadow-md hover:opacity-90 transition-opacity">
+                        Claim 14-Day Free Trial
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section id="resources" class="py-20 px-4 md:px-8 relative z-10 max-w-4xl mx-auto">
+        <div class="text-center space-y-4 mb-12">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-pill text-xs font-mono text-brand-cyan">
+                <span>// FREQUENTLY ASKED QUESTIONS</span>
+            </div>
+            <h2 class="font-display text-3xl font-bold text-heading">
+                Everything You Need to Know
+            </h2>
+        </div>
+
+        <div class="space-y-4">
+            <div class="glass-panel rounded-2xl p-6 border border-white/10">
+                <h3 class="font-display font-bold text-base text-heading mb-2">Is VELARIS a chatbot or a ticketing system?</h3>
+                <p class="text-xs text-muted-custom leading-relaxed">
+                    VELARIS is a full enterprise customer operations platform. It combines ticketing, unified inbox, and human workspace tools with governed AI support agents, RAG knowledge retrieval, and observability in one place.
+                </p>
+            </div>
+
+            <div class="glass-panel rounded-2xl p-6 border border-white/10">
+                <h3 class="font-display font-bold text-base text-heading mb-2">How does VELARIS ensure AI doesn't execute unauthorized actions?</h3>
+                <p class="text-xs text-muted-custom leading-relaxed">
+                    Deterministic application code governs all permissions and executions. While AI agents propose actions or tool calls, server-side permission checks, policy rules, and required human approvals strictly enforce execution boundaries.
+                </p>
+            </div>
+
+            <div class="glass-panel rounded-2xl p-6 border border-white/10">
+                <h3 class="font-display font-bold text-base text-heading mb-2">How is customer data isolated in a multi-tenant setup?</h3>
+                <p class="text-xs text-muted-custom leading-relaxed">
+                    Multi-tenancy is enforced server-side across database queries and vector indexes. Every request, cache key, background job, and retrieval query explicitly requires tenant context.
+                </p>
+            </div>
+
+            <div class="glass-panel rounded-2xl p-6 border border-white/10">
+                <h3 class="font-display font-bold text-base text-heading mb-2">What happens when the AI agent cannot resolve a customer request?</h3>
+                <p class="text-xs text-muted-custom leading-relaxed">
+                    The AI automatically escalates the ticket to a human agent in the Unified Inbox, providing complete conversation context, attempted actions, and retrieved knowledge sources so the human agent takes over seamlessly.
+                </p>
+            </div>
+        </div>
+    </section>
+
+	<!-- Auth Modal -->
+    <div id="auth-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 backdrop-blur-md p-4">
+        <div class="glass-panel rounded-3xl max-w-md w-full p-6 space-y-6 border border-white/20 relative">
+            <button onclick="closeAuthModal()" class="absolute top-4 right-4 text-muted-custom hover:text-heading">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+            <div class="space-y-1">
+                <h3 id="auth-modal-title" class="font-display text-2xl font-bold text-heading">Sign In to VELARIS</h3>
+                <p class="text-xs text-muted-custom">Access your tenant operations console or agent copilot workspace.</p>
+            </div>
+            <form onsubmit="event.preventDefault(); alert('Redirecting to workspace...'); closeAuthModal();" class="space-y-4 font-mono text-xs">
+                <div>
+                    <label class="block text-muted-custom mb-1">Work Email</label>
+                    <input type="email" placeholder="name@company.com" required class="w-full bg-slate-900/80 border border-slate-700 rounded-xl p-3 text-heading focus:outline-none focus:border-brand-cyan">
+                </div>
+                <div>
+                    <label class="block text-muted-custom mb-1">Password</label>
+                    <input type="password" placeholder="••••••••" required class="w-full bg-slate-900/80 border border-slate-700 rounded-xl p-3 text-heading focus:outline-none focus:border-brand-cyan">
+                </div>
+                <button type="submit" class="w-full py-3 rounded-xl bg-gradient-to-r from-brand-purple to-brand-cyan text-white font-bold text-xs shadow-lg">
+                    Continue to Platform
+                </button>
+            </form>
+        </div>
+    </div>
+	
+    <!-- Footer -->
+    <footer class="py-12 px-4 md:px-8 border-t border-slate-700/30 relative z-10 glass-panel mt-12">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-xs text-muted-custom">
+            <div class="flex items-center gap-3">
+                <!-- Synchronized Logo Icon Mark -->
+                <div class="w-7 h-7 flex items-center justify-center">
+                    <svg viewBox="0 0 512 512" class="w-full h-full">
+                      <g filter="url(#velaris-glow)">
+                        <path d="M 256 420 L 390 120 L 310 120 L 256 250 L 202 120 L 122 120 Z" fill="url(#velaris-grad-2)" opacity="0.85" />
+                        <path d="M 256 420 L 122 120 L 202 120 L 256 240 L 310 120 L 390 120 Z" fill="url(#velaris-grad-1)" />
+                        <circle cx="256" cy="210" r="130" fill="none" stroke="url(#velaris-grad-1)" stroke-width="20" stroke-dasharray="210 60" stroke-linecap="round" />
+                        <circle cx="256" cy="210" r="22" fill="#00F2FE" />
+                        <circle cx="256" cy="210" r="10" fill="#FFFFFF" />
+                      </g>
+                    </svg>
+                </div>
+                <span class="font-mono">© 2026 VELARIS INC. ALL RIGHTS RESERVED.</span>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-6 font-mono">
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> PLATFORM ONLINE</span>
+                <span>SYSTEM LATENCY: 3.2ms</span>
+                <a href="#" class="hover:text-brand-cyan transition-colors">PRIVACY</a>
+                <a href="#" class="hover:text-brand-cyan transition-colors">TERMS</a>
+                <a href="#" class="hover:text-brand-cyan transition-colors">SECURITY</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // 1. Mobile & Tablet Drawer Menu Toggle
+        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenuDrawer = document.getElementById('mobile-menu-drawer');
+        const menuIconOpen = document.getElementById('menu-icon-open');
+        const menuIconClose = document.getElementById('menu-icon-close');
+        const mobileNavLinks = document.querySelectorAll('.mobile-nav-link');
+
+        function toggleMobileMenu() {
+            const isHidden = mobileMenuDrawer.classList.contains('hidden');
+            if (isHidden) {
+                mobileMenuDrawer.classList.remove('hidden');
+                mobileMenuDrawer.classList.add('flex');
+                menuIconOpen.classList.add('hidden');
+                menuIconClose.classList.remove('hidden');
+            } else {
+                mobileMenuDrawer.classList.add('hidden');
+                mobileMenuDrawer.classList.remove('flex');
+                menuIconOpen.classList.remove('hidden');
+                menuIconClose.classList.add('hidden');
+            }
+        }
+
+        mobileMenuBtn.addEventListener('click', toggleMobileMenu);
+
+        mobileNavLinks.forEach(link => {
+            link.addEventListener('click', () => {
+                if (!mobileMenuDrawer.classList.contains('hidden')) {
+                    toggleMobileMenu();
+                }
+            });
+        });
+
+        // 2. Light / Dark Theme Switcher Logic
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        const htmlElement = document.documentElement;
+
+        themeToggleBtn.addEventListener('click', () => {
+            const currentTheme = htmlElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            htmlElement.setAttribute('data-theme', newTheme);
+            
+            if (particleMaterial) {
+                particleMaterial.color.setHex(newTheme === 'dark' ? 0x38BDF8 : 0x0284C7);
+            }
+        });
+		
+		// 3. Auth Modal Handlers
+        function openAuthModal(mode) {
+            const modal = document.getElementById('auth-modal');
+            document.getElementById('auth-modal-title').innerText = mode === 'signup' ? 'Start Free Platform Trial' : 'Sign In to VELARIS';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+        function closeAuthModal() {
+            const modal = document.getElementById('auth-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        // 4. Three.js Scroll-Scrubbed 3D Background Engine
+        const container = document.getElementById('webgl-container');
+        const scene = new THREE.Scene();
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 25;
+
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        // Core 3D Geometry
+        const coreGeometry = new THREE.IcosahedronGeometry(6, 2);
+        const coreMaterial = new THREE.MeshBasicMaterial({
+            color: 0x2563EB,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.35
+        });
+        const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
+        scene.add(coreMesh);
+
+        // Secondary Outer Ring Geometry
+        const torusGeometry = new THREE.TorusKnotGeometry(9, 1.5, 100, 16);
+        const torusMaterial = new THREE.MeshBasicMaterial({
+            color: 0x38BDF8,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.2
+        });
+        const torusMesh = new THREE.Mesh(torusGeometry, torusMaterial);
+        scene.add(torusMesh);
+
+        // Particle System
+        const particleCount = 1000;
+        const particleGeometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const targetPositions = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount * 3; i++) {
+            positions[i] = (Math.random() - 0.5) * 60;
+            targetPositions[i] = positions[i];
+        }
+
+        particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const particleMaterial = new THREE.PointsMaterial({
+            color: 0x38BDF8,
+            size: 0.18,
+            transparent: true,
+            opacity: 0.75
+        });
+        const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+        scene.add(particleSystem);
+
+        // Particle Pattern Morph Functions
+        let activePatternMode = 'icosa';
+
+        function setIcosaPattern() {
+            for (let i = 0; i < particleCount; i++) {
+                targetPositions[i * 3] = (Math.random() - 0.5) * 55;
+                targetPositions[i * 3 + 1] = (Math.random() - 0.5) * 55;
+                targetPositions[i * 3 + 2] = (Math.random() - 0.5) * 55;
+            }
+        }
+
+        function setWavePattern() {
+            const cols = 32, rows = 32;
+            for (let i = 0; i < particleCount; i++) {
+                const x = (i % cols - cols / 2) * 1.5;
+                const z = (Math.floor(i / cols) - rows / 2) * 1.5;
+                targetPositions[i * 3] = x;
+                targetPositions[i * 3 + 1] = Math.sin(x * 0.4) * 3 - 4;
+                targetPositions[i * 3 + 2] = z;
+            }
+        }
+
+        function setGalaxyPattern() {
+            const arms = 3;
+            for (let i = 0; i < particleCount; i++) {
+                const r = Math.random() * 22;
+                const armIndex = i % arms;
+                const theta = r * 0.3 + (armIndex * ((2 * Math.PI) / arms));
+                targetPositions[i * 3] = Math.cos(theta) * r;
+                targetPositions[i * 3 + 1] = (Math.random() - 0.5) * 4;
+                targetPositions[i * 3 + 2] = Math.sin(theta) * r;
+            }
+        }
+
+        // Pattern Switch Buttons Listener
+        const btnIcosa = document.getElementById('mode-icosa');
+        const btnWave = document.getElementById('mode-wave');
+        const btnGalaxy = document.getElementById('mode-galaxy');
+        const activeLabel = document.getElementById('active-mode-label');
+
+        function switchPattern(mode) {
+            activePatternMode = mode;
+            [btnIcosa, btnWave, btnGalaxy].forEach(btn => btn.classList.remove('active'));
+
+            if (mode === 'icosa') {
+                btnIcosa.classList.add('active');
+                activeLabel.innerText = "VELARIS OS :: GOVERNED AI AGENT MATRIX";
+                setIcosaPattern();
+            } else if (mode === 'wave') {
+                btnWave.classList.add('active');
+                activeLabel.innerText = "VELARIS OS :: WORKFLOW AUTOMATION PIPELINE";
+                setWavePattern();
+            } else if (mode === 'galaxy') {
+                btnGalaxy.classList.add('active');
+                activeLabel.innerText = "VELARIS OS :: RAG KNOWLEDGE VECTOR CLUSTER";
+                setGalaxyPattern();
+            }
+
+            const posAttr = particleGeometry.attributes.position;
+            anime({
+                targets: posAttr.array,
+                duration: 1000,
+                easing: 'easeInOutQuad',
+                update: () => posAttr.needsUpdate = true
+            });
+        }
+
+        btnIcosa.addEventListener('click', () => switchPattern('icosa'));
+        btnWave.addEventListener('click', () => switchPattern('wave'));
+        btnGalaxy.addEventListener('click', () => switchPattern('galaxy'));
+
+        // 5. Scroll Interpolation Logic
+        let currentScrollProgress = 0;
+        let targetScrollProgress = 0;
+
+        function updateScrollFraction() {
+            const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+            targetScrollProgress = Math.min(Math.max(window.scrollY / maxScroll, 0), 1);
+        }
+
+        window.addEventListener('scroll', updateScrollFraction, { passive: true });
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            updateScrollFraction();
+        });
+
+        // Main Render Loop
+        let clock = new THREE.Clock();
+
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+
+            const time = clock.getElapsedTime();
+
+            currentScrollProgress += (targetScrollProgress - currentScrollProgress) * 0.08;
+
+            camera.position.z = 25 - (currentScrollProgress * 8);
+            camera.position.y = Math.sin(currentScrollProgress * Math.PI) * 4;
+
+            coreMesh.rotation.x = time * 0.2 + (currentScrollProgress * Math.PI * 2);
+            coreMesh.rotation.y = time * 0.3 + (currentScrollProgress * Math.PI);
+
+            torusMesh.rotation.x = -time * 0.15 + (currentScrollProgress * Math.PI);
+            torusMesh.rotation.z = time * 0.2;
+
+            if (activePatternMode === 'wave') {
+                const pos = particleGeometry.attributes.position.array;
+                for (let i = 0; i < particleCount; i++) {
+                    const x = pos[i * 3];
+                    pos[i * 3 + 1] = Math.sin(time * 2 + x * 0.5 + currentScrollProgress * 10) * 2 - 4;
+                }
+                particleGeometry.attributes.position.needsUpdate = true;
+            } else if (activePatternMode === 'galaxy') {
+                particleSystem.rotation.y = time * 0.2 + (currentScrollProgress * Math.PI * 2);
+            } else {
+                particleSystem.rotation.y = time * 0.05 + (currentScrollProgress * Math.PI);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        updateScrollFraction();
+        renderLoop();
+
+        // Pulse Button Action
+        document.getElementById('trigger-motion').addEventListener('click', () => {
+            anime({
+                targets: coreMesh.scale,
+                x: [1, 1.4, 1],
+                y: [1, 1.4, 1],
+                z: [1, 1.4, 1],
+                duration: 1000,
+                easing: 'easeInOutElastic(1, .5)'
+            });
+        });
+
+        // 6. VELARIS Terminal Streamer Logs
+        const terminalStream = document.getElementById('terminal-stream');
+        const mockLogs = [
+            { tenant: "ACME_CORP", msg: "LangGraph Agent matched ticket #9201 -> RESOLVED via RAG Citation [Doc #84]", status: "AUTO-RESOLVED" },
+            { tenant: "GLOBEX", msg: "Vector search query: 'API rate limits' -> cosine similarity 0.96", status: "GROUNDED" },
+            { tenant: "INITECH", msg: "Triggering escalation gate: Confidence score 0.62 < 0.85 threshold", status: "ESCALATED TO HUMAN" },
+            { tenant: "UMBRELLA", msg: "Executing tool call: 'RefundProcess' -> Permission validated via application policy", status: "APPROVED" },
+            { tenant: "WAYNE_ENT", msg: "Copilot generated response draft for Human Agent #402", status: "SUGGESTION READY" }
+        ];
+
+        let logIndex = 0;
+        function pushLog() {
+            const item = mockLogs[logIndex % mockLogs.length];
+            const div = document.createElement('div');
+            div.className = "flex items-center justify-between font-mono text-xs border-b border-slate-700/10 pb-1";
+            div.innerHTML = `
+                <span class="text-brand-cyan">[${item.tenant}]</span>
+                <span class="truncate max-w-xs md:max-w-md">${item.msg}</span>
+                <span class="text-emerald-500 font-bold">${item.status}</span>
+            `;
+            terminalStream.appendChild(div);
+            if (terminalStream.children.length > 8) {
+                terminalStream.removeChild(terminalStream.children[0]);
+            }
+            terminalStream.scrollTop = terminalStream.scrollHeight;
+            logIndex++;
+        }
+        setInterval(pushLog, 2200);
+
+        // 7. Interactive Pricing Calculator Engine
+        const ticketSlider = document.getElementById('ticket-slider');
+        const sliderCountText = document.getElementById('slider-ticket-count');
+        const recommendedTierText = document.getElementById('recommended-tier');
+        const calculatedPriceText = document.getElementById('calculated-price');
+        const billingCycleText = document.getElementById('billing-cycle-text');
+        const billingToggleBtn = document.getElementById('billing-toggle');
+        const billingToggleDot = document.getElementById('billing-toggle-dot');
+        const billingMonthlyLabel = document.getElementById('billing-monthly-label');
+        const billingAnnualLabel = document.getElementById('billing-annual-label');
+
+        let isAnnual = false;
+
+        function updatePricing() {
+            const tickets = parseInt(ticketSlider.value);
+            sliderCountText.innerText = `${tickets.toLocaleString()} Resolutions/mo`;
+
+            let basePrice = 99;
+            let tierName = "STARTER TIER";
+
+            if (tickets > 10000 && tickets <= 40000) {
+                basePrice = 299;
+                tierName = "PROFESSIONAL TIER";
+            } else if (tickets > 40000 && tickets <= 100000) {
+                basePrice = 699;
+                tierName = "ENTERPRISE SCALE";
+            } else if (tickets > 100000) {
+                basePrice = 1299;
+                tierName = "HYPER-SCALE MATRIX";
+            }
+
+            if (isAnnual) {
+                basePrice = Math.floor(basePrice * 0.8);
+            }
+
+            recommendedTierText.innerText = tierName;
+            calculatedPriceText.innerText = `$${basePrice}`;
+            billingCycleText.innerText = isAnnual ? "/month (billed annually)" : "/month";
+        }
+
+        ticketSlider.addEventListener('input', updatePricing);
+
+        billingToggleBtn.addEventListener('click', () => {
+            isAnnual = !isAnnual;
+            if (isAnnual) {
+                billingToggleDot.classList.add('translate-x-6');
+                billingMonthlyLabel.classList.remove('text-heading', 'font-semibold');
+                billingMonthlyLabel.classList.add('text-muted-custom');
+                billingAnnualLabel.classList.add('text-heading', 'font-semibold');
+            } else {
+                billingToggleDot.classList.remove('translate-x-6');
+                billingAnnualLabel.classList.remove('text-heading', 'font-semibold');
+                billingMonthlyLabel.classList.add('text-heading', 'font-semibold');
+            }
+            updatePricing();
+        });
+
+        // Initialize Pricing Calculations
+        updatePricing();
+
+        // Entrance Animations
+        anime.timeline({ easing: 'easeOutExpo', duration: 1000 })
+            .add({
+                targets: '.stagger-anim',
+                translateY: [30, 0],
+                opacity: [0, 1],
+                delay: anime.stagger(120)
+            });
+    </script>
+</body>
+</html>

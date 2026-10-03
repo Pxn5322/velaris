@@ -1,0 +1,378 @@
+﻿<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description"
+    content="VELARIS Tenant Admin AI Studio - Configure AI agents, knowledge bases, guardrails, and evaluation suites for your organization.">
+  <meta name="theme-color" content="#090D16">
+  <link rel="icon" type="image/svg+xml" href="velaris-logo.svg">
+  <title>VELARIS — Tenant Admin AI Studio</title>
+
+  <!-- External Styles with SRI -->
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" integrity="sha384-..." crossorigin="anonymous">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+          colors: { void: '#090D16', surface: '#0F172A', card: '#1E293B', brand: '#6366F1', accent: '#06B6D4' }
+        }
+      }
+    }
+  </script>
+
+  <!-- Design System Styles -->
+  <link rel="stylesheet" href="css/design-system.css">
+
+  <style>
+    body {
+      background-color: #090D16;
+      color: #F8FAFC;
+    }
+
+    .glass-card {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .studio-tab-active {
+      border-bottom: 2px solid #6366F1;
+      color: #FFFFFF;
+      font-weight: 700;
+    }
+  </style>
+</head>
+
+<body class="font-sans antialiased flex flex-col h-screen overflow-hidden">
+
+  <!-- Skip Link for Accessibility -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Screen Reader Announcements -->
+  <div id="studio-tab-live" aria-live="polite" class="sr-only"></div>
+
+  <!-- Top App Header -->
+  <header class="h-16 border-b border-slate-800 px-4 md:px-6 flex items-center justify-between bg-slate-900 z-20">
+    <div class="flex items-center gap-2 md:gap-4">
+      <div class="flex items-center gap-2">
+        <img src="velaris-logo.svg" alt="" class="w-8 h-8 drop-shadow-[0_0_10px_rgba(99,102,241,0.5)]">
+        <span class="font-extrabold tracking-wider text-white">VELARIS</span>
+      </div>
+      <span class="text-slate-600" aria-hidden="true">/</span>
+      <div class="flex items-center gap-2 text-xs font-mono">
+        <span class="text-slate-400">Tenant:</span>
+        <span
+          class="hidden sm:inline px-2.5 py-1 bg-slate-800 rounded-md text-slate-200 border border-slate-700 font-bold text-xs">Acme_Corp_Prod</span>
+        <span
+          class="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-bold">ADMIN</span>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-4 text-xs">
+      <div class="flex items-center gap-2 font-mono text-slate-400">
+        <span>Agent Status:</span>
+        <span
+          class="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded font-bold border border-emerald-500/30 flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400" aria-hidden="true"></span> Published v1.2
+        </span>
+      </div>
+      <a href="index.html"
+        class="hidden sm:flex text-accent font-semibold items-center gap-1 hover:underline text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded">
+        <i data-lucide="layout-grid" class="w-4 h-4" aria-hidden="true"></i> Master Hub
+      </a>
+    </div>
+  </header>
+
+  <!-- Studio Header Title Bar -->
+  <div class="bg-slate-900/60 border-b border-slate-800 px-6 py-4 flex items-center justify-between">
+    <div>
+      <div class="flex items-center gap-3">
+        <h1 class="text-xl font-bold text-white">Customer Support Agent</h1>
+        <span
+          class="px-2.5 py-0.5 rounded-full bg-brand/20 text-indigo-300 text-xs font-mono border border-brand/40">ID:
+          agt_981024</span>
+      </div>
+      <p class="text-xs text-slate-400 mt-0.5">Primary autonomous support agent for customer ticket classification, RAG
+        resolution, and refund tool triggers.</p>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button type="button"
+        class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
+        <i data-lucide="history" class="w-4 h-4" aria-hidden="true"></i> Version History
+      </button>
+      <button type="button" id="run-evaluation-btn"
+        class="px-4 py-2 bg-brand hover:bg-brand/90 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-lg shadow-brand/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand">
+        <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i> Run Evaluation Suite
+      </button>
+    </div>
+  </div>
+
+  <!-- 10-Tab Navigation Bar -->
+  <nav class="relative bg-slate-900 border-b border-slate-800" aria-label="AI Studio tabs">
+    <div
+      class="px-6 flex gap-8 text-xs font-medium text-slate-400 overflow-x-auto scrollbar-none whitespace-nowrap pr-12"
+      role="tablist" aria-label="Agent configuration sections">
+      <button type="button" id="tab-instructions" role="tab" aria-selected="true"
+        aria-controls="studio-view-instructions"
+        class="py-3 studio-tab-active flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+        <i data-lucide="file-code" class="w-4 h-4" aria-hidden="true"></i> Instructions
+      </button>
+      <button type="button" id="tab-knowledge" role="tab" aria-selected="false" aria-controls="studio-view-knowledge"
+        class="py-3 flex items-center gap-2 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+        <i data-lucide="database" class="w-4 h-4" aria-hidden="true"></i> Knowledge
+      </button>
+      <button type="button" id="tab-tools" role="tab" aria-selected="false" aria-controls="studio-view-tools"
+        class="py-3 flex items-center gap-2 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+        <i data-lucide="wrench" class="w-4 h-4" aria-hidden="true"></i> Tools & Actions
+      </button>
+      <button type="button" id="tab-guardrails" role="tab" aria-selected="false" aria-controls="studio-view-guardrails"
+        class="py-3 flex items-center gap-2 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+        <i data-lucide="shield" class="w-4 h-4" aria-hidden="true"></i> Guardrails
+      </button>
+      <button type="button" id="tab-permissions" role="tab" aria-selected="false"
+        aria-controls="studio-view-permissions"
+        class="py-3 flex items-center gap-2 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+        <i data-lucide="lock" class="w-4 h-4" aria-hidden="true"></i> Permissions
+      </button>
+      <button type="button" id="tab-workflows" role="tab" aria-selected="false" aria-controls="studio-view-workflows"
+        class="py-3 flex items-center gap-2 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+        <i data-lucide="git-branch" class="w-4 h-4" aria-hidden="true"></i> Workflows
+      </button>
+      <button type="button" id="tab-evaluation" role="tab" aria-selected="false" aria-controls="studio-view-evaluation"
+        class="py-3 flex items-center gap-2 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+        <i data-lucide="check-circle" class="w-4 h-4" aria-hidden="true"></i> Evaluation Sandbox
+      </button>
+      <button type="button" id="tab-versions" role="tab" aria-selected="false" aria-controls="studio-view-versions"
+        class="py-3 flex items-center gap-2 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+        <i data-lucide="git-commit" class="w-4 h-4" aria-hidden="true"></i> Versions
+      </button>
+      <button type="button" id="tab-observability" role="tab" aria-selected="false"
+        aria-controls="studio-view-observability"
+        class="py-3 flex items-center gap-2 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+        <i data-lucide="activity" class="w-4 h-4" aria-hidden="true"></i> Observability
+      </button>
+    </div>
+  </nav>
+
+  <!-- Studio Content Grid -->
+  <main id="main-content" class="flex-1 overflow-y-auto p-6 bg-slate-950">
+
+    <!-- Tab View 1: Instructions & Prompt Studio -->
+    <div id="studio-view-instructions" role="tabpanel" aria-labelledby="tab-instructions"
+      class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <!-- Left Prompt Panel -->
+      <div class="lg:col-span-7 glass-card rounded-xl p-6 space-y-6">
+        <div>
+          <label for="system-prompt" class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">System
+            Persona & Role Prompt</label>
+          <textarea id="system-prompt" rows="10"
+            class="w-full bg-slate-950 border border-slate-800 rounded-lg p-4 font-mono text-xs text-indigo-100 focus:outline-none focus:border-brand leading-relaxed"
+            spellcheck="false">You are VELARIS Support Agent for {{tenant.name}}.
+Your role is to assist customer {{customer.name}} with order inquiries, shipping SLA policies, and key management.
+
+CRITICAL POLICY RULES:
+1. Always ground answers in provided vector citations. Grounding score must exceed {{policy.grounding_threshold}}.
+2. If order refund exceeds , trigger escalation to human agent queue.
+3. For API key compromises, execute revoke_api_key tool deterministically.
+4. Maintain a professional, empathetic tone at all times.</textarea>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label for="grounding-threshold" class="block text-xs font-semibold text-slate-400 mb-1.5">Grounding
+              Threshold</label>
+            <div class="flex items-center gap-3">
+              <input type="range" id="grounding-threshold" min="0.5" max="0.95" step="0.05" value="0.75"
+                class="w-full h-2 bg-slate-800 rounded accent-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
+              <span class="font-mono text-xs text-accent font-bold" id="grounding-val">0.75</span>
+            </div>
+          </div>
+
+          <div>
+            <span class="block text-xs font-semibold text-slate-400 mb-1.5">Citation Requirement</span>
+            <div class="flex items-center gap-2 pt-1">
+              <input type="checkbox" id="citation-required" checked
+                class="w-4 h-4 accent-brand rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
+              <label for="citation-required" class="text-xs text-slate-300">Strict Document Citations Required</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-4 border-t border-slate-800 flex justify-between items-center">
+          <span class="text-xs text-slate-500 font-mono">Draft saved 2m ago</span>
+          <button type="button"
+            class="px-5 py-2.5 bg-brand text-white rounded-lg text-xs font-bold hover:bg-brand/90 shadow-lg shadow-brand/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand">Save
+            Draft Prompt</button>
+        </div>
+      </div>
+
+      <!-- Right Test Sandbox Panel -->
+      <div class="lg:col-span-5 glass-card rounded-xl p-6 flex flex-col justify-between space-y-4">
+        <div>
+          <div class="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
+            <h2 class="text-xs font-bold text-white uppercase tracking-wider">Real-Time Test Simulator</h2>
+            <span
+              class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Sandbox
+              Ready</span>
+          </div>
+
+          <div class="space-y-3 font-sans text-xs">
+            <div class="p-3 bg-slate-900 rounded-lg border border-slate-800">
+              <div class="text-[10px] font-bold text-slate-500 mb-1">CUSTOMER TEST QUERY</div>
+              <div class="text-slate-200">What is your refund policy if my package arrives 3 days late?</div>
+            </div>
+
+            <div class="p-3 bg-brand/10 border border-brand/30 rounded-lg space-y-2">
+              <div class="text-[10px] font-bold text-indigo-300">SIMULATED AI RESPONSE</div>
+              <div class="text-indigo-100">Per Shipping Policy Section 4.2, orders delayed over 48 hours qualify for a
+                full refund. Would you like me to process this refund for order #9182?</div>
+              <div class="text-[10px] text-indigo-300 bg-brand/20 px-2 py-1 rounded inline-block">Citation:
+                Shipping_Guarantee_2026.pdf (Match: 92%)</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-3 bg-slate-950 rounded-lg border border-slate-800 text-xs font-mono space-y-1">
+          <div class="flex justify-between text-slate-400"><span>Grounding Confidence:</span> <span
+              class="text-emerald-400 font-bold">92% PASS</span></div>
+          <div class="flex justify-between text-slate-400"><span>Required Approval:</span> <span
+              class="text-slate-300">None (Within Limit)</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab View 2: Evaluation Sandbox & Release Gate -->
+    <div id="studio-view-evaluation" role="tabpanel" aria-labelledby="tab-evaluation" class="space-y-6 hidden"
+      aria-hidden="true">
+      <!-- Release Gate Status Banner -->
+      <div class="p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <div
+            class="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xl"
+            aria-hidden="true"><i data-lucide="check-circle-2" class="w-7 h-7"></i></div>
+          <div>
+            <div class="text-lg font-bold text-white">RELEASE GATE STATUS: [ PASS ] — Ready for Production</div>
+            <div class="text-xs text-slate-300 mt-0.5">Overall Evaluation Score: <span
+                class="font-mono text-emerald-400 font-bold">94.2%</span> (Required Release Threshold: 90.0%)</div>
+          </div>
+        </div>
+        <button type="button"
+          class="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-lg text-xs transition-all shadow-lg shadow-emerald-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-emerald-500">
+          Publish Version 1.3 to Production
+        </button>
+      </div>
+
+      <!-- Evaluation Breakdown Table -->
+      <div class="glass-card rounded-xl overflow-hidden">
+        <div class="p-4 bg-slate-900/80 border-b border-slate-800 flex justify-between items-center text-xs font-bold">
+          <span class="text-white uppercase tracking-wider">Evaluation Dataset Results: Standard_Support_Queries_v2 (50
+            Test Cases)</span>
+          <span class="text-slate-400 font-mono">Executed 10m ago</span>
+        </div>
+        <table class="w-full text-left text-xs text-slate-300 font-mono">
+          <caption class="sr-only">Evaluation results broken down by category showing pass/fail status</caption>
+          <thead class="bg-slate-950 uppercase text-[10px] text-slate-400 border-b border-slate-800">
+            <tr>
+              <th scope="col" class="p-4">Evaluation Category</th>
+              <th scope="col" class="p-4">Test Cases</th>
+              <th scope="col" class="p-4">Passed</th>
+              <th scope="col" class="p-4">Failed</th>
+              <th scope="col" class="p-4">Accuracy Rate</th>
+              <th scope="col" class="p-4 text-right">Gate Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60">
+            <tr>
+              <td class="p-4 font-sans font-semibold text-white">Intent Classification</td>
+              <td class="p-4">15</td>
+              <td class="p-4 text-emerald-400">15</td>
+              <td class="p-4 text-slate-500">0</td>
+              <td class="p-4 font-bold text-emerald-400">100.0%</td>
+              <td class="p-4 text-right"><span
+                  class="px-2 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-bold">PASS</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="p-4 font-sans font-semibold text-white">Knowledge RAG Grounding</td>
+              <td class="p-4">15</td>
+              <td class="p-4 text-emerald-400">14</td>
+              <td class="p-4 text-rose-400">1</td>
+              <td class="p-4 font-bold text-emerald-400">93.3%</td>
+              <td class="p-4 text-right"><span
+                  class="px-2 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-bold">PASS</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="p-4 font-sans font-semibold text-white">Tool Selection & Schema Verification</td>
+              <td class="p-4">10</td>
+              <td class="p-4 text-emerald-400">10</td>
+              <td class="p-4 text-slate-500">0</td>
+              <td class="p-4 font-bold text-emerald-400">100.0%</td>
+              <td class="p-4 text-right"><span
+                  class="px-2 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-bold">PASS</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="p-4 font-sans font-semibold text-white">Safety & Policy Guardrail Rules</td>
+              <td class="p-4">10</td>
+              <td class="p-4 text-emerald-400">9</td>
+              <td class="p-4 text-rose-400">1</td>
+              <td class="p-4 font-bold text-emerald-400">90.0%</td>
+              <td class="p-4 text-right"><span
+                  class="px-2 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-bold">PASS</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- External Scripts -->
+  <script src="https://unpkg.com/lucide@0.453.0/dist/umd/lucide.min.js" integrity="sha384-..."
+    crossorigin="anonymous"></script>
+
+  <!-- Application Scripts -->
+  <script src="js/utils.js"></script>
+  <script src="js/tenant-admin.js"></script>
+
+  <script>
+      (function () {
+        'use strict';
+
+        document.addEventListener('DOMContentLoaded', function () {
+          // Grounding threshold slider
+          const thresholdSlider = document.getElementById('grounding-threshold');
+          const thresholdDisplay = document.getElementById('grounding-val');
+
+          if (thresholdSlider && thresholdDisplay) {
+            thresholdSlider.addEventListener('input', function () {
+              thresholdDisplay.textContent = this.value;
+            });
+          }
+
+          // Run evaluation button
+          const runEvalBtn = document.getElementById('run-evaluation-btn');
+          if (runEvalBtn) {
+            runEvalBtn.addEventListener('click', function () {
+              if (typeof switchStudioTab === 'function') {
+                switchStudioTab('evaluation');
+              }
+            });
+          }
+        });
+      })();
+  </script>
+</body>
+
+</html>

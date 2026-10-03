@@ -1,0 +1,16 @@
+{
+  "name": "velaris",
+  "version": "1.0.0",
+  "description": "VELARIS is an enterprise-grade, multi-tenant customer operations platform that combines human support workflows with governed AI agents, permission-aware RAG knowledge retrieval, and deterministic enterprise rules.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {},
+  "keywords": [],
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.3"
+  }
+}
