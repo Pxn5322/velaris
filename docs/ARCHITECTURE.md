@@ -137,3 +137,4 @@ Environments, deployment and rollback are in SETUP_GUIDE.md. Structured logs use
 | D-06 | Use a monorepo with `apps/web`, `apps/api`, `apps/worker` and shared `packages/*` | Selected | Product/architecture owner | 2026-10-20 |
 | D-07 | Select primary LLM/embedding providers and data-processing terms before production AI use | Unknown | Product/security owner | Not recorded |
 | D-08 | Orchestrated specialist agents with independent verification, code review, critic and risk-based security review; human approval for protected merge/release | Selected | Product/architecture owner | 2026-10-20 |
+| D-09 | Use npm workspaces (single root lockfile, `apps/*` + `packages/*`) as workspace manager; no build orchestrator yet | Selected (revisitable under T0.02) | Engineering owner | 2026-10-22 |

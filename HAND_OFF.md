@@ -34,12 +34,13 @@
 
 ## Verification Commands
 
-```powershell
-# Backend (Port 3000)
-cd backend
-npm run start:dev
-
-# Frontend (Port 3001)
-cd frontend
-npm run dev
+```bash
+# From the monorepo root (npm workspaces)
+npm install
+npm run dev:api      # NestJS API on port 3000
+npm run dev:web      # Next.js web on port 3001
+npm run build        # all workspaces
+npm run test         # all workspaces
 ```
+
+Note: `apps/web/src/lib/api/client.ts` defaults to `http://localhost:3001`; the API listens on 3000. Set `NEXT_PUBLIC_API_URL=http://localhost:3000` when wiring the real API.

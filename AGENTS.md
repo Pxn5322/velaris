@@ -82,6 +82,15 @@ Observe → incident/quality feedback → backlog → next loop
 8. Commit using `T3.07: summary` style and tick the task only when the score threshold is met.
 9. Keep tasks small. If a task expands, split it into explicit subtasks with valid dependencies and disjoint file scopes. Stop after three failed fix attempts.
 
+### 3.4 Branch workflow rule (mandatory)
+Every feature or fix starts on its own branch and ends merged back; `master` only changes through this flow.
+1. Before starting any feature/fix/task: `git checkout master && git pull`, then `git checkout -b <type>/<short-name>` where `<type>` is `feature`, `fix`, `docs`, `chore` or `test` (example: `feature/T0.02-lint-scripts`). Reference the task ID in the branch name when one exists.
+2. Commit only inside that branch while the task is in progress; keep commits scoped to the task and use the `T3.07: summary` / conventional style.
+3. When the task is complete and its verification evidence is recorded (section 3.3 steps 1-7): commit the final state, then merge back with `git checkout master && git merge --no-ff <branch>` and push `master`.
+4. Delete the branch after a clean merge (`git branch -d <branch>`); keep it and report if the merge is blocked or the task is incomplete.
+5. Never commit directly to `master` except: the initial repository bootstrap, or an owner-approved hotfix that is still branched first and merged immediately after verification.
+6. Push the feature branch (`git push -u origin <branch>`) when review by another agent/human is expected; otherwise the merge to `master` is the integration point.
+
 ## 4. Confidence score (evidence-based)
 Each item earns points only when backed by a command/test result; no evidence means zero.
 

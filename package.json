@@ -1,12 +1,24 @@
 {
   "name": "velaris",
   "version": "1.0.0",
+  "private": true,
   "description": "VELARIS is an enterprise-grade, multi-tenant customer operations platform that combines human support workflows with governed AI agents, permission-aware RAG knowledge retrieval, and deterministic enterprise rules.",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace apps/web",
+    "dev:api": "npm run start:dev --workspace apps/api",
+    "build": "npm run build --workspaces --if-present",
+    "build:web": "npm run build --workspace apps/web",
+    "build:api": "npm run build --workspace apps/api",
+    "lint": "npm run lint --workspaces --if-present",
+    "format": "npm run format --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:api": "npm run test --workspace apps/api",
+    "e2e": "npm run test:e2e --workspace apps/api"
   },
-  "scripts": {},
   "keywords": [],
   "type": "commonjs",
   "devDependencies": {
