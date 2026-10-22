@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Primary Gradient: Cyan to Electric Indigo -->
+    <linearGradient id="velaris-grad-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F2FE" />
+      <stop offset="50%" stop-color="#4FACFE" />
+      <stop offset="100%" stop-color="#6B11FF" />
+    </linearGradient>
+
+    <!-- Secondary Accent Gradient: Bright Violet to Magenta -->
+    <linearGradient id="velaris-grad-2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#7F00FF" />
+      <stop offset="100%" stop-color="#E100FF" />
+    </linearGradient>
+
+    <!-- Subtle Drop Shadow for Layer Depth in Light Mode -->
+    <filter id="velaris-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#4FACFE" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#velaris-glow)">
+    <!-- Right Layered Wing -->
+    <path d="M 256 420 L 390 120 L 310 120 L 256 250 L 202 120 L 122 120 Z" 
+          fill="url(#velaris-grad-2)" 
+          opacity="0.85" />
+
+    <!-- Main Left/Center Facet -->
+    <path d="M 256 420 L 122 120 L 202 120 L 256 240 L 310 120 L 390 120 Z" 
+          fill="url(#velaris-grad-1)" />
+
+    <!-- Intersecting Orbital Core Ring -->
+    <circle cx="256" cy="210" r="130" 
+            fill="none" 
+            stroke="url(#velaris-grad-1)" 
+            stroke-width="16" 
+            stroke-dasharray="210 60" 
+            stroke-linecap="round" />
+
+    <!-- Central Node Point -->
+    <circle cx="256" cy="210" r="18" fill="#00F2FE" />
+    <circle cx="256" cy="210" r="8" fill="#FFFFFF" />
+  </g>
+</svg>
