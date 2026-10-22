@@ -41,7 +41,7 @@ export function LandingPricing({ onOpenAuth }: LandingPricingProps) {
     <section id="pricing" className="py-24 px-4 md:px-8 relative z-10 max-w-7xl mx-auto">
         <div className="text-center space-y-4 mb-16">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-pill text-xs font-mono text-brand-cyan">
-                <span>// TRANSPARENT ENTERPRISE PRICING</span>
+                <span>{'// TRANSPARENT ENTERPRISE PRICING'}</span>
             </div>
             <h2 className="font-display text-3xl md:text-5xl font-bold text-heading">
                 Plans for Teams of Any Scale

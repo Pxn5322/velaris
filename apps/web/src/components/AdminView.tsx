@@ -43,20 +43,20 @@ export function AdminView() {
       </div>
 
       <div className="glass-panel p-1.5 rounded-xl flex overflow-x-auto no-scrollbar gap-1 border border-slate-700/50">
-        {[
+        {([
           { id: 'analytics', label: 'Platform Analytics', icon: Activity },
           { id: 'users', label: 'User Directory', icon: Users },
           { id: 'roles', label: 'Roles & RBAC', icon: Lock },
           { id: 'ai-gov', label: 'AI Governance', icon: Cpu },
           { id: 'settings', label: 'System Settings', icon: Settings },
-        ].map((tab) => {
+        ] as const).map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           const acls = isActive
             ? `${isLight ? 'bg-blue-600/10 text-blue-700 border-blue-600' : 'bg-blue-600/40 text-cyan-300 border-cyan-500/40'} shadow-sm`
             : `${isLight ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200' : 'text-muted-custom hover:text-heading hover:bg-slate-800/40'}`;
           return (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={"px-3 py-2 text-xs font-semibold rounded-lg flex items-center gap-1.5 whitespace-nowrap transition-all border " + acls}>
               <Icon className="w-3.5 h-3.5" style={{ color: isActive ? 'inherit' : 'var(--accent-cyan)' }} />
               {tab.label}

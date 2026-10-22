@@ -19,7 +19,6 @@ export default function WorkspacePage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [replyText, setReplyText] = useState('');
-  const [aiSummary, setAiSummary] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('ALL');
   const [currentPage, setCurrentPage] = useState(1);
@@ -85,11 +84,9 @@ export default function WorkspacePage() {
     loadTickets();
   }, []);
 
-  useEffect(() => {
-    if (selectedTicket) {
-      setAiSummary("Ticket " + selectedTicket.id + " (" + selectedTicket.category + "): Customer reported " + selectedTicket.title + ". Priority " + selectedTicket.priority + ". Grounding confidence 94%.");
-    }
-  }, [selectedTicket]);
+  const aiSummary = selectedTicket
+    ? "Ticket " + selectedTicket.id + " (" + selectedTicket.category + "): Customer reported " + selectedTicket.title + ". Priority " + selectedTicket.priority + ". Grounding confidence 94%."
+    : '';
 
   const filteredTickets = tickets.filter((t) => {
     const matchesSearch =

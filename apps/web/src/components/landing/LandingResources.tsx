@@ -42,7 +42,7 @@ export function LandingResources() {
     <section id="resources" className="py-20 px-4 md:px-8 relative z-10 max-w-4xl mx-auto">
       <div className="text-center space-y-4 mb-12">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-pill text-xs font-mono text-brand-cyan">
-          <span>// FREQUENTLY ASKED QUESTIONS</span>
+          <span>{'// FREQUENTLY ASKED QUESTIONS'}</span>
         </div>
         <h2 className="font-display text-3xl font-bold text-heading">
           Everything You Need to Know
