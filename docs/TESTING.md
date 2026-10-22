@@ -13,13 +13,13 @@ Use Jest for unit/domain tests, Supertest for NestJS API/integration tests, Cypr
 ## 2. Commands and thresholds
 | Purpose | Command | Threshold / status |
 | --- | --- | --- |
-| Unit tests | Not configured | Proposed: required suite green |
-| Coverage | Not configured | Target >=80% core domain/application coverage per NFR-03 |
+| Unit tests | `npm run test` (root, all workspaces) | Verified 2026-10-22; API suite green (1 file, 1 test) |
+| Coverage | `npm run test:cov --workspace apps/api` | Configured (vitest v8); target >=80% core domain/application coverage per NFR-03 not yet measured |
 | API/integration tests | Not configured | Required critical API contracts and authorization cases green |
-| E2E | Not configured | Cypress critical journeys green |
+| E2E | `npm run e2e` (API e2e config); root Playwright harness configured | Playwright workflow exists at .github/workflows/playwright.yml; journeys not yet written |
 | AI evaluations | Not configured | Required configured thresholds pass; critical guardrail failures always block |
-| Docs consistency | `python scripts/check_docs.py --draft` | To run after generation; result reported separately |
-| Lint/type/build | Not configured | Must be configured and pass before coding gate |
+| Docs consistency | `python scripts/check_docs.py --draft` | Verified 2026-10-22: 0 errors, 0 warnings, 100/100 |
+| Lint/type/build | `npm run lint` / `npm run build` (root) | Verified commands; web lint has 12 pre-existing errors tracked for a follow-up task |
 | Security/dependency scan | Not configured | Must be selected and configured before production release |
 
 ## 3. Acceptance criteria → tests

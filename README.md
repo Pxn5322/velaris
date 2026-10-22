@@ -1,4 +1,4 @@
-﻿# VELARIS - Enterprise AI Customer Operations Platform
+# VELARIS - Enterprise AI Customer Operations Platform
 
 ## Overview
 
@@ -6,35 +6,20 @@ VELARIS is an enterprise-grade, multi-tenant customer operations platform that c
 
 ## Project Structure
 
+npm-workspaces monorepo (decision D-06, `docs/ARCHITECTURE.md`). The prototype phase is retired; `docs/old/` keeps the previous plan for reference only.
+
 ```
 velaris/
-├── PRD.md                          # Product Requirements Document
-├── DESIGN.md                       # Page Structure & Interaction Design Specification
-├── PRODUCT.md                      # Product schema and brand commitments
-├── prototypes/
-│   ├── index.html                  # Master prototype hub
-│   ├── landing.html                # Public SaaS marketing site
-│   ├── admin.html                  # Enterprise admin console
-│   ├── tenant-admin.html           # Tenant admin workspace & AI Studio
-│   ├── agent-workspace.html        # Human support agent 3-column view
-│   ├── customer-portal.html        # Customer self-service portal
-│   ├── velaris-logo.svg            # Brand logo
-│   ├── css/
-│   │   └── design-system.css       # Shared design system styles
-│   └── js/
-│       ├── utils.js                # Shared JavaScript utilities
-│       ├── landing.js              # Landing page interactions
-│       ├── three-background.js     # Three.js animation module
-│       ├── admin.js                # Admin console components
-│       ├── tenant-admin.js         # AI Studio components
-│       ├── agent-workspace.js      # Agent workspace components
-│       └── customer-portal.js      # Customer portal interactions
-├── docs/
-│   └── superpowers/
-│       ├── plans/                  # Implementation plans
-│       └── specs/                  # Feature specifications
-└── .impeccable/
-    └── config.json                 # Project configuration
+├── apps/
+│   ├── web/                        # Next.js 16 app: landing, admin, studio, workspace, portal, analytics
+│   └── api/                        # NestJS modular monolith (domain modules under src/domains/)
+├── packages/                       # shared contracts/config/ui/test-utils (to be populated per T0.01+)
+├── docs/                           # source-of-truth documents (PRD, ARCHITECTURE, SECURITY, DATABASE,
+│                                   # DESIGN_SYSTEM, CODE_STYLE, SETUP_GUIDE, TESTING, IMPLEMENTATION_PLAN)
+│   └── old/                        # previous plan (reference only)
+├── prototypes/                     # retired v2 prototype snapshots (reference only)
+├── tests/                          # root Playwright harness
+└── scripts/                        # repository scripts (docs checker)
 ```
 
 ## Technology Stack
@@ -56,23 +41,17 @@ velaris/
 ## Getting Started
 
 ### Prerequisites
-- Modern web browser (Chrome 90+, Firefox 88+, Safari 14+, Edge 90+)
-- Local web server (for prototype testing)
+- Node.js LTS, npm (workspaces)
 
-### Running Prototypes Locally
+### Running Locally
 
-`ash
-# Using Python
-python -m http.server 8000
+```bash
+npm install          # installs all workspaces from the root lockfile
+npm run dev:api      # NestJS API on http://localhost:3000
+npm run dev:web      # Next.js web on http://localhost:3001
+```
 
-# Using Node.js
-npx serve prototypes
-
-# Using PHP
-php -S localhost:8000
-`
-
-Navigate to http://localhost:8000 to view the prototype hub.
+Other root scripts: `npm run build`, `npm run lint`, `npm run test`, `npm run e2e`. See `docs/SETUP_GUIDE.md` for the full setup plan.
 
 ## Design System
 
@@ -168,9 +147,11 @@ Navigate to http://localhost:8000 to view the prototype hub.
 
 ## Documentation
 
-- **PRD.md**: Complete product requirements
-- **DESIGN.md**: Page structures, layouts, state machines
-- **PRODUCT.md**: Product schema and principles
+- **docs/PRD.md**: Product requirements
+- **docs/ARCHITECTURE.md**: Stack, boundaries, API surface, decision log
+- **docs/SECURITY.md / docs/DATABASE.md / docs/DESIGN_SYSTEM.md**: controls, data model, UI system
+- **docs/IMPLEMENTATION_PLAN.md**: task plan and run log
+- **docs/old/**: previous plan (reference only)
 
 ## License
 

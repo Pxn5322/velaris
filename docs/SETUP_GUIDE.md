@@ -45,9 +45,9 @@ Create accounts only with explicit owner authorization. Do not paste credentials
 
 ## 3. Prerequisites and repository
 - Proposed prerequisites: supported Node.js LTS version pinned in `.nvmrc`/toolchain file; package manager and version pinned; Docker/Compose for local dependencies; Git; Python 3 for documentation checker.
-- Clone the monorepo and install using the package manager/lockfile selected and recorded during T0.01. Do not assume npm/pnpm/yarn or a build orchestrator before that decision is recorded and verified.
+- Clone the monorepo and install from the repository root with `npm install` (npm workspaces, single root lockfile; recorded as D-09 on 2026-10-22).
 - Configure package scripts and workspace tooling as described in `docs/CODE_STYLE.md`.
-- Verify: **Not configured**. After scaffold, run the exact locked install command, then lint, type-check, unit tests and build; record command output and tool versions.
+- Verify: root `npm install`, `npm run build`, `npm run test` and `npm run lint` were run on 2026-10-22 (Windows). Build and tests pass; web lint has 12 pre-existing errors tracked for a follow-up task. Record tool versions with future runs.
 
 ## 4. Environment variables (canonical list of names)
 Names below are proposed categories for the initial implementation. Add or remove names only when the architecture actually uses them; never record real values here.
