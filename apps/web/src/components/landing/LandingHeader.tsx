@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { Sun, Moon, ArrowRight, Menu, X, Zap } from 'lucide-react';
 import { useRole } from '@/context/RoleContext';
@@ -9,14 +9,13 @@ interface LandingHeaderProps {
   onOpenAuth: (mode: 'signin' | 'signup') => void;
 }
 
+const emptySubscribe = () => () => {};
+
 export function LandingHeader({ onOpenAuth }: LandingHeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { theme, toggleTheme } = useRole();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // Hydration-safe mounted flag: false during SSR/first paint, true after hydration.
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
   const isDark = theme === 'dark';
 

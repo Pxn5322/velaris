@@ -19,7 +19,7 @@ Use Jest for unit/domain tests, Supertest for NestJS API/integration tests, Cypr
 | E2E | `npm run e2e` (API e2e config); root Playwright harness configured | Playwright workflow exists at .github/workflows/playwright.yml; journeys not yet written |
 | AI evaluations | Not configured | Required configured thresholds pass; critical guardrail failures always block |
 | Docs consistency | `python scripts/check_docs.py --draft` | Verified 2026-10-22: 0 errors, 0 warnings, 100/100 |
-| Lint/type/build | `npm run lint` / `npm run build` (root) | Verified commands; web lint has 12 pre-existing errors tracked for a follow-up task |
+| Lint/type/build | `npm run lint` / `npm run build` (root); CI: `.github/workflows/ci.yml` runs lint, `tsc --noEmit` per app, tests, build and the docs checker on every push/PR | Verified 2026-10-22: GitHub Actions run 39779791614 all 5 jobs green; web lint errors resolved |
 | Security/dependency scan | Not configured | Must be selected and configured before production release |
 
 ## 3. Acceptance criteria → tests

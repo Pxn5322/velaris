@@ -60,7 +60,7 @@ export function CustomerPortalView() {
     if (!newTitle.trim()) return;
 
     try {
-      const created = await apiFetch<any>('/tickets', {
+      const created = await apiFetch<{ id?: string }>('/tickets', {
         method: 'POST',
         body: JSON.stringify({
           title: newTitle,

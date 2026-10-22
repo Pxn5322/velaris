@@ -8,7 +8,7 @@ export function LandingProduct() {
     <section id="product" className="py-24 px-4 md:px-8 relative z-10 max-w-7xl mx-auto">
         <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-pill text-xs font-mono text-brand-cyan">
-                <span>// CORE CAPABILITIES</span>
+                <span>{'// CORE CAPABILITIES'}</span>
             </div>
             <h2 className="font-display text-3xl md:text-5xl font-bold text-heading">
                 Enterprise Platform <br />
@@ -44,7 +44,7 @@ export function LandingProduct() {
                     Empower human support teams with immediate ticket context, automated drafts, and real-time knowledge synthesis.
                 </p>
                 <ul className="space-y-2 text-xs text-body-custom border-t border-[var(--card-border)] pt-4">
-                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-brand-cyan" /> Unified Inbox with "Assigned to Me" views and real-time timelines</li>
+                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-brand-cyan" /> Unified Inbox with &quot;Assigned to Me&quot; views and real-time timelines</li>
                     <li className="flex items-center gap-2"><Check className="w-4 h-4 text-brand-cyan" /> AI Copilot offering summary briefs, suggested replies, and RAG docs</li>
                     <li className="flex items-center gap-2"><Check className="w-4 h-4 text-brand-cyan" /> Smooth transition from AI automation to human agent taking control</li>
                 </ul>

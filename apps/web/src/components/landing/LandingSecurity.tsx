@@ -8,7 +8,7 @@ export function LandingSecurity() {
     <section id="security" className="py-24 px-4 md:px-8 relative z-10 max-w-7xl mx-auto space-y-12">
         <div className="text-center max-w-3xl mx-auto space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-pill text-xs font-mono text-brand-purple">
-                <span>// ENTERPRISE GOVERNANCE MATRIX</span>
+                <span>{'// ENTERPRISE GOVERNANCE MATRIX'}</span>
             </div>
             <h2 className="font-display text-3xl md:text-5xl font-bold text-heading">
                 Enterprise Security & Data Isolation

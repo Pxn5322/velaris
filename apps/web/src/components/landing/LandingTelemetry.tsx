@@ -57,7 +57,7 @@ export function LandingTelemetry() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
         <div className="lg:col-span-5 space-y-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-pill text-xs font-mono text-brand-cyan">
-            <span>// SYSTEM OBSERVABILITY</span>
+            <span>{'// SYSTEM OBSERVABILITY'}</span>
           </div>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-heading">
             Live Operational Traceability
