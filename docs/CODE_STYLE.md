@@ -71,7 +71,7 @@ The conventions below are Proposed repository standards based on the PRD. No com
 | Build | `npm run build` (root, all workspaces) | Verified 2026-10-22 |
 | Unit test | `npm run test` (root; vitest for API) | Verified 2026-10-22 |
 
-Repository tooling (T0.01 partial): npm workspaces (`apps/*`, `packages/*`) with a single root lockfile; no build orchestrator yet. Per-package type-check scripts (`typecheck`: `tsc --noEmit` in each app; root `npm run typecheck` fans out with `--workspaces --if-present`) were added under T0.02 and are run in CI. A web formatter script remains open.
+Repository tooling (T0.01 complete 2026-10-23): npm workspaces (`apps/*`, `packages/*`) with a single root lockfile; no build orchestrator yet. `apps/worker` (TypeScript, strict, oxlint) and `packages/contracts` (typed API error contract) and `packages/config` (shared `tsconfig.base.json` for future consumers) are scaffolded; per-package `typecheck` scripts (`tsc --noEmit`) are wired into root `npm run typecheck` and CI.
 
 ## 8. Dependency policy
 - A new runtime dependency requires a D-xx decision entry describing why built-in/platform capability is insufficient, maintenance/security posture, license, and test impact.

@@ -12,8 +12,12 @@ npm-workspaces monorepo (decision D-06, `docs/ARCHITECTURE.md`). The prototype p
 velaris/
 ├── apps/
 │   ├── web/                        # Next.js 16 app: landing, admin, studio, workspace, portal, analytics
-│   └── api/                        # NestJS modular monolith (domain modules under src/domains/)
-├── packages/                       # shared contracts/config/ui/test-utils (to be populated per T0.01+)
+│   ├── api/                        # NestJS modular monolith (domain modules under src/domains/)
+│   └── worker/                     # background workers (scaffold; jobs land with T3.03)
+├── packages/
+│   ├── contracts/                  # shared API schemas/types (error contract; no secrets)
+│   └── config/                     # shared TypeScript configuration (tsconfig.base.json)
+│                                   # ui/ai-evals/test-utils arrive with their owning tasks (T2.04/T4.05/T0.04)
 ├── docs/                           # source-of-truth documents (PRD, ARCHITECTURE, SECURITY, DATABASE,
 │                                   # DESIGN_SYSTEM, CODE_STYLE, SETUP_GUIDE, TESTING, IMPLEMENTATION_PLAN)
 │   └── old/                        # previous plan (reference only)
