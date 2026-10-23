@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { LifeBuoy, Search, PlusCircle, CheckCircle, Clock, FileText, Send, X, MessageSquare } from 'lucide-react';
+import { LifeBuoy, Search, PlusCircle, FileText, Send, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api/client';
 import { useRole } from '@/context/RoleContext';
 

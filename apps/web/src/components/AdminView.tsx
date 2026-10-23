@@ -8,7 +8,7 @@ export function AdminView() {
   const [activeTab, setActiveTab] = useState<'analytics' | 'users' | 'roles' | 'ai-gov' | 'settings'>('analytics');
   const [userSearch, setUserSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter] = useState('ALL');
   const { theme } = useRole();
   const isLight = theme === 'light';
 

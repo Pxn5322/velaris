@@ -12,13 +12,14 @@ Operating contract for AI coding agents. Read this whole file, then load only th
 ## 2. Verified commands
 | Purpose | Command | Status |
 | --- | --- | --- |
-| Format | Not configured | Not verified; configure in CODE_STYLE.md |
-| Lint | Not configured | Not verified; configure in CODE_STYLE.md |
-| Type check | Not configured | Not verified; configure in CODE_STYLE.md |
-| Test (all) | Not configured | Not verified; configure in TESTING.md |
-| End-to-end | Not configured | Not verified; configure in TESTING.md |
-| Run app | Not configured | Not verified; configure in SETUP_GUIDE.md |
-| Docs checker | `python scripts/check_docs.py --draft` | Script is present; command result must be recorded after running |
+| Format | `npm run format --workspace apps/api` | Verified 2026-10-22 (API only; web has no formatter yet — do not reformat design code without owner approval) |
+| Lint | `npm run lint` | Verified 2026-10-23: 0 errors, 0 warnings (oxlint for API, ESLint for web) |
+| Type check | `npm run typecheck` | Verified 2026-10-23: exit 0 (`tsc --noEmit` per workspace) |
+| Test (all) | `npm run test` | Verified 2026-10-23: API suite green (1 file, 1 test) |
+| End-to-end | Not configured | Journeys not written; Playwright workflow present |
+| Build | `npm run build` | Verified 2026-10-23: nest + next build green |
+| Run app | Not configured | `npm run dev:api` / `npm run dev:web` documented but not verified in a recorded run |
+| Docs checker | `python scripts/check_docs.py --draft` | Verified 2026-10-22: 0 errors, 0 warnings, 100/100 |
 
 Never invent a command or claim a test passed without running it and observing the result. If a command is Not configured, the first eligible foundation task is to configure and verify it.
 

@@ -43,10 +43,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Type-check API
-        run: npx tsc --noEmit -p apps/api/tsconfig.json
-      - name: Type-check web
-        run: npx tsc --noEmit -p apps/web/tsconfig.json
+      - name: Type-check all workspaces
+        run: npm run typecheck
 
   test:
     name: Unit tests
