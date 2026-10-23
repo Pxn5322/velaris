@@ -80,6 +80,7 @@ Repository tooling (T0.01 complete 2026-10-23): npm workspaces (`apps/*`, `packa
 - Run dependency and secret scanning in CI before production release; exact tools/commands are Not configured.
 
 ## 9. Comments and documentation
+- All documentation and agent replies use Simplified Technical English (ASD-STE100 style, D-10): short sentences (max ~20 words), active voice, one idea per sentence, one consistent term per concept, no ambiguous pronouns, no unnecessary words. Commands, IDs, paths and error messages stay verbatim; simplification must never change a requirement or acceptance criterion.
 - Prefer clear names and simple code over comments that restate code.
 - Comment domain invariants, security rationale, non-obvious trade-offs and external provider quirks.
 - Update docs/API schemas/tests in the same change when contracts or decisions change.
