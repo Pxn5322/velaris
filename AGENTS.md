@@ -134,7 +134,20 @@ Stop and report when: score remains below 75 after review; three fix attempts fa
 ## 8. Subagent context and independence
 Give each specialist only its task line, cited requirement/security IDs, file scope, verification commands and relevant operating rules. Parallelize only tasks marked safe for parallel work and touching disjoint files. The orchestrator owns the candidate integration branch, reruns all relevant combined checks and produces the human-review package. The review, critic, verification and security roles must independently inspect artifacts rather than copy the implementer's conclusion.
 
-## 9. Repository specifics
+## 9. Writing standard (ASD-STE100 Simplified Technical English)
+All agent replies and all repository documentation (`docs/*.md`, README, HAND_OFF, code comments in docs) must use Simplified Technical English in the spirit of ASD-STE100. The official ASD specification is the authority for its controlled vocabulary lists; this section states the rules agents apply day to day:
+- Write short sentences. Keep each sentence at or below 20 words where possible.
+- Use the active voice and the present tense. Name the actor.
+- Keep one idea per sentence and one action per instruction.
+- Use simple, common words. Prefer one word with one meaning; do not use an adjective or noun where a verb exists.
+- Define every technical term the first time it appears in a document; then use that same term consistently.
+- Do not use ambiguous pronouns ("it", "they", "this") when a noun can name the subject.
+- Omit unnecessary words, marketing claims, idioms and metaphors.
+- Numbers, code identifiers, commands, paths, IDs, and quoted error messages stay verbatim.
+- The PRD remains the product source of truth; simplifying language never changes a requirement, threshold or acceptance criterion.
+- Code, tests and machine-readable config are not prose: do not simplify code or schemas for style.
+
+## 10. Repository specifics
 - Product: VELARIS enterprise AI customer operations platform.
 - Canonical roles: R-enterprise-admin, R-tenant-admin, R-agent, R-customer, R-developer, R-anonymous.
 - Owner: product owner to confirm.
