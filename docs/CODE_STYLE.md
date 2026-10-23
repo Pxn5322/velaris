@@ -66,12 +66,12 @@ The conventions below are Proposed repository standards based on the PRD. No com
 | Purpose | Command | Status |
 | --- | --- | --- |
 | Format | `npm run format --workspace apps/api` (Prettier) | Verified 2026-10-22; web has no format script yet |
-| Lint | `npm run lint` (root; runs oxlint for API, ESLint for web) | Verified command; web lint reports 12 pre-existing errors to fix in a follow-up task |
-| Type check | `npm run build` (nest build + next build include type checking) | Verified 2026-10-22 |
+| Lint | `npm run lint` (root; runs oxlint for API, ESLint for web) | Verified 2026-10-23: 0 errors, 0 warnings |
+| Type check | `npm run typecheck` (root; runs `tsc --noEmit` per workspace) | Verified 2026-10-23: exit 0 for API and web |
 | Build | `npm run build` (root, all workspaces) | Verified 2026-10-22 |
 | Unit test | `npm run test` (root; vitest for API) | Verified 2026-10-22 |
 
-Repository tooling (T0.01 partial): npm workspaces (`apps/*`, `packages/*`) with a single root lockfile; no build orchestrator yet. Per-package type-check scripts (`tsc --noEmit`) are still to be added under T0.02.
+Repository tooling (T0.01 partial): npm workspaces (`apps/*`, `packages/*`) with a single root lockfile; no build orchestrator yet. Per-package type-check scripts (`typecheck`: `tsc --noEmit` in each app; root `npm run typecheck` fans out with `--workspaces --if-present`) were added under T0.02 and are run in CI. A web formatter script remains open.
 
 ## 8. Dependency policy
 - A new runtime dependency requires a D-xx decision entry describing why built-in/platform capability is insufficient, maintenance/security posture, license, and test impact.

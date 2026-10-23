@@ -47,7 +47,8 @@ Create accounts only with explicit owner authorization. Do not paste credentials
 - Proposed prerequisites: supported Node.js LTS version pinned in `.nvmrc`/toolchain file; package manager and version pinned; Docker/Compose for local dependencies; Git; Python 3 for documentation checker.
 - Clone the monorepo and install from the repository root with `npm install` (npm workspaces, single root lockfile; recorded as D-09 on 2026-10-22).
 - Configure package scripts and workspace tooling as described in `docs/CODE_STYLE.md`.
-- Verify: root `npm install`, `npm run build`, `npm run test` and `npm run lint` were run on 2026-10-22 (Windows). Build and tests pass; web lint has 12 pre-existing errors tracked for a follow-up task. Record tool versions with future runs.
+- Run locally: `npm run dev:api` (NestJS API on port 3000) and `npm run dev:web` (Next.js on port 3001), both from the repository root. These dev commands are documented here but not verified in a recorded run.
+- Verify: root `npm install`, `npm run build`, `npm run test`, `npm run lint` and `npm run typecheck` were run on 2026-10-23 (Windows). Build, tests and type check pass; lint reports 0 errors and 0 warnings. Record tool versions with future runs.
 
 ## 4. Environment variables (canonical list of names)
 Names below are proposed categories for the initial implementation. Add or remove names only when the architecture actually uses them; never record real values here.
