@@ -1,19 +1,19 @@
-'use client';
+"use client";
 
-import React, { useEffect, useRef } from 'react';
-import * as THREE from 'three';
+import React, { useEffect, useRef } from "react";
+import * as THREE from "three";
 
 interface LandingBackgroundCanvasProps {
-  activePattern?: 'icosa' | 'wave' | 'galaxy';
+  activePattern?: "icosa" | "wave" | "galaxy";
   pulseSignal?: number;
 }
 
 export function LandingBackgroundCanvas({
-  activePattern = 'icosa',
+  activePattern = "icosa",
   pulseSignal = 0,
 }: LandingBackgroundCanvasProps) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const patternRef = useRef<'icosa' | 'wave' | 'galaxy'>(activePattern);
+  const patternRef = useRef<"icosa" | "wave" | "galaxy">(activePattern);
   const coreMeshRef = useRef<THREE.Mesh | null>(null);
 
   useEffect(() => {
@@ -26,19 +26,24 @@ export function LandingBackgroundCanvas({
 
     // 1. Scene, Camera, Renderer
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(
+      60,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000,
+    );
     camera.position.z = 25;
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    container.innerHTML = '';
+    container.innerHTML = "";
     container.appendChild(renderer.domElement);
 
     // 2. Core 3D Geometry
     const coreGeometry = new THREE.IcosahedronGeometry(6, 2);
     const coreMaterial = new THREE.MeshBasicMaterial({
-      color: 0x2563EB,
+      color: 0x2563eb,
       wireframe: true,
       transparent: true,
       opacity: 0.35,
@@ -50,7 +55,7 @@ export function LandingBackgroundCanvas({
     // 3. Secondary Outer Ring Geometry
     const torusGeometry = new THREE.TorusKnotGeometry(9, 1.5, 100, 16);
     const torusMaterial = new THREE.MeshBasicMaterial({
-      color: 0x38BDF8,
+      color: 0x38bdf8,
       wireframe: true,
       transparent: true,
       opacity: 0.2,
@@ -69,10 +74,14 @@ export function LandingBackgroundCanvas({
       targetPositions[i] = positions[i];
     }
 
-    particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    particleGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(positions, 3),
+    );
+    const isDark =
+      document.documentElement.getAttribute("data-theme") !== "light";
     const particleMaterial = new THREE.PointsMaterial({
-      color: isDark ? 0x38BDF8 : 0x0284C7,
+      color: isDark ? 0x38bdf8 : 0x0284c7,
       size: 0.18,
       transparent: true,
       opacity: 0.75,
@@ -114,35 +123,45 @@ export function LandingBackgroundCanvas({
     };
 
     // Listen to pattern change events
-    const applyPattern = (mode: 'icosa' | 'wave' | 'galaxy') => {
+    const applyPattern = (mode: "icosa" | "wave" | "galaxy") => {
       patternRef.current = mode;
-      if (mode === 'icosa') setIcosaPattern();
-      else if (mode === 'wave') setWavePattern();
-      else if (mode === 'galaxy') setGalaxyPattern();
+      if (mode === "icosa") setIcosaPattern();
+      else if (mode === "wave") setWavePattern();
+      else if (mode === "galaxy") setGalaxyPattern();
     };
 
     const handleCustomPattern = (e: Event) => {
-      const detail = (e as CustomEvent<'icosa' | 'wave' | 'galaxy'>).detail;
+      const detail = (e as CustomEvent<"icosa" | "wave" | "galaxy">).detail;
       if (detail) applyPattern(detail);
     };
 
-    window.addEventListener('velaris:pattern', handleCustomPattern);
+    window.addEventListener("velaris:pattern", handleCustomPattern);
     applyPattern(patternRef.current);
 
     // Listen to theme changes to update particle color
     const observer = new MutationObserver(() => {
-      const dark = document.documentElement.getAttribute('data-theme') !== 'light';
-      particleMaterial.color.setHex(dark ? 0x38BDF8 : 0x0284C7);
+      const dark =
+        document.documentElement.getAttribute("data-theme") !== "light";
+      particleMaterial.color.setHex(dark ? 0x38bdf8 : 0x0284c7);
     });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
 
     // 5. Scroll Interpolation Logic
     let currentScrollProgress = 0;
     let targetScrollProgress = 0;
 
     const updateScrollFraction = () => {
-      const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-      targetScrollProgress = Math.min(Math.max(window.scrollY / maxScroll, 0), 1);
+      const maxScroll = Math.max(
+        1,
+        document.documentElement.scrollHeight - window.innerHeight,
+      );
+      targetScrollProgress = Math.min(
+        Math.max(window.scrollY / maxScroll, 0),
+        1,
+      );
     };
 
     const handleResize = () => {
@@ -152,8 +171,8 @@ export function LandingBackgroundCanvas({
       updateScrollFraction();
     };
 
-    window.addEventListener('scroll', updateScrollFraction, { passive: true });
-    window.addEventListener('resize', handleResize);
+    window.addEventListener("scroll", updateScrollFraction, { passive: true });
+    window.addEventListener("resize", handleResize);
     updateScrollFraction();
 
     // 6. Animation Render Loop
@@ -165,7 +184,8 @@ export function LandingBackgroundCanvas({
 
       const time = clock.getElapsedTime();
 
-      currentScrollProgress += (targetScrollProgress - currentScrollProgress) * 0.08;
+      currentScrollProgress +=
+        (targetScrollProgress - currentScrollProgress) * 0.08;
 
       camera.position.z = 25 - currentScrollProgress * 8;
       camera.position.y = Math.sin(currentScrollProgress * Math.PI) * 4;
@@ -177,7 +197,8 @@ export function LandingBackgroundCanvas({
       torusMesh.rotation.z = time * 0.2;
 
       // Morph particles smoothly towards targetPositions
-      const currentPos = particleGeometry.attributes.position.array as Float32Array;
+      const currentPos = particleGeometry.attributes.position
+        .array as Float32Array;
       let needsUpdate = false;
       for (let i = 0; i < particleCount * 3; i++) {
         const diff = targetPositions[i] - currentPos[i];
@@ -187,16 +208,19 @@ export function LandingBackgroundCanvas({
         }
       }
 
-      if (patternRef.current === 'wave') {
+      if (patternRef.current === "wave") {
         for (let i = 0; i < particleCount; i++) {
           const x = currentPos[i * 3];
-          currentPos[i * 3 + 1] = Math.sin(time * 2 + x * 0.5 + currentScrollProgress * 10) * 2 - 4;
+          currentPos[i * 3 + 1] =
+            Math.sin(time * 2 + x * 0.5 + currentScrollProgress * 10) * 2 - 4;
         }
         needsUpdate = true;
-      } else if (patternRef.current === 'galaxy') {
-        particleSystem.rotation.y = time * 0.2 + currentScrollProgress * Math.PI * 2;
+      } else if (patternRef.current === "galaxy") {
+        particleSystem.rotation.y =
+          time * 0.2 + currentScrollProgress * Math.PI * 2;
       } else {
-        particleSystem.rotation.y = time * 0.05 + currentScrollProgress * Math.PI;
+        particleSystem.rotation.y =
+          time * 0.05 + currentScrollProgress * Math.PI;
       }
 
       if (needsUpdate) {
@@ -210,9 +234,9 @@ export function LandingBackgroundCanvas({
 
     return () => {
       cancelAnimationFrame(animationFrameId);
-      window.removeEventListener('scroll', updateScrollFraction);
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('velaris:pattern', handleCustomPattern);
+      window.removeEventListener("scroll", updateScrollFraction);
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("velaris:pattern", handleCustomPattern);
       observer.disconnect();
       coreGeometry.dispose();
       coreMaterial.dispose();

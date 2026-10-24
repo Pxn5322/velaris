@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 export function LandingSvgDefs() {
   return (
@@ -14,7 +14,13 @@ export function LandingSvgDefs() {
           <stop offset="100%" stopColor="#E100FF" />
         </linearGradient>
         <filter id="velaris-glow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="4" stdDeviation="8" floodColor="#4FACFE" floodOpacity="0.35" />
+          <feDropShadow
+            dx="0"
+            dy="4"
+            stdDeviation="8"
+            floodColor="#4FACFE"
+            floodOpacity="0.35"
+          />
         </filter>
       </defs>
     </svg>

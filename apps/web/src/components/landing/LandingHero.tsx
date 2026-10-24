@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { Box, Waves, Disc, Zap, Terminal, ChevronDown } from 'lucide-react';
+import React from "react";
+import { Box, Waves, Disc, Zap, Terminal, ChevronDown } from "lucide-react";
 
 interface LandingHeroProps {
-  activePattern: 'icosa' | 'wave' | 'galaxy';
-  onChangePattern: (pattern: 'icosa' | 'wave' | 'galaxy') => void;
+  activePattern: "icosa" | "wave" | "galaxy";
+  onChangePattern: (pattern: "icosa" | "wave" | "galaxy") => void;
   onTriggerPulse: () => void;
-  onOpenAuth: (mode: 'signin' | 'signup') => void;
+  onOpenAuth: (mode: "signin" | "signup") => void;
 }
 
 export function LandingHero({
@@ -17,20 +17,19 @@ export function LandingHero({
   onOpenAuth,
 }: LandingHeroProps) {
   const modeLabels = {
-    icosa: 'VELARIS OS :: GOVERNED AI AGENT MATRIX',
-    wave: 'VELARIS OS :: WORKFLOW AUTOMATION PIPELINE',
-    galaxy: 'VELARIS OS :: RAG KNOWLEDGE VECTOR CLUSTER',
+    icosa: "VELARIS OS :: GOVERNED AI AGENT MATRIX",
+    wave: "VELARIS OS :: WORKFLOW AUTOMATION PIPELINE",
+    galaxy: "VELARIS OS :: RAG KNOWLEDGE VECTOR CLUSTER",
   };
 
   const handleStartFree = () => {
     onTriggerPulse();
-    onOpenAuth('signup');
+    onOpenAuth("signup");
   };
 
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-28 pb-16 px-4 md:px-8 z-10">
       <div className="max-w-5xl mx-auto text-center space-y-8">
-        
         {/* Telemetry Pill */}
         <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full glass-pill text-xs font-mono font-semibold text-brand-cyan stagger-anim">
           <span className="w-2 h-2 rounded-full bg-brand-emerald animate-ping" />
@@ -47,16 +46,23 @@ export function LandingHero({
 
         {/* Subtitle */}
         <p className="max-w-2xl mx-auto text-base sm:text-lg md:text-xl text-muted-custom font-normal leading-relaxed stagger-anim">
-          Combine human support workflows with governed AI agents, RAG knowledge retrieval, automation, analytics, and enterprise security in one unified platform.
+          Combine human support workflows with governed AI agents, RAG knowledge
+          retrieval, automation, analytics, and enterprise security in one
+          unified platform.
         </p>
 
         {/* Pattern Selector Buttons */}
-        <div id="shader-modes" className="max-w-lg mx-auto glass-panel p-2 rounded-2xl flex items-center justify-between gap-2 border border-[var(--card-border)] stagger-anim">
+        <div
+          id="shader-modes"
+          className="max-w-lg mx-auto glass-panel p-2 rounded-2xl flex items-center justify-between gap-2 border border-[var(--card-border)] stagger-anim"
+        >
           <button
             id="mode-icosa"
-            onClick={() => onChangePattern('icosa')}
+            onClick={() => onChangePattern("icosa")}
             className={`pattern-btn flex-1 py-2.5 px-3 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-1.5 border border-transparent ${
-              activePattern === 'icosa' ? 'active' : 'text-muted-custom hover:text-heading'
+              activePattern === "icosa"
+                ? "active"
+                : "text-muted-custom hover:text-heading"
             }`}
           >
             <Box className="w-4 h-4" />
@@ -64,9 +70,11 @@ export function LandingHero({
           </button>
           <button
             id="mode-wave"
-            onClick={() => onChangePattern('wave')}
+            onClick={() => onChangePattern("wave")}
             className={`pattern-btn flex-1 py-2.5 px-3 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-1.5 border border-transparent ${
-              activePattern === 'wave' ? 'active' : 'text-muted-custom hover:text-heading'
+              activePattern === "wave"
+                ? "active"
+                : "text-muted-custom hover:text-heading"
             }`}
           >
             <Waves className="w-4 h-4" />
@@ -74,9 +82,11 @@ export function LandingHero({
           </button>
           <button
             id="mode-galaxy"
-            onClick={() => onChangePattern('galaxy')}
+            onClick={() => onChangePattern("galaxy")}
             className={`pattern-btn flex-1 py-2.5 px-3 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-1.5 border border-transparent ${
-              activePattern === 'galaxy' ? 'active' : 'text-muted-custom hover:text-heading'
+              activePattern === "galaxy"
+                ? "active"
+                : "text-muted-custom hover:text-heading"
             }`}
           >
             <Disc className="w-4 h-4" />
@@ -104,7 +114,8 @@ export function LandingHero({
         </div>
 
         <p className="text-xs text-muted-custom font-mono">
-          Enterprise-grade security with strict multi-tenant isolation and complete human-in-the-loop control.
+          Enterprise-grade security with strict multi-tenant isolation and
+          complete human-in-the-loop control.
         </p>
 
         {/* Scroll Indicator */}

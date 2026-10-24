@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import React, { useEffect, useRef } from 'react';
-import * as THREE from 'three';
-import { useRole } from '@/context/RoleContext';
+import React, { useEffect, useRef } from "react";
+import * as THREE from "three";
+import { useRole } from "@/context/RoleContext";
 
 export function BackgroundCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -12,7 +12,12 @@ export function BackgroundCanvas() {
     if (!containerRef.current) return;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(
+      60,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000,
+    );
     camera.position.z = 24;
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -29,14 +34,17 @@ export function BackgroundCanvas() {
     }
 
     const particleGeometry = new THREE.BufferGeometry();
-    particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    
-    const pColor = theme === 'dark' ? 0x0284c7 : 0x2563eb;
+    particleGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(positions, 3),
+    );
+
+    const pColor = theme === "dark" ? 0x0284c7 : 0x2563eb;
     const particleMaterial = new THREE.PointsMaterial({
       color: pColor,
       size: 0.22,
       transparent: true,
-      opacity: theme === 'dark' ? 0.6 : 0.45,
+      opacity: theme === "dark" ? 0.6 : 0.45,
     });
     const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
     scene.add(particleSystem);
@@ -57,11 +65,11 @@ export function BackgroundCanvas() {
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
 
-    window.addEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
 
     return () => {
       cancelAnimationFrame(animationFrameId);
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener("resize", handleResize);
       if (currentContainer && renderer.domElement) {
         currentContainer.removeChild(renderer.domElement);
       }

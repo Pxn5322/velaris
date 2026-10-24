@@ -1,6 +1,6 @@
-﻿'use client';
+﻿"use client";
 
-import { TenantStudioView } from '@/components/TenantStudioView';
+import { TenantStudioView } from "@/components/TenantStudioView";
 
 export default function StudioPage() {
   return <TenantStudioView />;

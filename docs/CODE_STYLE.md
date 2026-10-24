@@ -65,7 +65,7 @@ The conventions below are Proposed repository standards based on the PRD. No com
 ## 7. Formatting, lint and type checks
 | Purpose | Command | Status |
 | --- | --- | --- |
-| Format | `npm run format --workspace apps/api` (Prettier) | Verified 2026-10-22; web has no format script yet |
+| Format | `npm run format --workspace apps/api` / `--workspace apps/web` (Prettier) | Verified 2026-10-22 (API) and 2026-10-24 (web; owner-approved one-time rewrite of 34 design files) |
 | Lint | `npm run lint` (root; runs oxlint for API, ESLint for web) | Verified 2026-10-23: 0 errors, 0 warnings |
 | Type check | `npm run typecheck` (root; runs `tsc --noEmit` per workspace) | Verified 2026-10-23: exit 0 for API and web |
 | Build | `npm run build` (root, all workspaces) | Verified 2026-10-22 |
