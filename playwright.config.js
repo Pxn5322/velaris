@@ -5,9 +5,11 @@ import { defineConfig, devices } from '@playwright/test';
  * E2E config for the real Next.js app in apps/web.
  *
  * Journeys live in tests/ and target the production build of apps/web. The
- * webServer block builds apps/web once, then serves it with `next start`, so
- * CI exercises the same production bundle the deployment runs. AC-F01 journeys
- * are covered by tests/landing.spec.js (docs/TESTING.md section 3).
+ * webServer block serves the built app with `next start`, so a production
+ * build must exist before the server starts. The e2e CI workflow runs
+ * `npm run build:web` first; locally, `npm run e2e:web` after a build does the
+ * same. AC-F01 journeys are covered by tests/landing.spec.js (docs/TESTING.md
+ * section 3).
  *
  * The server command invokes the `next` binary directly through node with an
  * absolute path. Wrapping it in `npm run` stalls under Playwright's shell on
