@@ -16,7 +16,7 @@ Use Jest for unit/domain tests, Supertest for NestJS API/integration tests, Cypr
 | Unit tests | `npm run test` (root, all workspaces) | Verified 2026-10-22; API suite green (1 file, 1 test) |
 | Coverage | `npm run test:cov --workspace apps/api` | Configured (vitest v8); target >=80% core domain/application coverage per NFR-03 not yet measured |
 | API/integration tests | Not configured | Required critical API contracts and authorization cases green |
-| E2E | `npm run e2e` (API e2e config); root Playwright harness configured | Playwright workflow exists at .github/workflows/playwright.yml; journeys not yet written |
+| E2E | `npm run e2e:web` (root Playwright harness) | Verified 2026-10-23: 3/3 AC-F01-1 journeys pass against the production build of `apps/web`; CI workflow at .github/workflows/e2e.yml; J-01..J-06 journeys not yet written |
 | AI evaluations | Not configured | Required configured thresholds pass; critical guardrail failures always block |
 | Docs consistency | `python scripts/check_docs.py --draft` | Verified 2026-10-22: 0 errors, 0 warnings, 100/100 |
 | Lint/type/build | `npm run lint` / `npm run typecheck` / `npm run build` (root); CI: `.github/workflows/ci.yml` runs lint, type-check, tests, build and the docs checker on every push/PR | Verified 2026-10-23 locally: lint 0 errors/0 warnings, typecheck exit 0, build green; CI run 39779791614 all 5 jobs green |
