@@ -25,8 +25,14 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      # The Playwright webServer block in playwright.config.js builds and serves
-      # apps/web; pointing E2E_BASE_URL elsewhere skips that local server.
+      # The Playwright webServer block serves apps/web with `next start`, which
+      # requires a production build. Build it here so the server has a real
+      # `.next` directory on a clean checkout.
+      - name: Build apps/web for the production server
+        run: npm run build:web
+
+      # The webServer block in playwright.config.js serves the built apps/web;
+      # pointing E2E_BASE_URL elsewhere skips that local server.
       - name: Run E2E journeys against apps/web
         run: npx playwright test
 
