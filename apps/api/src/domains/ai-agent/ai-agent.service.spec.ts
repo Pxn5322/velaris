@@ -45,6 +45,12 @@ describe('AiAgentService', () => {
     expect(escapes).toHaveLength(0);
   });
 
+  it('findAll with no scope returns every agent', () => {
+    service.create({ name: 'A Bot', systemPrompt: 'p', tenantId: tenantA.id });
+    service.create({ name: 'B Bot', systemPrompt: 'p', tenantId: tenantB.id });
+    expect(service.findAll()).toHaveLength(2);
+  });
+
   it('findOne returns a created agent by id', () => {
     const created = service.create({ name: 'A Bot', systemPrompt: 'p', tenantId: tenantA.id });
     expect(service.findOne(created.id).id).toBe(created.id);
