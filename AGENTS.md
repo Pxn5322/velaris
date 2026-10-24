@@ -36,6 +36,8 @@ The selected workflow is orchestrated specialist agents with independent verific
 7. **Integration / merge agent:** integrates reviewed task branches into a candidate integration branch, resolves conflicts, checks for accidental scope changes, runs the combined suite and prepares a review-ready PR. It must not merge to protected `main`/release branches before required human approval.
 8. **Human reviewer / release owner:** reviews the final PR, residual risks, security findings, migration/rollback plan and evidence; authorizes protected-branch merge and production deployment.
 
+Role prompts ready to paste: `.agents/prompts.md`. Each prompt states mission, inputs, outputs and stop rules for one role.
+
 ### 3.2 Workflow
 ```text
 Task queue + PRD IDs
@@ -91,6 +93,13 @@ Every feature or fix starts on its own branch and ends merged back; `master` onl
 4. Delete the branch after a clean merge (`git branch -d <branch>`); keep it and report if the merge is blocked or the task is incomplete.
 5. Never commit directly to `master` except: the initial repository bootstrap, or an owner-approved hotfix that is still branched first and merged immediately after verification.
 6. Push the feature branch (`git push -u origin <branch>`) when review by another agent/human is expected; otherwise the merge to `master` is the integration point.
+
+### 3.5 Handoffs, evidence and merge gates
+- Copy `.agents/handoff.md` for every role handoff. Fill `.agents/evidence.md` for every verification pass. The orchestrator keeps both with the run-log row.
+- `.github/workflows/merge-gate.yml` enforces two gates on `master`: it rejects a direct (non-merge) commit, and it rejects a pull request without the `owner-approved` label or an approving review from a user other than the PR author.
+- The approval gate fails closed when it cannot read reviews. Record approval only after a real human review.
+- Branch protection for `master` (required reviews and required status checks) is a repository setting. The owner enables it under Settings -> Branches. Repository files cannot enable it.
+- Record every role pass as EXECUTED or SIMULATED, as section 3.3 requires.
 
 ## 4. Confidence score (evidence-based)
 Each item earns points only when backed by a command/test result; no evidence means zero.
