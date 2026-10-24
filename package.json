@@ -18,6 +18,7 @@
     "format": "npm run format --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:api": "npm run test --workspace apps/api",
+    "audit:check": "node scripts/check-audit-baseline.mjs",
     "e2e": "npm run test:e2e --workspace apps/api",
     "e2e:web": "playwright test"
   },

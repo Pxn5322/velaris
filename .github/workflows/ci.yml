@@ -73,3 +73,20 @@ jobs:
       - run: npm ci
       - name: Build all workspaces (nest build + next build)
         run: npm run build
+
+  audit:
+    name: Dependency audit (baseline gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Fails only on vulnerabilities beyond scripts/audit-baseline.json
+      # (new package or severity increase). Known drift is recorded there
+      # after owner review; new drift blocks the merge.
+      - name: Fail on new npm audit vulnerabilities
+        run: node scripts/check-audit-baseline.mjs
