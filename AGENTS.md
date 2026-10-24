@@ -12,7 +12,7 @@ Operating contract for AI coding agents. Read this whole file, then load only th
 ## 2. Verified commands
 | Purpose | Command | Status |
 | --- | --- | --- |
-| Format | `npm run format --workspace apps/api` | Verified 2026-10-22 (API only; web has no formatter yet — do not reformat design code without owner approval) |
+| Format | `npm run format --workspace apps/api` / `--workspace apps/web` | Verified 2026-10-22 (API) and 2026-10-24 (web; owner approved one-time Prettier rewrite of 34 design files, rendering verified by 3/3 E2E journeys) |
 | Lint | `npm run lint` | Verified 2026-10-23: 0 errors, 0 warnings (oxlint for API, ESLint for web) |
 | Type check | `npm run typecheck` | Verified 2026-10-23: exit 0 (`tsc --noEmit` per workspace) |
 | Test (all) | `npm run test` | Verified 2026-10-23: API suite green (1 file, 1 test) |

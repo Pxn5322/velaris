@@ -1,26 +1,30 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { X } from 'lucide-react';
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
 
 interface LandingAuthModalProps {
   isOpen: boolean;
-  mode: 'signin' | 'signup';
+  mode: "signin" | "signup";
   onClose: () => void;
 }
 
-export function LandingAuthModal({ isOpen, mode, onClose }: LandingAuthModalProps) {
+export function LandingAuthModal({
+  isOpen,
+  mode,
+  onClose,
+}: LandingAuthModalProps) {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onClose();
-    router.push('/workspace');
+    router.push("/workspace");
   };
 
   return (
@@ -37,7 +41,9 @@ export function LandingAuthModal({ isOpen, mode, onClose }: LandingAuthModalProp
 
         <div className="space-y-1">
           <h3 className="font-display text-2xl font-bold text-heading">
-            {mode === 'signup' ? 'Start Free Platform Trial' : 'Sign In to VELARIS'}
+            {mode === "signup"
+              ? "Start Free Platform Trial"
+              : "Sign In to VELARIS"}
           </h3>
           <p className="text-xs text-muted-custom">
             Access your tenant operations console or agent copilot workspace.
