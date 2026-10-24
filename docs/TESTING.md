@@ -8,13 +8,13 @@ depends_on: [PRD, ARCHITECTURE, SECURITY, DATABASE]
 # Testing — VELARIS
 
 ## 1. Strategy
-Use Jest for unit/domain tests, Supertest for NestJS API/integration tests, Cypress for critical user journeys, and a versioned AI evaluation harness for retrieval, citations, tools, guardrails and escalation. Synthetic fixtures only. No test result below has been run against a working app repository; commands and results are **Not configured / Not run**.
+Use Jest for unit/domain tests, Supertest for NestJS API/integration tests, Cypress for critical user journeys, and a versioned AI evaluation harness for retrieval, citations, tools, guardrails and escalation. Synthetic fixtures only. Commands and results below are marked **Verified** only after they run against the scaffolded repository; anything else stays **Not configured / Not run**.
 
 ## 2. Commands and thresholds
 | Purpose | Command | Threshold / status |
 | --- | --- | --- |
-| Unit tests | `npm run test` (root, all workspaces) | Verified 2026-10-22; API suite green (1 file, 1 test) |
-| Coverage | `npm run test:cov --workspace apps/api` | Configured (vitest v8); target >=80% core domain/application coverage per NFR-03 not yet measured |
+| Unit tests | `npm run test` (root, all workspaces) | Verified 2026-10-24; API suite green (13 tests, 5 files) using `packages/test-utils` tenant A/B fixtures |
+| Coverage | `npm run test:cov --workspace apps/api` | Verified 2026-10-24: vitest v8 gate over `src/domains/**/*.service.ts` at >=80% lines/functions/branches/statements; measured 100% lines/functions/statements, 97.22% branches (NFR-03) |
 | API/integration tests | Not configured | Required critical API contracts and authorization cases green |
 | E2E | `npm run e2e:web` (root Playwright harness) | Verified 2026-10-23: 3/3 AC-F01-1 journeys pass against the production build of `apps/web`; CI workflow at .github/workflows/e2e.yml; J-01..J-06 journeys not yet written |
 | AI evaluations | Not configured | Required configured thresholds pass; critical guardrail failures always block |
@@ -112,7 +112,7 @@ A reviewer may use an LLM, but the record must distinguish a simulated review pa
 | NFR-10 | TST-NFR-10 | Contract tests cover versioning, error schema, correlation and idempotency |
 
 ## 6. Test data and isolation
-- Use synthetic tenant A and tenant B fixtures in every data-access test suite.
+- Use synthetic tenant A and tenant B fixtures (`packages/test-utils`) in every data-access test suite.
 - Include a customer-visible message and an internal note in fixtures to verify serialization boundaries.
 - Include permitted, denied, expired, disabled and malformed states; avoid testing only happy paths.
 - Reset database state between tests or use isolated schemas/transactions with explicit cleanup.
