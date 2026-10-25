@@ -15,11 +15,12 @@ Operating contract for AI coding agents. Read this whole file, then load only th
 | Format | `npm run format --workspace apps/api` / `--workspace apps/web` | Verified 2026-10-22 (API) and 2026-10-24 (web; owner approved one-time Prettier rewrite of 34 design files, rendering verified by 3/3 E2E journeys) |
 | Lint | `npm run lint` | Verified 2026-10-23: 0 errors, 0 warnings (oxlint for API, ESLint for web) |
 | Type check | `npm run typecheck` | Verified 2026-10-23: exit 0 (`tsc --noEmit` per workspace) |
-| Test (all) | `npm run test` | Verified 2026-10-23: API suite green (1 file, 1 test) |
-| End-to-end | Not configured | Journeys not written; Playwright workflow present |
+| Test (all) | `npm run test` | Verified 2026-10-24: API suite green (5 files, 27 tests) |
+| End-to-end | `npm run e2e:web` | Verified 2026-10-24: 3/3 AC-F01-1 journeys green against the production build of `apps/web` (workflow .github/workflows/e2e.yml) |
 | Build | `npm run build` | Verified 2026-10-23: nest + next build green |
 | Run app | Not configured | `npm run dev:api` / `npm run dev:web` documented but not verified in a recorded run |
-| Docs checker | `python scripts/check_docs.py --draft` | Verified 2026-10-22: 0 errors, 0 warnings, 100/100 |
+| Docs checker | `python scripts/check_docs.py --draft` | Verified 2026-10-24: 0 errors, 0 warnings, 100/100 |
+| Dependency audit | `npm run audit:check` | Verified 2026-10-24: exit 0 against scripts/audit-baseline.json (13 known advisories); fails CI on a new advisory or severity increase |
 
 Never invent a command or claim a test passed without running it and observing the result. If a command is Not configured, the first eligible foundation task is to configure and verify it.
 

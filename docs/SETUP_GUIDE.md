@@ -121,7 +121,7 @@ Each section remains a setup plan, not a verified instruction, until the provide
 N/A — no specific email, chat channel, CRM or external integration provider is confirmed for the first release. Add provider-specific setup only after the integration priority is approved.
 
 ## 6. CI, hosting, domains
-- CI jobs: lint, type-check, unit tests, integration tests, build, security checks and Cypress E2E as configured in the PRD. Exact commands are Not configured.
+- CI jobs (all verified): .github/workflows/ci.yml runs docs check, lint, type-check, unit tests, build and the npm audit gate on every push and PR; .github/workflows/e2e.yml runs the Playwright landing journeys; .github/workflows/merge-gate.yml blocks direct commits to master and pull requests without owner approval.
 - Hosting: Vercel/Render are candidates, not selected production commitments. Decide hosting, regions, TLS, domains, migration execution and secret management before deployment.
 - Migrations must be reviewed and run as a controlled deploy step with a rollback/forward-fix strategy; destructive migrations require owner review.
 - Verify: Not configured; staging health check returns 200, protected route returns 401 without credentials, and one authorized read succeeds.
