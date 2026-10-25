@@ -20,6 +20,10 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+    # Re-run the gate when the owner-approved label changes. The default
+    # pull_request types (opened, synchronize, reopened) miss labelling, so an
+    # approval by label would leave the check red until the next push.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
