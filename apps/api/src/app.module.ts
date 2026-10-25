@@ -10,11 +10,14 @@ import { AnalyticsModule } from './domains/analytics/analytics.module.js';
 import { KnowledgeModule } from './domains/knowledge/knowledge.module.js';
 import { WorkflowsModule } from './domains/workflows/workflows.module.js';
 import { GuardrailsModule } from './domains/guardrails/guardrails.module.js';
+import { PrismaModule } from './infrastructure/prisma/prisma.module.js';
+import { TenantsModule } from './domains/tenants/tenants.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
 @Module({
   imports: [
+    PrismaModule,
     // Distributed tracing, auto-correlated logs, request/job metrics, error
     // telemetry, alarms, and more — out of the box. Sign up at https://observe.nestjs.com
     ObserveModule.forRoot({
@@ -30,6 +33,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     KnowledgeModule,
     WorkflowsModule,
     GuardrailsModule,
+    TenantsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
