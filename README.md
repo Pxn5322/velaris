@@ -55,7 +55,7 @@ npm run dev:api      # NestJS API on http://localhost:3000
 npm run dev:web      # Next.js web on http://localhost:3001
 ```
 
-Other root scripts: `npm run build`, `npm run lint`, `npm run test`, `npm run e2e`. See `docs/SETUP_GUIDE.md` for the full setup plan.
+Other root scripts: `npm run build`, `npm run lint`, `npm run typecheck`, `npm run test`, `npm run e2e`, `npm run e2e:web`, `npm run audit:check`. See `docs/SETUP_GUIDE.md` for the full setup plan.
 
 ## Design System
 
