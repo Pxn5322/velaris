@@ -11,6 +11,14 @@ import { defineConfig } from 'prisma/config';
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
+  // Required by `prisma migrate` and introspection commands: the schema engine
+  // receives this URL as its --datasource argument even for schema-only diffs.
+  // Without it the engine exits with a usage error that the CLI swallows, so
+  // `migrate diff` prints nothing and exits 0 (observed on 7.10.1, Windows).
+  datasource: {
+    url: process.env.DATABASE_URL,
+    shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL,
+  },
   migrate: {
     async adapter() {
       const { PrismaPg } = await import('@prisma/adapter-pg');
