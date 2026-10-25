@@ -13,14 +13,14 @@ Use Jest for unit/domain tests, Supertest for NestJS API/integration tests, Cypr
 ## 2. Commands and thresholds
 | Purpose | Command | Threshold / status |
 | --- | --- | --- |
-| Unit tests | `npm run test` (root, all workspaces) | Verified 2026-10-24; API suite green (13 tests, 5 files) using `packages/test-utils` tenant A/B fixtures |
-| Coverage | `npm run test:cov --workspace apps/api` | Verified 2026-10-24: vitest v8 gate over `src/domains/**/*.service.ts` at >=80% lines/functions/branches/statements; measured 100% lines/functions/statements, 97.22% branches (NFR-03) |
+| Unit tests | `npm run test` (root, all workspaces) | Verified 2026-10-24; API suite green (27 tests, 5 files) using `packages/test-utils` tenant A/B fixtures |
+| Coverage | `npm run test:cov --workspace apps/api` | Verified 2026-10-24: vitest v8 gate over `src/domains/**/*.service.ts` at >=80% lines/functions/branches/statements; measured 100% lines, functions, branches and statements - all four metrics at 100% (NFR-03) |
 | API/integration tests | Not configured | Required critical API contracts and authorization cases green |
-| E2E | `npm run e2e:web` (root Playwright harness) | Verified 2026-10-23: 3/3 AC-F01-1 journeys pass against the production build of `apps/web`; CI workflow at .github/workflows/e2e.yml; J-01..J-06 journeys not yet written |
+| E2E | `npm run e2e:web` (root Playwright harness) | Verified 2026-10-24: 3/3 AC-F01-1 journeys pass against the production build of `apps/web`; CI workflow at .github/workflows/e2e.yml; J-01..J-06 journeys not yet written |
 | AI evaluations | Not configured | Required configured thresholds pass; critical guardrail failures always block |
 | Docs consistency | `python scripts/check_docs.py --draft` | Verified 2026-10-22: 0 errors, 0 warnings, 100/100 |
-| Lint/type/build | `npm run lint` / `npm run typecheck` / `npm run build` (root); CI: `.github/workflows/ci.yml` runs lint, type-check, tests, build and the docs checker on every push/PR | Verified 2026-10-23 locally: lint 0 errors/0 warnings, typecheck exit 0, build green; CI run 39779791614 all 5 jobs green |
-| Security/dependency scan | Not configured | Must be selected and configured before production release |
+| Lint/type/build | `npm run lint` / `npm run typecheck` / `npm run build` (root); CI: `.github/workflows/ci.yml` runs lint, type-check, tests, build, the docs checker and the npm audit gate on every push/PR | Verified 2026-10-24 locally: lint 0 errors/0 warnings, typecheck exit 0, build green, `npm run audit:check` exit 0; CI run 39779791614 5/5 jobs green (audit job added 2026-10-24, first master run pending) |
+| Security/dependency scan | `npm run audit:check` (root; CI job `audit` in .github/workflows/ci.yml) | Verified 2026-10-24: exit 0 against scripts/audit-baseline.json (13 known advisories: 1 critical, 6 high, 4 moderate, 2 low); fails on a new advisory or a severity increase; exit 2 when npm audit cannot run (fails closed) |
 
 ## 3. Acceptance criteria → tests
 | Acceptance criterion | Test ID | Test intent |
