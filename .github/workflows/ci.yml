@@ -90,3 +90,32 @@ jobs:
       # after owner review; new drift blocks the merge.
       - name: Fail on new npm audit vulnerabilities
         run: node scripts/check-audit-baseline.mjs
+
+  schema:
+    name: Prisma schema
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Validate Prisma schema
+        run: npx prisma validate
+      # The schema engine requires a --datasource argument even for schema-only
+      # diffs. Without config.datasource.url the CLI omits it, swallows the
+      # engine usage error, and exits 0 with empty output (7.10.1 bug seen
+      # 2026-10-25). A dummy offline URL satisfies the engine; no connection
+      # is made for --from-empty --to-schema.
+      - name: Generate initial migration SQL (schema-only diff)
+        env:
+          DATABASE_URL: postgresql://postgres:ci-offline-check@localhost:5432/velaris
+        run: |
+          npx prisma migrate diff --from-empty --to-schema=prisma/schema.prisma --script > /tmp/init.sql
+          if ! grep -q "CREATE TABLE" /tmp/init.sql; then
+            echo "::error::migrate diff produced empty output"
+            exit 1
+          fi
+          echo "migrate diff produced $(wc -l < /tmp/init.sql) lines"
