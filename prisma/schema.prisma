@@ -1,0 +1,108 @@
+// VELARIS identity and tenancy schema (task T1.01).
+//
+// Proposed baseline per docs/DATABASE.md sections 2-3 (entities E-enterprise,
+// E-tenant, E-user, E-membership). Table and column names follow the documented
+// snake_case baseline via @@map/@map. ID columns use UUIDs per DATABASE.md
+// section 3. Status enum values are proposed defaults and need owner
+// confirmation before production use. Unique constraints follow
+// DATABASE.md section 3 exactly: slug global uniqueness and user email
+// uniqueness are open product questions and are NOT constrained here yet.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7: connection URLs for Migrate live in prisma.config.ts, not here.
+datasource db {
+  provider = "postgresql"
+}
+
+enum EnterpriseOrganizationStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+enum TenantMembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  REVOKED
+}
+
+/// E-enterprise: platform-level grouping for multiple tenants.
+model EnterpriseOrganization {
+  id        String                       @id @default(uuid()) @db.Uuid
+  name      String
+  status    EnterpriseOrganizationStatus @default(ACTIVE)
+  createdAt DateTime                     @default(now()) @map("created_at")
+  updatedAt DateTime                     @updatedAt @map("updated_at")
+
+  tenants Tenant[]
+
+  @@map("enterprise_organizations")
+}
+
+/// E-tenant: company/workspace and the primary data-isolation boundary.
+model Tenant {
+  id                       String       @id @default(uuid()) @db.Uuid
+  enterpriseOrganizationId String       @map("enterprise_organization_id") @db.Uuid
+  name                     String
+  slug                     String
+  status                   TenantStatus @default(ACTIVE)
+  version                  Int          @default(0)
+  createdAt                DateTime     @default(now()) @map("created_at")
+  updatedAt                DateTime     @updatedAt @map("updated_at")
+
+  enterpriseOrganization EnterpriseOrganization @relation(fields: [enterpriseOrganizationId], references: [id])
+  memberships            TenantMembership[]
+
+  @@unique([slug])
+  @@map("tenants")
+}
+
+/// E-user: human identity as resolved by the identity provider (D-03: Supabase Auth).
+model User {
+  id              String     @id @default(uuid()) @db.Uuid
+  provider        String     @default("supabase")
+  externalSubject String     @map("external_subject")
+  emailNormalized String     @map("email_normalized")
+  displayName     String     @map("display_name")
+  status          UserStatus @default(ACTIVE)
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  memberships TenantMembership[]
+
+  // External subject is unique per identity provider (DATABASE.md section 3).
+  @@unique([provider, externalSubject])
+  @@map("users")
+}
+
+/// E-membership: user-to-tenant relationship; tenant context resolution reads this.
+model TenantMembership {
+  id        String                 @id @default(uuid()) @db.Uuid
+  tenantId  String                 @map("tenant_id") @db.Uuid
+  userId    String                 @map("user_id") @db.Uuid
+  status    TenantMembershipStatus @default(ACTIVE)
+  createdAt DateTime               @default(now()) @map("created_at")
+  updatedAt DateTime               @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([tenantId, userId])
+  @@index([userId, status])
+  @@map("tenant_memberships")
+}

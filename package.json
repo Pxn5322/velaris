@@ -26,6 +26,8 @@
   "type": "commonjs",
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@types/node": "^26.6.3"
+    "@prisma/adapter-pg": "^7.10.1",
+    "@types/node": "^26.6.3",
+    "prisma": "^7.10.1"
   }
 }
