@@ -64,6 +64,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Same Prisma client generation as the type-check and build jobs:
+      # specs that load PrismaService require @prisma/client at runtime and
+      # fail with "Cannot find module '.prisma/client/default'" without it.
+      - name: Generate Prisma client
+        env:
+          DATABASE_URL: postgresql://postgres:ci-offline-check@localhost:5432/velaris
+        run: npx prisma generate
       - name: Run workspace unit tests
         run: npm run test
       # Boots the real AppModule. This is the check that caught the
