@@ -1,0 +1,5 @@
+# Prisma stores a SHA-256 checksum of each migration file in
+# _prisma_migrations. Line endings are part of that hash, so migration files
+# must check out identically on every machine (Windows or Linux), or
+# `prisma migrate deploy` reports a checksum mismatch for an applied migration.
+prisma/migrations/** text eol=lf
