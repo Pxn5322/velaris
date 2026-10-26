@@ -43,6 +43,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # npm install scripts are blocked in this environment, so the Prisma
+      # client is never generated and @prisma/client exports no PrismaClient
+      # until this runs. Generate before compiling (see SETUP_GUIDE).
+      - name: Generate Prisma client
+        env:
+          DATABASE_URL: postgresql://postgres:ci-offline-check@localhost:5432/velaris
+        run: npx prisma generate
       - name: Type-check all workspaces
         run: npm run typecheck
 
@@ -71,6 +78,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Same Prisma client generation as the type-check job: nest build runs
+      # tsc, which needs the generated PrismaClient types.
+      - name: Generate Prisma client
+        env:
+          DATABASE_URL: postgresql://postgres:ci-offline-check@localhost:5432/velaris
+        run: npx prisma generate
       - name: Build all workspaces (nest build + next build)
         run: npm run build
 

@@ -46,6 +46,7 @@ Create accounts only with explicit owner authorization. Do not paste credentials
 ## 3. Prerequisites and repository
 - Proposed prerequisites: supported Node.js LTS version pinned in `.nvmrc`/toolchain file; package manager and version pinned; Docker/Compose for local dependencies; Git; Python 3 for documentation checker.
 - Clone the monorepo and install from the repository root with `npm install` (npm workspaces, single root lockfile; recorded as D-09 on 2026-10-22).
+- Generate the Prisma client after every install with `npx prisma generate`. npm blocks install scripts here, so `@prisma/client` exports no `PrismaClient` until this command runs. Type check and build fail without it (observed in CI on 2026-10-26; the CI type-check and build jobs run this step).
 - Configure package scripts and workspace tooling as described in `docs/CODE_STYLE.md`.
 - Run locally: `npm run dev:api` (NestJS API on port 3000) and `npm run dev:web` (Next.js on port 3001), both from the repository root. These dev commands are documented here but not verified in a recorded run.
 - Verify: root `npm install`, `npm run build`, `npm run test`, `npm run lint` and `npm run typecheck` were run on 2026-10-23 (Windows). Build, tests and type check pass; lint reports 0 errors and 0 warnings. Record tool versions with future runs.
