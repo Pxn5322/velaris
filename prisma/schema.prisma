@@ -69,6 +69,10 @@ model Tenant {
   memberships            TenantMembership[]
   roles                  Role[]
   auditEvents            AuditEvent[]
+  customers              Customer[]
+  conversations          Conversation[]
+  messages               Message[]
+  tickets                Ticket[]
 
   @@unique([slug])
   @@map("tenants")
@@ -165,4 +169,163 @@ model AuditEvent {
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([resourceType, resourceId, createdAt(sort: Desc)])
   @@map("audit_events")
+}
+
+// ---- Phase 2: core support vertical slice (T2.01) ----
+// Proposed baseline per docs/DATABASE.md section 6 (E-customer,
+// E-conversation, E-message, E-ticket). Enum values are proposed defaults
+// and need owner confirmation before production use (AC-F05-2 depends on
+// the ticket status set). Tenant isolation is the primary boundary; every
+// model carries tenant_id or an enforceable path to it.
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  RESOLVED
+  CLOSED
+}
+
+/// Author of a message. `customer` and `agent` are tenant-scoped humans;
+/// `system` covers automated/worker-authored messages.
+enum MessageAuthorType {
+  CUSTOMER
+  AGENT
+  SYSTEM
+}
+
+/// Visibility boundary (F-05, TH-05). INTERNAL notes never serialize to a
+/// customer-facing response; that rule is enforced in the API layer and
+/// covered by tests, not by this enum alone.
+enum MessageVisibility {
+  CUSTOMER_VISIBLE
+  INTERNAL
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SlaState {
+  NOT_SET
+  WITHIN_TARGET
+  AT_RISK
+  BREACHED
+}
+
+/// E-customer: end customer profile within one tenant (DATABASE.md 6).
+/// Soft delete via deleted_at; metadata_json must not store secrets.
+model Customer {
+  id          String         @id @default(uuid()) @db.Uuid
+  tenantId    String         @map("tenant_id") @db.Uuid
+  externalRef String?        @map("external_ref")
+  displayName String         @map("display_name")
+  email       String?
+  phone       String?
+  status      CustomerStatus @default(ACTIVE)
+  metadataJson Json?         @map("metadata_json")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  deletedAt   DateTime?      @map("deleted_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  conversations Conversation[]
+  tickets       Ticket[]
+
+  @@index([tenantId, email])
+  @@index([tenantId, externalRef])
+  @@map("customers")
+}
+
+/// E-conversation: communication history for one customer in one tenant.
+/// version supports optimistic concurrency on status/metadata updates.
+model Conversation {
+  id         String             @id @default(uuid()) @db.Uuid
+  tenantId   String             @map("tenant_id") @db.Uuid
+  customerId String             @map("customer_id") @db.Uuid
+  channel    String
+  status     ConversationStatus @default(OPEN)
+  version    Int                @default(0)
+  createdAt  DateTime           @default(now()) @map("created_at")
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  customer Customer  @relation(fields: [customerId], references: [id])
+  messages Message[]
+  tickets  Ticket[]
+
+  @@index([tenantId, updatedAt(sort: Desc)])
+  @@index([tenantId, customerId])
+  @@map("conversations")
+}
+
+/// E-message: customer-visible message or internal note (DATABASE.md 6).
+/// visibility distinguishes the two. No updatedAt: messages are immutable
+/// records; there is no update path in Prisma for this model.
+model Message {
+  id             String             @id @default(uuid()) @db.Uuid
+  tenantId       String             @map("tenant_id") @db.Uuid
+  conversationId String             @map("conversation_id") @db.Uuid
+  authorType     MessageAuthorType  @map("author_type")
+  authorId       String?            @map("author_id") @db.Uuid
+  visibility     MessageVisibility
+  body           String
+  metadataJson   Json?              @map("metadata_json")
+  idempotencyKey String?            @map("idempotency_key")
+  createdAt      DateTime           @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+
+  // Unique per conversation where an idempotency key is supplied, so a
+  // retried write cannot duplicate a message.
+  @@unique([conversationId, idempotencyKey])
+  @@index([tenantId, conversationId, createdAt])
+  @@map("messages")
+}
+
+/// E-ticket: operational support work item (DATABASE.md 6).
+/// version implements optimistic concurrency (AC-F05-2): an update carrying
+/// a stale version is rejected with a conflict. resolved_at/closed_at are
+/// nullable lifecycle timestamps.
+model Ticket {
+  id                    String         @id @default(uuid()) @db.Uuid
+  tenantId              String         @map("tenant_id") @db.Uuid
+  customerId            String         @map("customer_id") @db.Uuid
+  primaryConversationId String?        @map("primary_conversation_id") @db.Uuid
+  title                 String
+  status                TicketStatus   @default(OPEN)
+  priority              TicketPriority @default(MEDIUM)
+  slaState              SlaState       @default(NOT_SET) @map("sla_state")
+  assigneeMembershipId  String?        @map("assignee_membership_id") @db.Uuid
+  tags                  String[]
+  version               Int            @default(0)
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+  resolvedAt            DateTime?      @map("resolved_at")
+  closedAt              DateTime?      @map("closed_at")
+
+  tenant              Tenant         @relation(fields: [tenantId], references: [id])
+  customer            Customer       @relation(fields: [customerId], references: [id])
+  primaryConversation Conversation?  @relation(fields: [primaryConversationId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([tenantId, assigneeMembershipId, status])
+  @@index([tenantId, updatedAt(sort: Desc)])
+  @@map("tickets")
 }
