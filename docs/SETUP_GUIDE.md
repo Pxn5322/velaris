@@ -61,6 +61,7 @@ Names below are proposed categories for the initial implementation. Add or remov
 | `NEXT_PUBLIC_SUPABASE_URL` | Next.js browser client and server config | no, public project URL | public app config |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Next.js browser client | no, publishable key; RLS is still required for any direct database exposure | public app config |
 | `SUPABASE_URL` | NestJS API/worker | no, project URL | server environment config |
+| `SUPABASE_PUBLISHABLE_KEY` | NestJS API token verifier (apikey header on `GET /auth/v1/user`) | no, public project key | server environment config |
 | `SUPABASE_JWT_ISSUER` | NestJS token verifier, if configured separately | no | server environment config |
 | `SUPABASE_SERVICE_ROLE_KEY` | server-only administrative operations, only where justified | yes | server secret store; never browser-exposed |
 | `LLM_PROVIDER` | API/worker | no | environment config |
