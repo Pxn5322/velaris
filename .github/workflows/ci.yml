@@ -66,6 +66,11 @@ jobs:
       - run: npm ci
       - name: Run workspace unit tests
         run: npm run test
+      # Boots the real AppModule. This is the check that caught the
+      # type-only-import DI break in T1.02; the unit suite alone skips
+      # *.e2e-spec.ts files.
+      - name: Run API boot e2e spec
+        run: npm run test:e2e --workspace apps/api
 
   build:
     name: Build
