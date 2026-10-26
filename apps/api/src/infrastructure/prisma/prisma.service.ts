@@ -12,6 +12,14 @@ import { OnApplicationShutdown, Injectable } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
+/**
+ * Injection token for PrismaService. Consumers inject this token instead of
+ * relying on emitDecoratorMetadata: the metadata form makes the test
+ * transformer emit an untestable `typeof X === 'undefined'` interop guard,
+ * and an explicit token never depends on decorator metadata at all.
+ */
+export const PRISMA_SERVICE = 'PRISMA_SERVICE';
+
 @Injectable()
 export class PrismaService
   extends PrismaClient
