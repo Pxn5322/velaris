@@ -34,7 +34,10 @@ export class TenantsService {
    * Resolve the tenant context for a verified identity (AC-F02-1).
    * Returns null when no user row exists for (provider, externalSubject).
    */
-  async resolveContext(provider: string, externalSubject: string): Promise<TenantContext | null> {
+  async resolveContext(
+    provider: string,
+    externalSubject: string,
+  ): Promise<TenantContext | null> {
     const user = await this.prisma.user.findUnique({
       where: { provider_externalSubject: { provider, externalSubject } },
       include: { memberships: { include: { tenant: true } } },
@@ -43,7 +46,10 @@ export class TenantsService {
       return null;
     }
     const tenants = user.memberships
-      .filter((membership) => membership.status === ACTIVE && membership.tenant.status === ACTIVE)
+      .filter(
+        (membership) =>
+          membership.status === ACTIVE && membership.tenant.status === ACTIVE,
+      )
       .map((membership) => ({
         tenantId: membership.tenant.id,
         slug: membership.tenant.slug,
@@ -59,7 +65,10 @@ export class TenantsService {
    * (AC-F04-1 gate). Throws ForbiddenException otherwise, which the API
    * layer maps to 403.
    */
-  async requireTenantAccess(userId: string, tenantId: string): Promise<TenantContextEntry> {
+  async requireTenantAccess(
+    userId: string,
+    tenantId: string,
+  ): Promise<TenantContextEntry> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { memberships: { include: { tenant: true } } },

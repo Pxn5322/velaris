@@ -1,0 +1,21 @@
+/**
+ * Auth-layer types (T1.02, F-02).
+ *
+ * AuthenticatedIdentity is what the token verifier proves about a caller:
+ * the identity provider (D-03: Supabase Auth), the provider's subject
+ * claim, and an optional email. AuthSessionResponse is the body of
+ * GET /auth/session (AC-F02-1).
+ */
+
+import type { TenantContext } from '../tenants/tenants.service.js';
+
+export interface AuthenticatedIdentity {
+  provider: string;
+  subject: string;
+  email?: string;
+}
+
+export interface AuthSessionResponse {
+  identity: AuthenticatedIdentity;
+  tenantContext: TenantContext | null;
+}

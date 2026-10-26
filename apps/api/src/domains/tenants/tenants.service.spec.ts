@@ -54,7 +54,12 @@ describe('TenantsService', () => {
           membership({
             id: 'membership-2',
             tenantId: 'tenant-b',
-            tenant: { id: 'tenant-b', slug: 'beta', name: 'Beta', status: 'ACTIVE' },
+            tenant: {
+              id: 'tenant-b',
+              slug: 'beta',
+              name: 'Beta',
+              status: 'ACTIVE',
+            },
           }),
         ],
       });
@@ -62,7 +67,12 @@ describe('TenantsService', () => {
       const context = await service.resolveContext('supabase', 'sub-123');
 
       expect(prisma.user.findUnique).toHaveBeenCalledWith({
-        where: { provider_externalSubject: { provider: 'supabase', externalSubject: 'sub-123' } },
+        where: {
+          provider_externalSubject: {
+            provider: 'supabase',
+            externalSubject: 'sub-123',
+          },
+        },
         include: { memberships: { include: { tenant: true } } },
       });
       expect(context).not.toBeNull();
@@ -115,11 +125,16 @@ describe('TenantsService', () => {
     it('returns null for an unknown identity', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.resolveContext('supabase', 'nope')).resolves.toBeNull();
+      await expect(
+        service.resolveContext('supabase', 'nope'),
+      ).resolves.toBeNull();
     });
 
     it('returns an empty tenant list when the user has no memberships', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', memberships: [] });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        memberships: [],
+      });
 
       const context = await service.resolveContext('supabase', 'sub-123');
 
@@ -159,9 +174,9 @@ describe('TenantsService', () => {
         ],
       });
 
-      await expect(service.requireTenantAccess('user-1', 'tenant-a')).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        service.requireTenantAccess('user-1', 'tenant-a'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('throws Forbidden when the membership is revoked (cross-tenant denial primitive)', async () => {
@@ -170,9 +185,9 @@ describe('TenantsService', () => {
         memberships: [membership({ status: 'REVOKED' })],
       });
 
-      await expect(service.requireTenantAccess('user-1', 'tenant-a')).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        service.requireTenantAccess('user-1', 'tenant-a'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('throws Forbidden when the user has no membership in that tenant', async () => {
@@ -182,14 +197,19 @@ describe('TenantsService', () => {
           membership({
             id: 'membership-9',
             tenantId: 'tenant-other',
-            tenant: { id: 'tenant-other', slug: 'other', name: 'Other', status: 'ACTIVE' },
+            tenant: {
+              id: 'tenant-other',
+              slug: 'other',
+              name: 'Other',
+              status: 'ACTIVE',
+            },
           }),
         ],
       });
 
-      await expect(service.requireTenantAccess('user-1', 'tenant-a')).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        service.requireTenantAccess('user-1', 'tenant-a'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 });
