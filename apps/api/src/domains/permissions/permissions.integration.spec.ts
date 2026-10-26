@@ -31,6 +31,7 @@ import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthorizationService } from './authorization.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import { PERMISSIONS } from './permission.codes.js';
 import type { CanonicalRole } from './permission.codes.js';
 import { ROLE_RESOLVER, type RoleResolver } from './role-resolver.js';
@@ -157,6 +158,7 @@ describe('RBAC checks (integration)', () => {
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
         PermissionsGuard,
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
         { provide: ROLE_RESOLVER, useValue: resolver },
         {
           provide: TenantsService,

@@ -66,6 +66,25 @@ describe('SupabaseTokenVerifier', () => {
     );
   });
 
+  it('accepts the live GoTrue userinfo shape (id, no sub)', async () => {
+    // Observed against the live project on 2026-10-26: /auth/v1/user returns
+    // the user UUID in `id` and carries no `sub` field.
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        id: '98fb960c-a994-4cf1-9e40-23fda909d536',
+        aud: 'authenticated',
+        role: 'authenticated',
+        email: 'agent1@velaris.test',
+      }),
+    );
+
+    await expect(verifier.verify('live-token')).resolves.toEqual({
+      provider: 'supabase',
+      subject: '98fb960c-a994-4cf1-9e40-23fda909d536',
+      email: 'agent1@velaris.test',
+    });
+  });
+
   it('returns an identity without email when Supabase omits it', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { sub: 'sub-456' }));
     // Trailing slash in the configured URL must not produce a double slash.

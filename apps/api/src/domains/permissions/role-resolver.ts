@@ -1,5 +1,5 @@
 /**
- * Role resolution port (T1.03).
+ * Role resolution port (T1.03, roles storage).
  *
  * The permission guard asks this port for the caller's canonical role in
  * the tenant that the request targets. The role must come from a server-
@@ -7,13 +7,12 @@
  * membership to read, and it never grants a role by itself
  * (docs/SECURITY.md section 4).
  *
- * Role storage does not exist yet: the schema has no membership_roles
- * table (docs/DATABASE.md section 5), so the default implementation
- * always returns null and every permission-gated route denies. That is
- * the deny-by-default behaviour TH-02 requires. Tests inject a resolver.
+ * The default implementation is DatabaseRoleResolver: it reads
+ * membership_roles and returns null when no active, in-scope role exists,
+ * so permission-gated routes still deny by default. Tests may inject any
+ * resolver through the ROLE_RESOLVER token.
  */
 
-import { Injectable } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.interface.js';
 import type { CanonicalRole } from './permission.codes.js';
 
@@ -27,12 +26,4 @@ export interface RoleLookup {
 
 export interface RoleResolver {
   resolveRole(lookup: RoleLookup): Promise<CanonicalRole | null>;
-}
-
-/** Deny-all resolver used until membership_roles storage exists. */
-@Injectable()
-export class DenyRoleResolver implements RoleResolver {
-  async resolveRole(): Promise<CanonicalRole | null> {
-    return null;
-  }
 }
