@@ -72,3 +72,29 @@ export function permissionsForRole(
   }
   return ROLE_PERMISSIONS[role as CanonicalRole] ?? [];
 }
+
+/**
+ * Privilege order for combining several assigned roles. A membership that
+ * holds more than one role resolves to the first match here; unknown codes
+ * never outrank a real role.
+ */
+const ROLE_PRECEDENCE: readonly CanonicalRole[] = [
+  'R-enterprise-admin',
+  'R-tenant-admin',
+  'R-agent',
+  'R-customer',
+  'R-developer',
+  'R-anonymous',
+];
+
+/** Highest-privilege canonical role among the codes, or null when none applies. */
+export function highestPrivilegeRole(
+  codes: readonly string[],
+): CanonicalRole | null {
+  for (const role of ROLE_PRECEDENCE) {
+    if (codes.includes(role)) {
+      return role;
+    }
+  }
+  return null;
+}

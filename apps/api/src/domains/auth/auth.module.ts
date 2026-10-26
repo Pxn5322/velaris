@@ -8,5 +8,8 @@ import { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
   imports: [TenantsModule],
   controllers: [AuthController],
   providers: [SupabaseTokenVerifier, SupabaseAuthGuard],
+  // Consumers that apply SupabaseAuthGuard on their own controllers
+  // (example: TicketsModule) resolve the verifier through this export.
+  exports: [SupabaseTokenVerifier, SupabaseAuthGuard],
 })
 export class AuthModule {}

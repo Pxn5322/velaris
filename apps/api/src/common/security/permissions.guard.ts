@@ -24,6 +24,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { AuthenticatedIdentity } from '../../domains/auth/auth.interface.js';
+import { AuditService } from '../../domains/audit/audit.service.js';
 import { AuthorizationService } from '../../domains/permissions/authorization.service.js';
 import type { PermissionCode } from '../../domains/permissions/permission.codes.js';
 import {
@@ -44,6 +45,7 @@ export class PermissionsGuard implements CanActivate {
     private readonly authorization: AuthorizationService,
     private readonly reflector: Reflector,
     @Inject(ROLE_RESOLVER) private readonly roles: RoleResolver,
+    private readonly audit: AuditService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -67,7 +69,30 @@ export class PermissionsGuard implements CanActivate {
       identity: request.user,
       tenantId,
     });
-    this.authorization.assertPermission(role, ...codes);
+    try {
+      this.authorization.assertPermission(role, ...codes);
+    } catch (error) {
+      // T1.04: an authorization refusal is security-sensitive history.
+      // A guessed tenant ID can reference no tenant row, so the audit insert
+      // can fail on its foreign key; the authorization decision must win.
+      try {
+        await this.audit.record({
+          action: 'permission.denied',
+          resourceType: 'permission',
+          resourceId: codes.join(','),
+          tenantId,
+          actorId: request.user.subject,
+          metadata: { role: role ?? 'none', reason: 'missing_permission' },
+        });
+      } catch (auditError) {
+        // Never mask the denial; surface the loss in the server log only.
+        console.error(
+          '[audit] permission.denied not persisted:',
+          auditError instanceof Error ? auditError.message : auditError,
+        );
+      }
+      throw error;
+    }
     return true;
   }
 

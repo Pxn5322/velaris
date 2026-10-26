@@ -18,6 +18,7 @@ import type {
   RoleResolver,
 } from '../../domains/permissions/role-resolver.js';
 import { AuthorizationService } from '../../domains/permissions/authorization.service.js';
+import type { AuditService } from '../../domains/audit/audit.service.js';
 import { RequirePermission } from './require-permission.decorator.js';
 import { PermissionsGuard } from './permissions.guard.js';
 
@@ -38,21 +39,28 @@ function resolverReturning(role: string | null): RoleResolver {
   return { resolveRole: vi.fn().mockResolvedValue(role) };
 }
 
+/** Audit sink used by every guard instance in this spec. */
+const audit = { record: vi.fn().mockResolvedValue(undefined) };
+
+function makeGuard(resolver: RoleResolver): PermissionsGuard {
+  return new PermissionsGuard(
+    new AuthorizationService(),
+    new Reflector(),
+    resolver,
+    audit as unknown as AuditService,
+  );
+}
+
 describe('PermissionsGuard', () => {
-  const reflector = new Reflector();
 
   it('allows a principal whose role holds the permission', async () => {
     class C {
       @RequirePermission(PERMISSIONS.TICKET_READ)
-      handle(): string {
+      handle(this: void): string {
         return 'ok';
       }
     }
-    const guard = new PermissionsGuard(
-      new AuthorizationService(),
-      reflector,
-      resolverReturning('R-agent'),
-    );
+    const guard = makeGuard(resolverReturning('R-agent'));
 
     const allowed = await guard.canActivate(
       contextFor(C.prototype.handle, {
@@ -67,15 +75,11 @@ describe('PermissionsGuard', () => {
   it('denies with 403 when the authenticated role lacks the permission (AC-F02-3)', async () => {
     class C {
       @RequirePermission(PERMISSIONS.AUDIT_READ)
-      handle(): string {
+      handle(this: void): string {
         return 'ok';
       }
     }
-    const guard = new PermissionsGuard(
-      new AuthorizationService(),
-      reflector,
-      resolverReturning('R-agent'),
-    );
+    const guard = makeGuard(resolverReturning('R-agent'));
 
     await expect(
       guard.canActivate(
@@ -90,15 +94,11 @@ describe('PermissionsGuard', () => {
   it('denies R-tenant-admin on a platform governance route (AC-F03-3)', async () => {
     class C {
       @RequirePermission(PERMISSIONS.TENANT_MANAGE_PLATFORM)
-      handle(): string {
+      handle(this: void): string {
         return 'ok';
       }
     }
-    const guard = new PermissionsGuard(
-      new AuthorizationService(),
-      reflector,
-      resolverReturning('R-tenant-admin'),
-    );
+    const guard = makeGuard(resolverReturning('R-tenant-admin'));
 
     await expect(
       guard.canActivate(
@@ -113,15 +113,11 @@ describe('PermissionsGuard', () => {
   it('denies when no role can be resolved (deny-by-default)', async () => {
     class C {
       @RequirePermission(PERMISSIONS.TICKET_READ)
-      handle(): string {
+      handle(this: void): string {
         return 'ok';
       }
     }
-    const guard = new PermissionsGuard(
-      new AuthorizationService(),
-      reflector,
-      resolverReturning(null),
-    );
+    const guard = makeGuard(resolverReturning(null));
 
     await expect(
       guard.canActivate(
@@ -135,15 +131,11 @@ describe('PermissionsGuard', () => {
 
   it('denies a guarded route that declares no permission', async () => {
     class C {
-      handle(): string {
+      handle(this: void): string {
         return 'ok';
       }
     }
-    const guard = new PermissionsGuard(
-      new AuthorizationService(),
-      reflector,
-      resolverReturning('R-enterprise-admin'),
-    );
+    const guard = makeGuard(resolverReturning('R-enterprise-admin'));
 
     await expect(
       guard.canActivate(contextFor(C.prototype.handle, { user: {} })),
@@ -153,18 +145,70 @@ describe('PermissionsGuard', () => {
   it('rejects with 401 when no identity was attached by the auth guard', async () => {
     class C {
       @RequirePermission(PERMISSIONS.TICKET_READ)
-      handle(): string {
+      handle(this: void): string {
         return 'ok';
       }
     }
-    const guard = new PermissionsGuard(
-      new AuthorizationService(),
-      reflector,
-      resolverReturning('R-agent'),
-    );
+    const guard = makeGuard(resolverReturning('R-agent'));
 
     await expect(
       guard.canActivate(contextFor(C.prototype.handle, { query: {} })),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('writes a permission.denied audit row before refusing (T1.04)', async () => {
+    class C {
+      @RequirePermission(PERMISSIONS.AUDIT_READ)
+      handle(this: void): string {
+        return 'ok';
+      }
+    }
+    audit.record.mockClear();
+    const guard = makeGuard(resolverReturning('R-agent'));
+
+    await expect(
+      guard.canActivate(
+        contextFor(C.prototype.handle, {
+          user: { provider: 'supabase', subject: 'sub-123' },
+          query: { tenantId: 'tenant-a' },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'permission.denied',
+        resourceType: 'permission',
+        resourceId: PERMISSIONS.AUDIT_READ,
+        tenantId: 'tenant-a',
+        actorId: 'sub-123',
+        metadata: expect.objectContaining({ role: 'R-agent' }),
+      }),
+    );
+  });
+
+  it('still refuses with 403 when the audit write fails (live-check regression)', async () => {
+    // Observed live on 2026-10-26: a guessed tenant ID made the
+    // permission.denied insert fail on the audit_events foreign key, and the
+    // audit error replaced the 403 with a 500. The authorization decision
+    // must win over audit persistence.
+    class C {
+      @RequirePermission(PERMISSIONS.AUDIT_READ)
+      handle(this: void): string {
+        return 'ok';
+      }
+    }
+    audit.record.mockRejectedValueOnce(new Error('fk violation'));
+    const guard = makeGuard(resolverReturning('R-agent'));
+
+    await expect(
+      guard.canActivate(
+        contextFor(C.prototype.handle, {
+          user: { provider: 'supabase', subject: 'sub-123' },
+          query: { tenantId: 'no-such-tenant' },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

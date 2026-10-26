@@ -57,13 +57,26 @@ export class SupabaseTokenVerifier {
       return null;
     }
 
-    const body = (await response.json()) as { sub?: unknown; email?: unknown };
-    if (typeof body.sub !== 'string' || body.sub.length === 0) {
+    const body = (await response.json()) as {
+      sub?: unknown;
+      id?: unknown;
+      email?: unknown;
+    };
+    // GoTrue's userinfo answer carries the user UUID in `id`; `sub` appears
+    // in some versions and proxies. Accept both, prefer `sub` (verified
+    // against the live project on 2026-10-26).
+    const subject =
+      typeof body.sub === 'string' && body.sub.length > 0
+        ? body.sub
+        : typeof body.id === 'string' && body.id.length > 0
+          ? body.id
+          : null;
+    if (!subject) {
       return null;
     }
     return {
       provider: 'supabase',
-      subject: body.sub,
+      subject,
       email: typeof body.email === 'string' ? body.email : undefined,
     };
   }

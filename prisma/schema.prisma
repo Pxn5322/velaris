@@ -67,6 +67,8 @@ model Tenant {
 
   enterpriseOrganization EnterpriseOrganization @relation(fields: [enterpriseOrganizationId], references: [id])
   memberships            TenantMembership[]
+  roles                  Role[]
+  auditEvents            AuditEvent[]
 
   @@unique([slug])
   @@map("tenants")
@@ -99,10 +101,68 @@ model TenantMembership {
   createdAt DateTime               @default(now()) @map("created_at")
   updatedAt DateTime               @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  user   User   @relation(fields: [userId], references: [id])
+  tenant Tenant           @relation(fields: [tenantId], references: [id])
+  user   User             @relation(fields: [userId], references: [id])
+  roles  MembershipRole[]
 
   @@unique([tenantId, userId])
   @@index([userId, status])
   @@map("tenant_memberships")
+}
+
+/// E-role: named permission bundle. tenant_id NULL marks a system role
+/// (DATABASE.md section 5). System-role code uniqueness cannot be a
+/// partial unique index in Prisma, so the seed and the application layer
+/// keep system codes unique; the composite unique covers tenant roles.
+model Role {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String?  @map("tenant_id") @db.Uuid
+  code          String
+  name          String
+  systemManaged Boolean  @default(true) @map("system_managed")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant?          @relation(fields: [tenantId], references: [id])
+  memberships MembershipRole[]
+
+  @@unique([tenantId, code])
+  @@map("roles")
+}
+
+/// E-role assignment: which membership holds which role.
+/// Scope rule (validated in the resolver): the role is either a system
+/// role (tenant_id NULL) or belongs to the membership's tenant.
+model MembershipRole {
+  membershipId String @map("membership_id") @db.Uuid
+  roleId       String @map("role_id") @db.Uuid
+
+  membership TenantMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role       Role             @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([membershipId, roleId])
+  @@index([roleId])
+  @@map("membership_roles")
+}
+
+/// E-audit-event: append-oriented security/admin action history
+/// (DATABASE.md section 5). No update or delete path exists in Prisma;
+/// retention and restricted querying arrive with the audit query task.
+/// actor_id stores the identity provider subject and carries no FK, so
+/// audit rows survive local user changes.
+model AuditEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String?  @map("tenant_id") @db.Uuid
+  actorId      String?  @map("actor_id") @db.Uuid
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  metadataJson Json?    @map("metadata_json")
+  requestId    String?  @map("request_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([resourceType, resourceId, createdAt(sort: Desc)])
+  @@map("audit_events")
 }
