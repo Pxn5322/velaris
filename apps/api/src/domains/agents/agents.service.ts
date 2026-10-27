@@ -14,6 +14,8 @@ export class AgentsService {
   private agents: Agent[] = [];
 
   findAll(tenantId?: string): Agent[] {
-    return tenantId ? this.agents.filter((a) => a.tenantId === tenantId) : this.agents;
+    return tenantId
+      ? this.agents.filter((a) => a.tenantId === tenantId)
+      : this.agents;
   }
 }

@@ -19,8 +19,9 @@ Use Jest for unit/domain tests, Supertest for NestJS API/integration tests, Cypr
 | E2E | `npm run e2e:web` (root Playwright harness) | Verified 2026-10-24: 3/3 AC-F01-1 journeys pass against the production build of `apps/web`; CI workflow at .github/workflows/e2e.yml; J-01..J-06 journeys not yet written |
 | AI evaluations | Not configured | Required configured thresholds pass; critical guardrail failures always block |
 | Docs consistency | `python scripts/check_docs.py --draft` | Verified 2026-10-22: 0 errors, 0 warnings, 100/100 |
-| Lint/type/build | `npm run lint` / `npm run typecheck` / `npm run build` (root); CI: `.github/workflows/ci.yml` runs lint, type-check, tests, the API boot e2e spec, build, the docs checker and the npm audit gate on every push/PR | Verified 2026-10-26 locally: lint 0 errors/0 warnings, typecheck exit 0, build green, `npm run audit:check` exit 0; type-check and build jobs generate the Prisma client first (missing generate failed run 40298746838, fixed 2026-10-26) |
-| Security/dependency scan | `npm run audit:check` (root; CI job `audit` in .github/workflows/ci.yml) | Verified 2026-10-24: exit 0 against scripts/audit-baseline.json (13 known advisories: 1 critical, 6 high, 4 moderate, 2 low); fails on a new advisory or a severity increase; exit 2 when npm audit cannot run (fails closed) |
+| Format | `npm run format:check` (root, all workspaces); fix with `npm run format` | Verified 2026-10-27: exit 0 in `apps/api` and `apps/web`; CI job `format` in .github/workflows/ci.yml runs it on every push/PR; Prettier run over both workspaces on 2026-10-27 fixed 25 API files (web content was already conforming; 33 web files differed only by line endings) |
+| Lint/type/build | `npm run lint` / `npm run typecheck` / `npm run build` (root); CI: `.github/workflows/ci.yml` runs lint, format, type-check, tests, the API boot e2e spec, build, the docs checker and the npm audit gate on every push/PR | Verified 2026-10-26 locally: lint 0 errors/0 warnings, typecheck exit 0, build green, `npm run audit:check` exit 0; type-check and build jobs generate the Prisma client first (missing generate failed run 40298746838, fixed 2026-10-26) |
+| Security/dependency scan | `npm run audit:check` (root; CI job `audit` in .github/workflows/ci.yml) | Verified 2026-10-27: exit 0 against scripts/audit-baseline.json (8 known advisories: 1 critical, 4 high, 1 moderate, 2 low; 5 fixed advisories removed from the baseline on 2026-10-27 so they can no longer mask a regression); fails on a new advisory or a severity increase; exit 2 when npm audit cannot run (fails closed) |
 
 ## 3. Acceptance criteria → tests
 | Acceptance criterion | Test ID | Test intent |
@@ -67,6 +68,8 @@ Use Jest for unit/domain tests, Supertest for NestJS API/integration tests, Cypr
 | AC-F14-1 | TST-AC-F14-1 | Expired/deleted knowledge and memory are no longer retrievable |
 | AC-F14-2 | TST-AC-F14-2 | Invalid retention configuration is rejected |
 | AC-F14-3 | TST-AC-F14-3 | Restricted audit/lifecycle operation is denied without permission |
+
+Open criteria in this section: AC-F03-1 is not yet satisfiable. Audit persistence is covered by `audit.service.spec.ts` and by the `ticket.created` and `permission.denied` rows proven in the live database, but the governance actions the criterion names (create/disable a tenant, change a user role) have no endpoint, so no test can assert them yet. The criterion stays open until a governance task implements those actions. AC-F03-2 is covered: unknown tenant identifier rejection and body/query identifier mismatch are asserted in `tickets.controller.integration.spec.ts`; unknown role codes and absent user rows are asserted in `database-role-resolver.spec.ts`.
 
 ## 4. Threat tests
 | Threat | Test ID | Required evidence |

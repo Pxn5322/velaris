@@ -12,7 +12,7 @@ Operating contract for AI coding agents. Read this whole file, then load only th
 ## 2. Verified commands
 | Purpose | Command | Status |
 | --- | --- | --- |
-| Format | `npm run format --workspace apps/api` / `--workspace apps/web` | Verified 2026-10-22 (API) and 2026-10-24 (web; owner approved one-time Prettier rewrite of 34 design files, rendering verified by 3/3 E2E journeys) |
+| Format | `npm run format:check` (root, all workspaces); fix with `npm run format` | Verified 2026-10-27: exit 0 after Prettier ran over both workspaces; CI job `format` enforces it. Earlier: API 2026-10-22, web 2026-10-24 (owner approved one-time Prettier rewrite of 34 design files, rendering verified by 3/3 E2E journeys) |
 | Lint | `npm run lint` | Verified 2026-10-23: 0 errors, 0 warnings (oxlint for API, ESLint for web) |
 | Type check | `npm run typecheck` | Verified 2026-10-23: exit 0 (`tsc --noEmit` per workspace) |
 | Test (all) | `npm run test` | Verified 2026-10-24: API suite green (5 files, 27 tests) |
@@ -20,7 +20,7 @@ Operating contract for AI coding agents. Read this whole file, then load only th
 | Build | `npm run build` | Verified 2026-10-23: nest + next build green |
 | Run app | Not configured | `npm run dev:api` / `npm run dev:web` documented but not verified in a recorded run |
 | Docs checker | `python scripts/check_docs.py --draft` | Verified 2026-10-24: 0 errors, 0 warnings, 100/100 |
-| Dependency audit | `npm run audit:check` | Verified 2026-10-24: exit 0 against scripts/audit-baseline.json (13 known advisories); fails CI on a new advisory or severity increase |
+| Dependency audit | `npm run audit:check` | Verified 2026-10-27: exit 0 against scripts/audit-baseline.json (8 known advisories: 1 critical, 4 high, 1 moderate, 2 low); fails CI on a new advisory or severity increase |
 
 Never invent a command or claim a test passed without running it and observing the result. If a command is Not configured, the first eligible foundation task is to configure and verify it.
 

@@ -56,10 +56,7 @@ export class PermissionsGuard implements CanActivate {
 
     const codes = this.reflector.getAllAndOverride<
       PermissionCode[] | undefined
-    >(PERMISSION_DECORATOR_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    >(PERMISSION_DECORATOR_KEY, [context.getHandler(), context.getClass()]);
     if (!codes || codes.length === 0) {
       throw new ForbiddenException('Route declares no permission');
     }

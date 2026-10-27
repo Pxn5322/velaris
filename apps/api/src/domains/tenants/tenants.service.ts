@@ -10,9 +10,7 @@
  */
 
 import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
-import {
-  PRISMA_SERVICE,
-} from '../../infrastructure/prisma/prisma.service.js';
+import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 
 export interface TenantContextEntry {
@@ -32,9 +30,7 @@ const ACTIVE = 'ACTIVE';
 @Injectable()
 export class TenantsService {
   // Explicit token: resolves without emitDecoratorMetadata (see PRISMA_SERVICE).
-  constructor(
-    @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService,
-  ) {}
+  constructor(@Inject(PRISMA_SERVICE) private readonly prisma: PrismaService) {}
 
   /**
    * Resolve the tenant context for a verified identity (AC-F02-1).

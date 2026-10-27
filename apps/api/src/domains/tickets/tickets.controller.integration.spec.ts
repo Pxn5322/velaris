@@ -7,6 +7,9 @@
  * - 403 for an authenticated principal without the permission (AC-F02-3)
  * - 403 when tenant A credentials request tenant B data by guessed ID
  *   (AC-F04-3)
+ * - 403 when the submitted tenant identifier does not exist (AC-F03-2)
+ * - 400 when the submitted body tenant identifier contradicts the query
+ *   (AC-F03-2)
  * - 400 when no tenant scope is supplied (deny by default: no scope, no data)
  * - 200/201 when the resolved role holds the permission and the membership
  *   is in scope
@@ -22,7 +25,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthorizationService } from '../permissions/authorization.service.js';
 import type { CanonicalRole } from '../permissions/permission.codes.js';
 import { AuditService } from '../audit/audit.service.js';
-import { ROLE_RESOLVER, type RoleResolver } from '../permissions/role-resolver.js';
+import {
+  ROLE_RESOLVER,
+  type RoleResolver,
+} from '../permissions/role-resolver.js';
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
@@ -63,9 +69,14 @@ describe('Tickets routes (integration)', () => {
   beforeEach(async () => {
     vi.stubEnv('SUPABASE_URL', 'https://project.supabase.co');
     vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_test');
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () =>
-      jsonResponse(200, { sub: 'sub-123', email: 'user@example.test' }),
-    ));
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockImplementation(async () =>
+          jsonResponse(200, { sub: 'sub-123', email: 'user@example.test' }),
+        ),
+    );
 
     role = null;
     auditRecord = vi.fn().mockResolvedValue(undefined);
@@ -102,7 +113,9 @@ describe('Tickets routes (integration)', () => {
   });
 
   it('returns 401 without a credential', async () => {
-    const res = await request(app.getHttpServer()).get('/tickets?tenantId=tenant-a');
+    const res = await request(app.getHttpServer()).get(
+      '/tickets?tenantId=tenant-a',
+    );
 
     expect(res.status).toBe(401);
   });
@@ -144,6 +157,31 @@ describe('Tickets routes (integration)', () => {
       .set('Authorization', 'Bearer valid-token');
 
     expect(res.status).toBe(403);
+  });
+
+  it('rejects a submitted tenant identifier with no matching tenant (AC-F03-2)', async () => {
+    role = 'R-agent';
+
+    const res = await request(app.getHttpServer())
+      .get('/tickets?tenantId=tenant-does-not-exist')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects a body tenant identifier that contradicts the query (AC-F03-2)', async () => {
+    role = 'R-agent';
+
+    const res = await request(app.getHttpServer())
+      .post('/tickets?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        tenantId: 'tenant-b',
+        title: 'Help',
+        description: 'Broken',
+      });
+
+    expect(res.status).toBe(400);
   });
 
   it('denies ticket writes to a role without ticket.write (AC-F02-3)', async () => {

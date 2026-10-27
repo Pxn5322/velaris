@@ -97,7 +97,11 @@ describe('DatabaseRoleResolver', () => {
     expect(prisma.membershipRole.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          membership: { userId: 'user-1', tenantId: 'tenant-a', status: 'ACTIVE' },
+          membership: {
+            userId: 'user-1',
+            tenantId: 'tenant-a',
+            status: 'ACTIVE',
+          },
           role: { OR: [{ tenantId: null }, { tenantId: 'tenant-a' }] },
         },
       }),

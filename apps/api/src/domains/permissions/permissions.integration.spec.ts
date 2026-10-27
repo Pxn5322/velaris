@@ -139,9 +139,11 @@ describe('RBAC checks (integration)', () => {
     vi.stubEnv('SUPABASE_URL', 'https://project.supabase.co');
     vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_test');
     // A fresh Response per call: a shared body can only be read once.
-    fetchMock = vi.fn().mockImplementation(async () =>
-      jsonResponse(200, { sub: 'sub-123', email: 'user@example.test' }),
-    );
+    fetchMock = vi
+      .fn()
+      .mockImplementation(async () =>
+        jsonResponse(200, { sub: 'sub-123', email: 'user@example.test' }),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     role = null;
@@ -158,7 +160,10 @@ describe('RBAC checks (integration)', () => {
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
         PermissionsGuard,
-        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        {
+          provide: AuditService,
+          useValue: { record: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: ROLE_RESOLVER, useValue: resolver },
         {
           provide: TenantsService,

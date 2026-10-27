@@ -8,7 +8,10 @@ import { PRISMA_SERVICE, PrismaService } from './prisma.service.js';
  */
 @Global()
 @Module({
-  providers: [PrismaService, { provide: PRISMA_SERVICE, useExisting: PrismaService }],
+  providers: [
+    PrismaService,
+    { provide: PRISMA_SERVICE, useExisting: PrismaService },
+  ],
   exports: [PrismaService, PRISMA_SERVICE],
 })
 export class PrismaModule {}

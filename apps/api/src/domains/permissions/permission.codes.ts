@@ -25,8 +25,7 @@ export const PERMISSIONS = {
   ANALYTICS_READ: 'analytics.read',
 } as const;
 
-export type PermissionCode =
-  (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
+export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
 export const CANONICAL_ROLES = [
   'R-enterprise-admin',

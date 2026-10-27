@@ -26,9 +26,7 @@ import {
 import type { Request } from 'express';
 import { RequirePermission } from '../../common/security/require-permission.decorator.js';
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
-import type {
-  AuthenticatedIdentity,
-} from '../auth/auth.interface.js';
+import type { AuthenticatedIdentity } from '../auth/auth.interface.js';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { AuditService } from '../audit/audit.service.js';
 import { PERMISSIONS } from '../permissions/permission.codes.js';

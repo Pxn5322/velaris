@@ -16,8 +16,14 @@ export class AnalyticsService {
 @Controller('analytics')
 export class AnalyticsController {
   constructor(private readonly service: AnalyticsService) {}
-  @Get('overview') getOverview(@Query('tenantId') t?: string) { return this.service.getOverview(t); }
+  @Get('overview') getOverview(@Query('tenantId') t?: string) {
+    return this.service.getOverview(t);
+  }
 }
 
-@Module({ controllers: [AnalyticsController], providers: [AnalyticsService], exports: [AnalyticsService] })
+@Module({
+  controllers: [AnalyticsController],
+  providers: [AnalyticsService],
+  exports: [AnalyticsService],
+})
 export class AnalyticsModule {}
