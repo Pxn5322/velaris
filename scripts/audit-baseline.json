@@ -1,15 +1,10 @@
 {
-  "@nestjs/core": "high",
   "@nestjs/mau": "moderate",
   "@nestjs/platform-express": "high",
-  "@nestjs/testing": "high",
   "external-editor": "low",
   "inquirer": "low",
   "multer": "high",
   "next": "critical",
-  "postcss-nested": "moderate",
-  "postcss-selector-parser": "moderate",
-  "tailwindcss": "moderate",
   "tmp": "high",
   "undici": "high"
 }

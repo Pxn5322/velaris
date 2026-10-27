@@ -23,12 +23,15 @@ export class AiAgentService {
   }
 
   findAll(tenantId?: string): AiAgent[] {
-    return tenantId ? this.agents.filter((a) => a.tenantId === tenantId) : this.agents;
+    return tenantId
+      ? this.agents.filter((a) => a.tenantId === tenantId)
+      : this.agents;
   }
 
   findOne(id: string): AiAgent {
     const agent = this.agents.find((a) => a.id === id);
-    if (!agent) throw new NotFoundException('AI Agent with ID ' + id + ' not found');
+    if (!agent)
+      throw new NotFoundException('AI Agent with ID ' + id + ' not found');
     return agent;
   }
 }

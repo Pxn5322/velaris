@@ -21,7 +21,14 @@ import { TicketsModule } from './tickets.module.js';
 describe('TicketsModule graph', () => {
   it('resolves every dependency of the guarded controller chain', async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [PrismaModule, TenantsModule, PermissionsModule, AuditModule, AuthModule, TicketsModule],
+      imports: [
+        PrismaModule,
+        TenantsModule,
+        PermissionsModule,
+        AuditModule,
+        AuthModule,
+        TicketsModule,
+      ],
     }).compile();
 
     expect(moduleRef).toBeDefined();

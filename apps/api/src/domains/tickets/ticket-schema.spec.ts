@@ -22,7 +22,10 @@ import type { Ticket, Conversation } from '@prisma/client';
 // Resolve from this file, not the process CWD: vitest runs with cwd set to
 // apps/api, while the migration directory lives at the repository root.
 const MIGRATION_PATH = fileURLToPath(
-  new URL('../../../../../prisma/migrations/0003_support_schema/migration.sql', import.meta.url),
+  new URL(
+    '../../../../../prisma/migrations/0003_support_schema/migration.sql',
+    import.meta.url,
+  ),
 );
 
 describe('T2.01 support schema', () => {

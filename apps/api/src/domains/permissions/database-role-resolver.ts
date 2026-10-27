@@ -13,9 +13,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import {
-  PRISMA_SERVICE,
-} from '../../infrastructure/prisma/prisma.service.js';
+import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import type { CanonicalRole } from './permission.codes.js';
 import { highestPrivilegeRole } from './role-permissions.js';
@@ -23,9 +21,7 @@ import type { RoleLookup, RoleResolver } from './role-resolver.js';
 
 @Injectable()
 export class DatabaseRoleResolver implements RoleResolver {
-  constructor(
-    @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService,
-  ) {}
+  constructor(@Inject(PRISMA_SERVICE) private readonly prisma: PrismaService) {}
 
   async resolveRole(lookup: RoleLookup): Promise<CanonicalRole | null> {
     const { identity, tenantId } = lookup;

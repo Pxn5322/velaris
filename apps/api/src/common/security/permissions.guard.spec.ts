@@ -10,13 +10,15 @@
  * until role storage lands. Tests inject a resolver.
  */
 
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { describe, expect, it, vi } from 'vitest';
 import { PERMISSIONS } from '../../domains/permissions/permission.codes.js';
-import type {
-  RoleResolver,
-} from '../../domains/permissions/role-resolver.js';
+import type { RoleResolver } from '../../domains/permissions/role-resolver.js';
 import { AuthorizationService } from '../../domains/permissions/authorization.service.js';
 import type { AuditService } from '../../domains/audit/audit.service.js';
 import { RequirePermission } from './require-permission.decorator.js';
@@ -52,7 +54,6 @@ function makeGuard(resolver: RoleResolver): PermissionsGuard {
 }
 
 describe('PermissionsGuard', () => {
-
   it('allows a principal whose role holds the permission', async () => {
     class C {
       @RequirePermission(PERMISSIONS.TICKET_READ)

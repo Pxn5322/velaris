@@ -1,8 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module.js';
-import {
-  AuthorizationService,
-} from './authorization.service.js';
+import { AuthorizationService } from './authorization.service.js';
 import { DatabaseRoleResolver } from './database-role-resolver.js';
 import { ROLE_RESOLVER } from './role-resolver.js';
 

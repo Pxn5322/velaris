@@ -115,7 +115,9 @@ describe('TicketsService tenant isolation', () => {
   });
 
   it('update throws for an unknown ticket id', () => {
-    expect(() => service.update('missing', { title: 'x' }, tenantA.id)).toThrow();
+    expect(() =>
+      service.update('missing', { title: 'x' }, tenantA.id),
+    ).toThrow();
   });
 
   it('remove deletes a ticket in the correct tenant scope', () => {
@@ -137,8 +139,8 @@ describe('TicketsService tenant isolation', () => {
     const visible = customerVisibleMessages(tenantAFixture.messages);
     expect(visible).toHaveLength(1);
     expect(visible[0].visibility).toBe('customerVisible');
-    expect(
-      visible.some((m) => m.id === tenantAFixture.messages[1].id),
-    ).toBe(false);
+    expect(visible.some((m) => m.id === tenantAFixture.messages[1].id)).toBe(
+      false,
+    );
   });
 });

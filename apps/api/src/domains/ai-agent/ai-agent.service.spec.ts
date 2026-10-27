@@ -52,7 +52,11 @@ describe('AiAgentService', () => {
   });
 
   it('findOne returns a created agent by id', () => {
-    const created = service.create({ name: 'A Bot', systemPrompt: 'p', tenantId: tenantA.id });
+    const created = service.create({
+      name: 'A Bot',
+      systemPrompt: 'p',
+      tenantId: tenantA.id,
+    });
     expect(service.findOne(created.id).id).toBe(created.id);
   });
 

@@ -32,21 +32,29 @@ export class TicketsService {
   }
 
   findOne(id: string, tenantId?: string): Ticket {
-    const ticket = this.tickets.find((t) => t.id === id && (!tenantId || t.tenantId === tenantId));
+    const ticket = this.tickets.find(
+      (t) => t.id === id && (!tenantId || t.tenantId === tenantId),
+    );
     if (!ticket) {
       throw new NotFoundException('Ticket with ID ' + id + ' not found');
     }
     return ticket;
   }
 
-  update(id: string, updateTicketDto: UpdateTicketDto, tenantId?: string): Ticket {
+  update(
+    id: string,
+    updateTicketDto: UpdateTicketDto,
+    tenantId?: string,
+  ): Ticket {
     const ticket = this.findOne(id, tenantId);
     Object.assign(ticket, updateTicketDto, { updatedAt: new Date() });
     return ticket;
   }
 
   remove(id: string, tenantId?: string): { success: boolean } {
-    const index = this.tickets.findIndex((t) => t.id === id && (!tenantId || t.tenantId === tenantId));
+    const index = this.tickets.findIndex(
+      (t) => t.id === id && (!tenantId || t.tenantId === tenantId),
+    );
     if (index === -1) {
       throw new NotFoundException('Ticket with ID ' + id + ' not found');
     }

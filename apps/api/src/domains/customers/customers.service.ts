@@ -27,6 +27,8 @@ export class CustomersService {
   }
 
   findAll(tenantId?: string): Customer[] {
-    return tenantId ? this.customers.filter((c) => c.tenantId === tenantId) : this.customers;
+    return tenantId
+      ? this.customers.filter((c) => c.tenantId === tenantId)
+      : this.customers;
   }
 }
