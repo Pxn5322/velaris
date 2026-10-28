@@ -9,6 +9,7 @@ import {
   Layers,
   Bot,
   BarChart3,
+  Inbox,
   UserCheck,
   LifeBuoy,
   Sun,
@@ -64,6 +65,13 @@ export function NavigationHeader() {
       viewId: "agent",
       label: "Agent Workspace",
       icon: Layers,
+    },
+    {
+      roleMatch: ["AGENT", "ADMIN", "ENTERPRISE"],
+      href: "/inbox",
+      viewId: "inbox",
+      label: "Support Inbox",
+      icon: Inbox,
     },
     {
       roleMatch: ["USER"],

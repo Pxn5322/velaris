@@ -27,9 +27,14 @@ jobs:
 
       # The Playwright webServer block serves apps/web with `next start`, which
       # requires a production build. Build it here so the server has a real
-      # `.next` directory on a clean checkout.
+      # `.next` directory on a clean checkout. NEXT_PUBLIC stubs make the
+      # sign-in pages "configured" in CI; journeys intercept every Supabase
+      # and API request with page.route, so no real service is contacted.
       - name: Build apps/web for the production server
         run: npm run build:web
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://e2e-stub.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: e2e-stub-publishable-key
 
       # The webServer block in playwright.config.js serves the built apps/web;
       # pointing E2E_BASE_URL elsewhere skips that local server.

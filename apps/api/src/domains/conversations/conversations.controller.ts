@@ -22,6 +22,7 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -39,6 +40,7 @@ import { AuthorizationService } from '../permissions/authorization.service.js';
 import type { CanonicalRole } from '../permissions/permission.codes.js';
 import { PERMISSIONS } from '../permissions/permission.codes.js';
 import { TenantsService } from '../tenants/tenants.service.js';
+import { CustomerScopeService } from '../customers/customer-scope.service.js';
 import { CreateConversationDto } from './dto/create-conversation.dto.js';
 import { SendMessageDto } from './dto/send-message.dto.js';
 import { UpdateConversationDto } from './dto/update-conversation.dto.js';
@@ -58,6 +60,7 @@ export class ConversationsController {
     private readonly tenants: TenantsService,
     private readonly audit: AuditService,
     private readonly authorization: AuthorizationService,
+    private readonly scope: CustomerScopeService,
   ) {}
 
   @Post()
@@ -91,7 +94,15 @@ export class ConversationsController {
     @Req() request: AuthedRequest,
   ) {
     await this.requireTenantScope(request, tenantId);
-    return this.conversations.listConversations(tenantId);
+    // Per-customer scope (T2.04): an R-customer sees only their own rows.
+    const scope = await this.resolveScope(request, tenantId);
+    if (scope.kind === 'none') {
+      return [];
+    }
+    const rows = await this.conversations.listConversations(tenantId);
+    return scope.kind === 'customer'
+      ? rows.filter((row) => row.customerId === scope.customerId)
+      : rows;
   }
 
   @Get(':conversationId')
@@ -106,6 +117,18 @@ export class ConversationsController {
       conversationId,
       tenantId,
     );
+    // Per-customer scope (T2.04): a foreign conversation reads as 404,
+    // matching the tenant-scope miss, so existence never leaks.
+    const scope = await this.resolveScope(request, tenantId);
+    if (
+      scope.kind === 'none' ||
+      (scope.kind === 'customer' &&
+        conversation.customerId !== scope.customerId)
+    ) {
+      throw new NotFoundException(
+        'Conversation with ID ' + conversationId + ' not found',
+      );
+    }
     // TH-05: the role decides serialization, inside this response only.
     const includeInternal = this.authorization
       .permissionsFor(request.role)
@@ -152,6 +175,24 @@ export class ConversationsController {
     @Body() sendMessageDto: SendMessageDto,
   ) {
     await this.requireTenantScope(request, tenantId);
+
+    // Per-customer scope (T2.04, defense in depth): today the TICKET_WRITE
+    // guard already refuses R-customer here; the ownership check keeps a
+    // future reply-right role from posting into a foreign conversation.
+    const scope = await this.resolveScope(request, tenantId);
+    const conversation = await this.conversations.findOne(
+      conversationId,
+      tenantId,
+    );
+    if (
+      scope.kind === 'none' ||
+      (scope.kind === 'customer' &&
+        conversation.customerId !== scope.customerId)
+    ) {
+      throw new NotFoundException(
+        'Conversation with ID ' + conversationId + ' not found',
+      );
+    }
 
     const role = request.role ?? null;
     // TH-05 second boundary: an INTERNAL note needs note.internal.write.
@@ -205,5 +246,14 @@ export class ConversationsController {
       throw new ForbiddenException('No tenant context for this identity');
     }
     await this.tenants.requireTenantAccess(context.userId, tenantId);
+  }
+
+  /** Per-customer data scope from the guard-resolved role and identity. */
+  private resolveScope(request: AuthedRequest, tenantId: string) {
+    return this.scope.resolve(
+      tenantId,
+      request.role ?? null,
+      request.user?.email,
+    );
   }
 }

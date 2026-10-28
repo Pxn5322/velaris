@@ -40,6 +40,7 @@ import {
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from '../auth/supabase-token-verifier.service.js';
 import { TenantsService } from '../tenants/tenants.service.js';
+import { CustomerScopeService } from '../customers/customer-scope.service.js';
 import { TicketsController } from './tickets.controller.js';
 import { TicketsService } from './tickets.service.js';
 
@@ -115,6 +116,18 @@ function fakeTicketPrisma(tickets: FakeTicket[]) {
       delete: async () => ({}),
     },
     tenantMembership: { findUnique: async () => null },
+    customer: {
+      // The identity email maps to customer-1 inside tenant A (scope resolver).
+      findFirst: async ({
+        where,
+      }: {
+        where: { tenantId: string; email?: { equals: string } };
+      }) =>
+        where.tenantId === 'tenant-a' &&
+        where.email?.equals.toLowerCase() === 'user@example.test'
+          ? { id: 'customer-1' }
+          : null,
+    },
     _store: store,
   };
 }
@@ -174,6 +187,12 @@ describe('Tickets routes (integration)', () => {
         { provide: PRISMA_SERVICE, useValue: prismaFake },
         { provide: AuditService, useValue: { record: auditRecord } },
         { provide: ROLE_RESOLVER, useValue: resolver },
+        {
+          provide: CustomerScopeService,
+          useValue: new CustomerScopeService(
+            prismaFake as unknown as PrismaService,
+          ),
+        },
         {
           provide: TenantsService,
           useValue: new TenantsService({
@@ -312,6 +331,40 @@ describe('Tickets routes (integration)', () => {
     expect(res.status).toBe(403);
   });
 
+  it('R-customer list returns only tickets of their own customer row', async () => {
+    role = 'R-customer';
+    prismaFake._store.push(
+      seededTicket({ id: 'ticket-mine', customerId: 'customer-1' }),
+      seededTicket({ id: 'ticket-theirs', customerId: 'customer-2' }),
+    );
+
+    const res = await request(app.getHttpServer())
+      .get('/tickets?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0]).toMatchObject({ id: 'ticket-mine' });
+  });
+
+  it('R-customer reads their own ticket but gets 404 for another customer ticket', async () => {
+    role = 'R-customer';
+    prismaFake._store.push(
+      seededTicket({ id: 'ticket-mine', customerId: 'customer-1' }),
+      seededTicket({ id: 'ticket-theirs', customerId: 'customer-2' }),
+    );
+
+    const mine = await request(app.getHttpServer())
+      .get('/tickets/ticket-mine?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+    expect(mine.status).toBe(200);
+
+    const theirs = await request(app.getHttpServer())
+      .get('/tickets/ticket-theirs?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+    expect(theirs.status).toBe(404);
+  });
+
   it('applies a valid transition over HTTP and audits it (AC-F05-1)', async () => {
     role = 'R-agent';
     prismaFake._store.push(seededTicket({ id: 'ticket-live' }));
@@ -343,6 +396,18 @@ describe('Tickets routes (integration)', () => {
       .patch('/tickets/ticket-waiting?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token')
       .send({ status: 'OPEN' });
+
+    expect(res.status).toBe(409);
+  });
+
+  it('refuses a direct close over HTTP with 409 (migration-0003 invariant)', async () => {
+    role = 'R-agent';
+    prismaFake._store.push(seededTicket({ id: 'ticket-direct' }));
+
+    const res = await request(app.getHttpServer())
+      .patch('/tickets/ticket-direct?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ status: 'CLOSED' });
 
     expect(res.status).toBe(409);
   });

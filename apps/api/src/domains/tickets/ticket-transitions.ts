@@ -24,14 +24,20 @@ export const TICKET_STATUSES = [
 
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
-/** Legal successor statuses per status. CLOSED has none: it is terminal. */
+/**
+ * Legal successor statuses per status. CLOSED has no successors: it is
+ * terminal, and it is reachable only from RESOLVED. Migration 0003's
+ * CHECK tickets_closed_requires_timestamp demands both resolved_at and
+ * closed_at on a CLOSED row, so a close before resolution would violate
+ * the live invariant (Proposed D-16, found by the 2026-10-28 live check).
+ */
 export const ALLOWED_TRANSITIONS: Record<
   TicketStatus,
   readonly TicketStatus[]
 > = {
-  OPEN: ['IN_PROGRESS', 'PENDING_CUSTOMER', 'RESOLVED', 'CLOSED'],
-  IN_PROGRESS: ['OPEN', 'PENDING_CUSTOMER', 'RESOLVED', 'CLOSED'],
-  PENDING_CUSTOMER: ['IN_PROGRESS', 'RESOLVED', 'CLOSED'],
+  OPEN: ['IN_PROGRESS', 'PENDING_CUSTOMER', 'RESOLVED'],
+  IN_PROGRESS: ['OPEN', 'PENDING_CUSTOMER', 'RESOLVED'],
+  PENDING_CUSTOMER: ['IN_PROGRESS', 'RESOLVED'],
   RESOLVED: ['IN_PROGRESS', 'CLOSED'],
   CLOSED: [],
 };
@@ -79,7 +85,9 @@ export function lifecycleTimestamps(
   if (to === 'RESOLVED') {
     data.resolvedAt = new Date();
   }
-  if (to !== 'RESOLVED' && current.resolvedAt) {
+  // Reopening clears resolved_at; closing keeps it (migration 0003 CHECK
+  // tickets_closed_requires_timestamp requires both timestamps).
+  if (to !== 'RESOLVED' && to !== 'CLOSED' && current.resolvedAt) {
     data.resolvedAt = null;
   }
   if (to === 'CLOSED') {

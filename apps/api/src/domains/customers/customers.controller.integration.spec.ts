@@ -27,6 +27,7 @@ import {
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from '../auth/supabase-token-verifier.service.js';
 import { TenantsService } from '../tenants/tenants.service.js';
+import { CustomerScopeService } from './customer-scope.service.js';
 import { CustomersController } from './customers.controller.js';
 import { CustomersService } from './customers.service.js';
 
@@ -62,6 +63,28 @@ function fakePrisma(rows: Record<string, unknown>[]) {
         store.filter((c) => c.tenantId === where.tenantId),
       findUnique: async ({ where }: { where: { id: string } }) =>
         store.find((c) => c.id === where.id) ?? null,
+      findFirst: async ({
+        where,
+      }: {
+        where: {
+          tenantId: string;
+          email?: { equals: string };
+          deletedAt: null;
+        };
+      }) => {
+        if (!where.email) {
+          return null;
+        }
+        const needle = where.email.equals.toLowerCase();
+        return (
+          store.find(
+            (c) =>
+              c.tenantId === where.tenantId &&
+              c.deletedAt === null &&
+              String(c.email ?? '').toLowerCase() === needle,
+          ) ?? null
+        );
+      },
       create: async ({ data }: { data: Record<string, unknown> }) => {
         const row = {
           id: 'cust-http-' + ++counter,
@@ -105,7 +128,18 @@ describe('Customers routes (integration)', () => {
         tenantId: 'tenant-a',
         displayName: 'Alice',
         status: 'ACTIVE',
-        email: null,
+        email: 'user@example.test',
+        phone: null,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: 'cust-a2',
+        tenantId: 'tenant-a',
+        displayName: 'Alice2',
+        status: 'ACTIVE',
+        email: 'other@example.test',
         phone: null,
         deletedAt: null,
         createdAt: new Date(),
@@ -137,6 +171,12 @@ describe('Customers routes (integration)', () => {
         { provide: PRISMA_SERVICE, useValue: prismaFake },
         { provide: AuditService, useValue: { record: vi.fn() } },
         { provide: ROLE_RESOLVER, useValue: resolver },
+        {
+          provide: CustomerScopeService,
+          useValue: new CustomerScopeService(
+            prismaFake as unknown as PrismaService,
+          ),
+        },
         {
           provide: TenantsService,
           useValue: new TenantsService({
@@ -184,8 +224,46 @@ describe('Customers routes (integration)', () => {
       .get('/customers?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token');
     expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body.map((c: { id: string }) => c.id)).toEqual(
+      expect.arrayContaining(['cust-a', 'cust-a2']),
+    );
+  });
+
+  it('R-customer list returns only their own row', async () => {
+    role = 'R-customer';
+    const res = await request(app.getHttpServer())
+      .get('/customers?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+    expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0]).toMatchObject({ id: 'cust-a' });
+  });
+
+  it('R-customer is refused another customer row in the same tenant', async () => {
+    role = 'R-customer';
+    const res = await request(app.getHttpServer())
+      .get('/customers/cust-a2?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+    expect(res.status).toBe(403);
+  });
+
+  it('R-customer with no matching customer row sees nothing (deny by default)', async () => {
+    role = 'R-customer';
+    const store = prismaFake._store;
+    const row = store.find((c) => c.id === 'cust-a');
+    if (row) {
+      row.email = 'someone-else@example.test';
+    }
+    const list = await request(app.getHttpServer())
+      .get('/customers?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+    expect(list.status).toBe(200);
+    expect(list.body).toHaveLength(0);
+    const one = await request(app.getHttpServer())
+      .get('/customers/cust-a?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+    expect(one.status).toBe(403);
   });
 
   it('denies a guessed tenant-B scope (AC-F04-3)', async () => {

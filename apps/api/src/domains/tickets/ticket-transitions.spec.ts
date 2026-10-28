@@ -86,4 +86,28 @@ describe('ticket transition rules', () => {
     const exits = ALLOWED_TRANSITIONS['CLOSED'] as readonly TicketStatus[];
     expect(exits).toHaveLength(0);
   });
+
+  it('keeps resolvedAt when a resolved ticket closes', () => {
+    // Migration 0003 CHECK tickets_closed_requires_timestamp demands BOTH
+    // timestamps on a CLOSED row, so closing must not clear resolvedAt.
+    const resolvedAt = new Date();
+    const data = lifecycleTimestamps('RESOLVED', 'CLOSED', {
+      resolvedAt,
+      closedAt: null,
+    });
+    expect(data.resolvedAt).toBeUndefined();
+    expect(data.closedAt).toBeInstanceOf(Date);
+  });
+
+  it('refuses a direct close without resolving first (migration-0003 invariant)', () => {
+    // The live CHECK constraint requires resolved_at on a CLOSED ticket:
+    // a close from any pre-resolve status would violate it (found by the
+    // 2026-10-28 live check, which saw 500 instead of a clean refusal).
+    expect(canTransition('OPEN', 'CLOSED')).toBe(false);
+    expect(canTransition('IN_PROGRESS', 'CLOSED')).toBe(false);
+    expect(canTransition('PENDING_CUSTOMER', 'CLOSED')).toBe(false);
+    expect(() => assertTransition('IN_PROGRESS', 'CLOSED')).toThrow(
+      ConflictException,
+    );
+  });
 });

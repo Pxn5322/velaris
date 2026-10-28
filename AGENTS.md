@@ -16,7 +16,7 @@ Operating contract for AI coding agents. Read this whole file, then load only th
 | Lint | `npm run lint` | Verified 2026-10-23: 0 errors, 0 warnings (oxlint for API, ESLint for web) |
 | Type check | `npm run typecheck` | Verified 2026-10-23: exit 0 (`tsc --noEmit` per workspace) |
 | Test (all) | `npm run test` | Verified 2026-10-24: API suite green (5 files, 27 tests) |
-| End-to-end | `npm run e2e:web` | Verified 2026-10-24: 3/3 AC-F01-1 journeys green against the production build of `apps/web` (workflow .github/workflows/e2e.yml) |
+| End-to-end | `npm run e2e:web` | Verified 2026-10-29: 16/16 journeys green against the production build of `apps/web` (landing AC-F01-1, agent inbox AC-F06/J-04, customer portal J-03; workflow .github/workflows/e2e.yml) |
 | Build | `npm run build` | Verified 2026-10-23: nest + next build green |
 | Run app | Not configured | `npm run dev:api` / `npm run dev:web` documented but not verified in a recorded run |
 | Docs checker | `python scripts/check_docs.py --draft` | Verified 2026-10-24: 0 errors, 0 warnings, 100/100 |
