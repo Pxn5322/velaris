@@ -52,7 +52,9 @@ export class DatabaseRoleResolver implements RoleResolver {
         membership: tenantId
           ? { userId: user.id, tenantId, status: 'ACTIVE' }
           : { userId: user.id, status: 'ACTIVE' },
-        ...(tenantId ? { role: { OR: [{ tenantId: null }, { tenantId }] } } : {}),
+        ...(tenantId
+          ? { role: { OR: [{ tenantId: null }, { tenantId }] } }
+          : {}),
       },
       select: { role: { select: { code: true } } },
     });
