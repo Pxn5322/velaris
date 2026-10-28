@@ -64,6 +64,7 @@ Names below are proposed categories for the initial implementation. Add or remov
 | `SUPABASE_URL` | NestJS API/worker | no, project URL | server environment config |
 | `SUPABASE_PUBLISHABLE_KEY` | NestJS API token verifier (apikey header on `GET /auth/v1/user`) | no, public project key | server environment config |
 | `SUPABASE_JWT_ISSUER` | NestJS token verifier, if configured separately | no | server environment config |
+| `CORS_ORIGIN` | NestJS HTTP CORS allowlist (`src/app.setup.ts`); comma-separated origins | no, defaults to `http://localhost:3000,http://localhost:3001` | server environment config; set the real web origin in every deployment |
 | `SUPABASE_SERVICE_ROLE_KEY` | server-only administrative operations, only where justified | yes | server secret store; never browser-exposed |
 | `LLM_PROVIDER` | API/worker | no | environment config |
 | `LLM_API_KEY` | AI adapter | yes | secret store |
