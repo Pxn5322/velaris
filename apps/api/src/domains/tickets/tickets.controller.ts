@@ -16,6 +16,7 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -29,14 +30,19 @@ import { PermissionsGuard } from '../../common/security/permissions.guard.js';
 import type { AuthenticatedIdentity } from '../auth/auth.interface.js';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { AuditService } from '../audit/audit.service.js';
+import { CustomerScopeService } from '../customers/customer-scope.service.js';
 import { PERMISSIONS } from '../permissions/permission.codes.js';
+import type { CanonicalRole } from '../permissions/permission.codes.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import { TicketsService } from './tickets.service.js';
 import { CreateTicketDto } from './dto/create-ticket.dto.js';
 import { UpdateTicketDto } from './dto/update-ticket.dto.js';
 
-/** Express request carrying the identity SupabaseAuthGuard attached. */
-type AuthedRequest = Request & { user?: AuthenticatedIdentity };
+/** Express request carrying the identity and the guard-resolved role. */
+type AuthedRequest = Request & {
+  user?: AuthenticatedIdentity;
+  role?: CanonicalRole | null;
+};
 
 @Controller('tickets')
 @UseGuards(SupabaseAuthGuard, PermissionsGuard)
@@ -45,6 +51,7 @@ export class TicketsController {
     private readonly ticketsService: TicketsService,
     private readonly tenants: TenantsService,
     private readonly audit: AuditService,
+    private readonly scope: CustomerScopeService,
   ) {}
 
   @Post()
@@ -83,7 +90,15 @@ export class TicketsController {
     @Req() request: AuthedRequest,
   ) {
     await this.requireTenantScope(request, tenantId);
-    return this.ticketsService.findAll(tenantId);
+    // Per-customer scope (T2.04): an R-customer sees only their own tickets.
+    const scope = await this.resolveScope(request, tenantId);
+    if (scope.kind === 'none') {
+      return [];
+    }
+    const rows = await this.ticketsService.findAll(tenantId);
+    return scope.kind === 'customer'
+      ? rows.filter((row) => row.customerId === scope.customerId)
+      : rows;
   }
 
   @Get(':id')
@@ -94,7 +109,16 @@ export class TicketsController {
     @Req() request: AuthedRequest,
   ) {
     await this.requireTenantScope(request, tenantId);
-    return this.ticketsService.findOne(id, tenantId);
+    // Scope first: a foreign ticket must not be looked up (T2.04).
+    const scope = await this.resolveScope(request, tenantId);
+    if (scope.kind === 'none') {
+      throw new NotFoundException('Ticket with ID ' + id + ' not found');
+    }
+    const ticket = await this.ticketsService.findOne(id, tenantId);
+    if (scope.kind === 'customer' && ticket.customerId !== scope.customerId) {
+      throw new NotFoundException('Ticket with ID ' + id + ' not found');
+    }
+    return ticket;
   }
 
   @Patch(':id')
@@ -163,5 +187,14 @@ export class TicketsController {
       throw new ForbiddenException('No tenant context for this identity');
     }
     await this.tenants.requireTenantAccess(context.userId, tenantId);
+  }
+
+  /** Per-customer data scope from the guard-resolved role and identity. */
+  private resolveScope(request: AuthedRequest, tenantId: string) {
+    return this.scope.resolve(
+      tenantId,
+      request.role ?? null,
+      request.user?.email,
+    );
   }
 }

@@ -21,15 +21,20 @@ import { ROLE_PERMISSIONS } from '../permissions/role-permissions.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import type { AuditService } from '../audit/audit.service.js';
 import type { TenantsService } from '../tenants/tenants.service.js';
+import { CustomerScopeService } from '../customers/customer-scope.service.js';
 import { ConversationsController } from './conversations.controller.js';
 import { ConversationsService } from './conversations.service.js';
 
 function buildController(authorization: AuthorizationService) {
   const prisma = {
+    customer: {
+      findFirst: vi.fn(async () => ({ id: 'customer-1' })),
+    },
     conversation: {
       findUnique: vi.fn(async () => ({
         id: 'conv-1',
         tenantId: 'tenant-a',
+        customerId: 'customer-1',
         status: 'OPEN',
         version: 0,
       })),
@@ -70,6 +75,7 @@ function buildController(authorization: AuthorizationService) {
       tenants,
       audit,
       authorization,
+      new CustomerScopeService(prisma as unknown as PrismaService),
     ),
     service,
     audit,
@@ -78,7 +84,11 @@ function buildController(authorization: AuthorizationService) {
 
 function requestWith(role: CanonicalRole | null) {
   return {
-    user: { provider: 'supabase', subject: 'sub-123' },
+    user: {
+      provider: 'supabase',
+      subject: 'sub-123',
+      email: 'user@example.test',
+    },
     role,
     query: { tenantId: 'tenant-a' },
   } as never;

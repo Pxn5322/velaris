@@ -26,12 +26,17 @@ import { PermissionsGuard } from '../../common/security/permissions.guard.js';
 import type { AuthenticatedIdentity } from '../auth/auth.interface.js';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { PERMISSIONS } from '../permissions/permission.codes.js';
+import type { CanonicalRole } from '../permissions/permission.codes.js';
 import { TenantsService } from '../tenants/tenants.service.js';
+import { CustomerScopeService } from './customer-scope.service.js';
 import { CustomersService } from './customers.service.js';
 import { CreateCustomerDto } from './dto/create-customer.dto.js';
 
-/** Express request carrying the identity SupabaseAuthGuard attached. */
-type AuthedRequest = Request & { user?: AuthenticatedIdentity };
+/** Express request carrying the identity and the guard-resolved role. */
+type AuthedRequest = Request & {
+  user?: AuthenticatedIdentity;
+  role?: CanonicalRole | null;
+};
 
 @Controller('customers')
 @UseGuards(SupabaseAuthGuard, PermissionsGuard)
@@ -39,6 +44,7 @@ export class CustomersController {
   constructor(
     private readonly customersService: CustomersService,
     private readonly tenants: TenantsService,
+    private readonly scope: CustomerScopeService,
   ) {}
 
   @Post()
@@ -62,7 +68,15 @@ export class CustomersController {
     @Req() request: AuthedRequest,
   ) {
     await this.requireTenantScope(request, tenantId);
-    return this.customersService.findAll(tenantId);
+    // Per-customer scope (T2.04): an R-customer sees only their own row.
+    const scope = await this.resolveScope(request, tenantId);
+    if (scope.kind === 'none') {
+      return [];
+    }
+    const rows = await this.customersService.findAll(tenantId);
+    return scope.kind === 'customer'
+      ? rows.filter((row) => row.id === scope.customerId)
+      : rows;
   }
 
   @Get(':customerId')
@@ -73,11 +87,28 @@ export class CustomersController {
     @Req() request: AuthedRequest,
   ) {
     await this.requireTenantScope(request, tenantId);
+    // Scope first: a foreign row must not even be looked up (T2.04).
+    const scope = await this.resolveScope(request, tenantId);
+    if (scope.kind === 'none') {
+      throw new ForbiddenException('Customer is outside your scope');
+    }
+    if (scope.kind === 'customer' && scope.customerId !== customerId) {
+      throw new ForbiddenException('Customer is outside your scope');
+    }
     const customer = await this.customersService.findOne(customerId);
     if (customer.tenantId !== tenantId) {
       throw new ForbiddenException('Customer belongs to another tenant');
     }
     return customer;
+  }
+
+  /** Per-customer data scope from the guard-resolved role and identity. */
+  private resolveScope(request: AuthedRequest, tenantId: string) {
+    return this.scope.resolve(
+      tenantId,
+      request.role ?? null,
+      request.user?.email,
+    );
   }
 
   /**

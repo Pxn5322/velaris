@@ -30,6 +30,7 @@ import {
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from '../auth/supabase-token-verifier.service.js';
 import { TenantsService } from '../tenants/tenants.service.js';
+import { CustomerScopeService } from '../customers/customer-scope.service.js';
 import { ConversationsController } from './conversations.controller.js';
 import { ConversationsService } from './conversations.service.js';
 
@@ -59,6 +60,34 @@ function jsonResponse(status: number, body: unknown): Response {
 
 type FakeRow = Record<string, unknown>;
 
+/**
+ * Customer rows for the per-customer scope resolver. Mutable so a test can
+ * remove the caller's row and prove deny-by-default.
+ */
+let customerRows: {
+  id: string;
+  tenantId: string;
+  email: string;
+  deletedAt: Date | null;
+}[] = [];
+
+function seedCustomerRows() {
+  customerRows = [
+    {
+      id: 'customer-1',
+      tenantId: 'tenant-a',
+      email: 'user@example.test',
+      deletedAt: null,
+    },
+    {
+      id: 'customer-2',
+      tenantId: 'tenant-a',
+      email: 'other@example.test',
+      deletedAt: null,
+    },
+  ];
+}
+
 function fakePrisma(conversations: FakeRow[], messages: FakeRow[]) {
   const convStore = [...conversations];
   const msgStore = [...messages];
@@ -70,6 +99,28 @@ function fakePrisma(conversations: FakeRow[], messages: FakeRow[]) {
         where.id === 'customer-1'
           ? { id: 'customer-1', tenantId: 'tenant-a' }
           : null,
+      findFirst: async ({
+        where,
+      }: {
+        where: {
+          tenantId: string;
+          email?: { equals: string };
+          deletedAt: null;
+        };
+      }) => {
+        if (!where.email) {
+          return null;
+        }
+        const needle = where.email.equals.toLowerCase();
+        return (
+          customerRows.find(
+            (c) =>
+              c.tenantId === where.tenantId &&
+              c.deletedAt === null &&
+              c.email.toLowerCase() === needle,
+          ) ?? null
+        );
+      },
     },
     conversation: {
       findUnique: async ({ where }: { where: { id: string } }) =>
@@ -172,11 +223,13 @@ describe('Conversations routes (integration)', () => {
         ),
     );
 
+    seedCustomerRows();
     role = null;
     auditRecord = vi.fn().mockResolvedValue(undefined);
     prismaFake = fakePrisma(
       [
         conversationRow('conv-live'),
+        conversationRow('conv-cust2', { customerId: 'customer-2' }),
         conversationRow('conv-other', { tenantId: 'tenant-b' }),
       ],
       [
@@ -220,6 +273,12 @@ describe('Conversations routes (integration)', () => {
         { provide: PRISMA_SERVICE, useValue: prismaFake },
         { provide: AuditService, useValue: { record: auditRecord } },
         { provide: ROLE_RESOLVER, useValue: resolver },
+        {
+          provide: CustomerScopeService,
+          useValue: new CustomerScopeService(
+            prismaFake as unknown as PrismaService,
+          ),
+        },
         {
           provide: TenantsService,
           useValue: new TenantsService({
@@ -267,8 +326,45 @@ describe('Conversations routes (integration)', () => {
       .get('/conversations?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token');
     expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body.map((c: { id: string }) => c.id)).toEqual(
+      expect.arrayContaining(['conv-live', 'conv-cust2']),
+    );
+  });
+
+  it('R-customer list returns only their own customer conversations', async () => {
+    role = 'R-customer';
+    const res = await request(app.getHttpServer())
+      .get('/conversations?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+    expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
-    expect(res.body[0]).toMatchObject({ id: 'conv-live' });
+    expect(res.body[0]).toMatchObject({
+      id: 'conv-live',
+      customerId: 'customer-1',
+    });
+  });
+
+  it('R-customer reads 404 for another customer conversation in the same tenant', async () => {
+    role = 'R-customer';
+    const res = await request(app.getHttpServer())
+      .get('/conversations/conv-cust2?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+    expect(res.status).toBe(404);
+  });
+
+  it('R-customer with no matching customer row is denied everything (deny by default)', async () => {
+    role = 'R-customer';
+    customerRows = [];
+    const list = await request(app.getHttpServer())
+      .get('/conversations?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+    expect(list.status).toBe(200);
+    expect(list.body).toHaveLength(0);
+    const one = await request(app.getHttpServer())
+      .get('/conversations/conv-live?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+    expect(one.status).toBe(404);
   });
 
   it('denies a guessed tenant-B conversation (AC-F04-3)', async () => {
