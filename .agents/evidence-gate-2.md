@@ -62,8 +62,12 @@ below ran EXECUTED against the real Supabase project.
    task; document the operational step for tenant admins.
 4. CI journeys mock every API/Supabase call with page.route and NEXT_PUBLIC
    stubs in .github/workflows/e2e.yml; the live checks in this package are
-   the real-endpoint evidence. A scheduled live-check job against a
-   staging environment is still Not configured (Phase 6).
+   the real-endpoint evidence. UPDATE 2026-10-29: the browser half is now
+   verified too - a real Chromium tab signed in through GoTrue and read the
+   conversation timeline from the live API (run log, T2.04 live
+   follow-up). That check found and fixed a missing CORS allowlist, now
+   covered by `app.e2e-spec.ts`. A scheduled live-check job against a
+   staging environment remains Not configured (Phase 6).
 5. The inbox loads the first tenant of the session context (multi-tenant
    switching UI does not exist yet).
 6. docs/PRD.md decision table carries D-16; the product owner confirmed
