@@ -26,7 +26,10 @@ import { Reflector } from '@nestjs/core';
 import type { AuthenticatedIdentity } from '../../domains/auth/auth.interface.js';
 import { AuditService } from '../../domains/audit/audit.service.js';
 import { AuthorizationService } from '../../domains/permissions/authorization.service.js';
-import type { PermissionCode } from '../../domains/permissions/permission.codes.js';
+import type {
+  CanonicalRole,
+  PermissionCode,
+} from '../../domains/permissions/permission.codes.js';
 import {
   ROLE_RESOLVER,
   type RoleResolver,
@@ -37,6 +40,8 @@ type GuardedRequest = {
   user?: AuthenticatedIdentity;
   query?: Record<string, unknown>;
   params?: Record<string, unknown>;
+  /** Set after a successful check so serializers can read the role (TH-05). */
+  role?: CanonicalRole | null;
 };
 
 @Injectable()
@@ -90,6 +95,9 @@ export class PermissionsGuard implements CanActivate {
       }
       throw error;
     }
+    // Attach the server-resolved role: serializers use it to decide what
+    // may appear in a response body (example: internal notes, TH-05).
+    request.role = role;
     return true;
   }
 
