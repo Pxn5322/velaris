@@ -134,12 +134,12 @@ Other root scripts: `npm run build`, `npm run lint`, `npm run typecheck`, `npm r
 ### Code Style
 - Use semantic HTML elements
 - Include ARIA labels for accessibility
-- Prefer ddEventListener over inline onclick
-- Use const/let instead of ar
+- Prefer addEventListener over inline onclick
+- Use const/let instead of var
 - Include JSDoc comments for functions
 
 ### Git Conventions
-- Branch naming: eature/description, ix/description, docs/description
+- Branch naming: feature/description, fix/description, docs/description
 - Commit messages: Follow conventional commits
 - PR descriptions: Include summary, testing notes, and screenshots
 
