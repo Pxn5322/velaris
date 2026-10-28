@@ -1,6 +1,8 @@
 # GATE-2 evidence package (Phase 2 — core support vertical slice)
 
-Status: DRAFT for owner review. Prepared 2026-10-28, finalized 2026-10-29.
+Status: APPROVED by the owner 2026-10-29 (gate line ticked in
+docs/IMPLEMENTATION_PLAN.md; D-16 confirmed the same day). Prepared
+2026-10-28, finalized 2026-10-29.
 Gate line (docs/IMPLEMENTATION_PLAN.md): "J-03 and J-04 critical support flow
 passes E2E; state transitions and message visibility verified."
 
@@ -49,8 +51,8 @@ below ran EXECUTED against the real Supabase project.
 
 ## 4. Residual risks and follow-ups (owner decisions wanted)
 
-1. R-D16 owner confirmation: the decision-log row in docs/PRD.md section 11
-   was added by the agent and needs owner sign-off (revert or approve).
+1. R-D16 owner confirmation: RESOLVED 2026-10-29 — the owner confirmed
+   the D-16 decision-log row (docs/PRD.md section 11).
 2. R-customer cannot POST replies: role-permissions grants R-customer only
    ticket.read. F-05 says customers communicate; a reply path needs a
    write-limited customer permission decision (owner + security review).
@@ -64,9 +66,8 @@ below ran EXECUTED against the real Supabase project.
    staging environment is still Not configured (Phase 6).
 5. The inbox loads the first tenant of the session context (multi-tenant
    switching UI does not exist yet).
-6. docs/PRD.md decision table now carries D-16 added by the agent; AGENTS
-   section 6 allows doc sync in the same change, but the product owner
-   should confirm the row wording.
+6. docs/PRD.md decision table carries D-16; the product owner confirmed
+   the row 2026-10-29 (see residual risk 1).
 
 ## 5. Confidence score (AGENTS.md section 4 matrix)
 
