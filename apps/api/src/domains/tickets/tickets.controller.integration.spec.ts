@@ -1,5 +1,5 @@
 /**
- * Guarded ticket routes (T1.03 route wiring, AC-F02-3/AC-F04-3).
+ * Guarded ticket routes (T1.03 route wiring, AC-F02-3/AC-F04-3, T2.02).
  *
  * Runs the real guard chain on the real controller:
  * SupabaseAuthGuard -> PermissionsGuard -> tenant scope check. Covers:
@@ -11,10 +11,13 @@
  * - 400 when the submitted body tenant identifier contradicts the query
  *   (AC-F03-2)
  * - 400 when no tenant scope is supplied (deny by default: no scope, no data)
+ * - 409 when a PATCH makes an invalid status transition (AC-F05-2)
+ * - 409 when a PATCH carries a stale expectedVersion (AC-F05-2)
  * - 200/201 when the resolved role holds the permission and the membership
  *   is in scope
  *
- * Synthetic tenant A/B data only; fetch is stubbed, no network.
+ * Synthetic tenant A/B data only; the Prisma layer is an in-memory fake,
+ * no network and no database.
  */
 
 import { INestApplication } from '@nestjs/common';
@@ -30,7 +33,10 @@ import {
   type RoleResolver,
 } from '../permissions/role-resolver.js';
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
-import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
+import {
+  PRISMA_SERVICE,
+  type PrismaService,
+} from '../../infrastructure/prisma/prisma.service.js';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from '../auth/supabase-token-verifier.service.js';
 import { TenantsService } from '../tenants/tenants.service.js';
@@ -61,10 +67,83 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+/** One in-memory tickets table shared by the fake Prisma client. */
+type FakeTicket = Record<string, unknown>;
+
+function fakeTicketPrisma(tickets: FakeTicket[]) {
+  const store = [...tickets];
+  let counter = 0;
+  return {
+    ticket: {
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        store.find((r) => r.id === where.id) ?? null,
+      findMany: async ({ where }: { where: { tenantId: string } }) =>
+        store.filter((r) => r.tenantId === where.tenantId),
+      create: async ({ data }: { data: FakeTicket }) => {
+        const row: FakeTicket = {
+          id: 'ticket-http-' + ++counter,
+          status: 'OPEN',
+          assigneeMembershipId: null,
+          slaState: 'NOT_SET',
+          tags: [],
+          version: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          resolvedAt: null,
+          closedAt: null,
+          ...data,
+        };
+        store.push(row);
+        return row;
+      },
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { id: string; tenantId: string; version: number };
+        data: FakeTicket;
+      }) => {
+        const hits = store.filter(
+          (r) =>
+            r.id === where.id &&
+            r.tenantId === where.tenantId &&
+            r.version === where.version,
+        );
+        hits.forEach((hit) => Object.assign(hit, data));
+        return { count: hits.length };
+      },
+      delete: async () => ({}),
+    },
+    tenantMembership: { findUnique: async () => null },
+    _store: store,
+  };
+}
+
+function seededTicket(overrides: FakeTicket = {}): FakeTicket {
+  return {
+    id: 'ticket-seeded',
+    tenantId: 'tenant-a',
+    customerId: 'customer-1',
+    title: 'Seeded',
+    status: 'OPEN',
+    priority: 'MEDIUM',
+    slaState: 'NOT_SET',
+    assigneeMembershipId: null,
+    tags: [],
+    version: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    resolvedAt: null,
+    closedAt: null,
+    ...overrides,
+  };
+}
+
 describe('Tickets routes (integration)', () => {
   let app: INestApplication<App>;
   let role: CanonicalRole | null;
   let auditRecord: ReturnType<typeof vi.fn>;
+  let prismaFake: ReturnType<typeof fakeTicketPrisma>;
 
   beforeEach(async () => {
     vi.stubEnv('SUPABASE_URL', 'https://project.supabase.co');
@@ -80,6 +159,7 @@ describe('Tickets routes (integration)', () => {
 
     role = null;
     auditRecord = vi.fn().mockResolvedValue(undefined);
+    prismaFake = fakeTicketPrisma([]);
     const findUnique = vi.fn().mockResolvedValue(USER_ROW);
     const resolver: RoleResolver = { resolveRole: async () => role };
 
@@ -91,6 +171,7 @@ describe('Tickets routes (integration)', () => {
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
         PermissionsGuard,
+        { provide: PRISMA_SERVICE, useValue: prismaFake },
         { provide: AuditService, useValue: { record: auditRecord } },
         { provide: ROLE_RESOLVER, useValue: resolver },
         {
@@ -178,7 +259,7 @@ describe('Tickets routes (integration)', () => {
       .send({
         tenantId: 'tenant-b',
         title: 'Help',
-        description: 'Broken',
+        customerId: 'customer-1',
       });
 
     expect(res.status).toBe(400);
@@ -190,7 +271,7 @@ describe('Tickets routes (integration)', () => {
     const res = await request(app.getHttpServer())
       .post('/tickets?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token')
-      .send({ tenantId: 'tenant-a', title: 'Help', description: 'Broken' });
+      .send({ tenantId: 'tenant-a', title: 'Help', customerId: 'customer-1' });
 
     expect(res.status).toBe(403);
   });
@@ -201,10 +282,14 @@ describe('Tickets routes (integration)', () => {
     const res = await request(app.getHttpServer())
       .post('/tickets?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token')
-      .send({ tenantId: 'tenant-a', title: 'Help', description: 'Broken' });
+      .send({ tenantId: 'tenant-a', title: 'Help', customerId: 'customer-1' });
 
     expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ tenantId: 'tenant-a', status: 'OPEN' });
+    expect(res.body).toMatchObject({
+      tenantId: 'tenant-a',
+      status: 'OPEN',
+      version: 0,
+    });
     // T1.04: the sensitive mutation is audited with its scope and actor.
     expect(auditRecord).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -225,5 +310,67 @@ describe('Tickets routes (integration)', () => {
       .set('Authorization', 'Bearer valid-token');
 
     expect(res.status).toBe(403);
+  });
+
+  it('applies a valid transition over HTTP and audits it (AC-F05-1)', async () => {
+    role = 'R-agent';
+    prismaFake._store.push(seededTicket({ id: 'ticket-live' }));
+
+    const res = await request(app.getHttpServer())
+      .patch('/tickets/ticket-live?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ status: 'IN_PROGRESS', expectedVersion: 0 });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: 'IN_PROGRESS', version: 1 });
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'ticket.updated',
+        resourceId: 'ticket-live',
+        tenantId: 'tenant-a',
+        actorId: 'sub-123',
+      }),
+    );
+  });
+
+  it('rejects an invalid transition over HTTP with 409 (AC-F05-2)', async () => {
+    role = 'R-agent';
+    prismaFake._store.push(
+      seededTicket({ id: 'ticket-waiting', status: 'PENDING_CUSTOMER' }),
+    );
+
+    const res = await request(app.getHttpServer())
+      .patch('/tickets/ticket-waiting?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ status: 'OPEN' });
+
+    expect(res.status).toBe(409);
+  });
+
+  it('rejects a stale expectedVersion over HTTP with 409 (AC-F05-2)', async () => {
+    role = 'R-agent';
+    prismaFake._store.push(seededTicket({ id: 'ticket-edited', version: 2 }));
+
+    const res = await request(app.getHttpServer())
+      .patch('/tickets/ticket-edited?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ priority: 'URGENT', expectedVersion: 1 });
+
+    expect(res.status).toBe(409);
+  });
+
+  it('does not audit a refused update (AC-F05-2 side effects)', async () => {
+    role = 'R-agent';
+    prismaFake._store.push(seededTicket({ id: 'ticket-refused' }));
+
+    const res = await request(app.getHttpServer())
+      .patch('/tickets/ticket-refused?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ status: 'CLOSED', expectedVersion: 99 });
+
+    expect(res.status).toBe(409);
+    expect(auditRecord).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'ticket.updated' }),
+    );
   });
 });
