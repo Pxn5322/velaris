@@ -170,7 +170,7 @@ Each criterion is observable and intended to map to a test. UI features need loa
 | D-13 | First required integrations? | Webhooks and generic REST first; prioritize channel/CRM based on target market | Integration phase |
 | D-14 | Usage-metering model? | Record model/provider usage and cost metadata where available, without committing pricing | Analytics/billing readiness |
 | D-15 | Compliance targets? | No compliance claim until target and evidence are approved | Enterprise launch |
-| D-16 | May a ticket close without being resolved first? | No: CLOSED is reachable only from RESOLVED, so every closed row carries both resolved_at and closed_at (migration 0003 CHECK); Proposed 2026-10-28, needs owner confirmation | Ticket lifecycle |
+| D-16 | May a ticket close without being resolved first? | No: CLOSED is reachable only from RESOLVED, so every closed row carries both resolved_at and closed_at (migration 0003 CHECK); Confirmed by owner 2026-10-29 (proposed 2026-10-28) | Ticket lifecycle |
 
 ## 12. Definition of ready
 - [ ] Scope, journeys, roles, and acceptance criteria approved.
