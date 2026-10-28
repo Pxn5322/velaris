@@ -61,7 +61,7 @@ export class TicketsController {
       );
     }
     // The query parameter is the tenant scope; it wins over any body value.
-    const created = this.ticketsService.create(
+    const created = await this.ticketsService.create(
       Object.assign(createTicketDto, { tenantId }),
     );
     // T1.04: a successful mutation of a core record is security-sensitive.
@@ -106,7 +106,11 @@ export class TicketsController {
     @Body() updateTicketDto: UpdateTicketDto,
   ) {
     await this.requireTenantScope(request, tenantId);
-    const updated = this.ticketsService.update(id, updateTicketDto, tenantId);
+    const updated = await this.ticketsService.update(
+      id,
+      updateTicketDto,
+      tenantId,
+    );
     await this.audit.record({
       action: 'ticket.updated',
       resourceType: 'ticket',
@@ -126,7 +130,7 @@ export class TicketsController {
     @Req() request: AuthedRequest,
   ) {
     await this.requireTenantScope(request, tenantId);
-    const result = this.ticketsService.remove(id, tenantId);
+    const result = await this.ticketsService.remove(id, tenantId);
     await this.audit.record({
       action: 'ticket.deleted',
       resourceType: 'ticket',
