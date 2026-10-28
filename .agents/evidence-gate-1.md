@@ -12,7 +12,7 @@
 | # | Finding | Fix |
 | --- | --- | --- |
 | 1 | `format` failed in both workspaces (the 20-point rubric row names format), and no CI job enforced it | Prettier ran over `apps/api` and `apps/web`. 25 API files had content drift; the 33 web files differed only by line endings. `format:check` scripts added to `apps/api` and to the root, plus a `format` job in `.github/workflows/ci.yml` and a Format row in TESTING.md section 2. A second failure appeared after the merge: `core.autocrlf=true` rewrote the merged files to CRLF, and Prettier's default `endOfLine` is `lf`, so correct code was flagged on line endings alone. `endOfLine: auto` is now set in both Prettier configs; the check was re-run after a fresh checkout and merge and exits 0 |
-| 2 | AC-F03-1 was mapped to a passing test, but no governance endpoint exists | The claim is withdrawn. AC-F03-1 is recorded as OPEN in TESTING.md section 3 and scored as unsatisfied below |
+| 2 | AC-F03-1 was mapped to a passing test, but no governance endpoint exists | The claim was withdrawn at review time, then closed properly on 2026-10-27: `GovernanceController` implements create tenant, set tenant status and replace membership role behind the real guard chain. `governance.controller.integration.spec.ts` asserts persistence and audit emission for all three actions |
 | 3 | AC-F03-2 covered only the role half | Two tests added to `tickets.controller.integration.spec.ts`: unknown tenant identifier rejected (403) and body/query identifier mismatch rejected (400). Role and user halves were already covered by `database-role-resolver.spec.ts` |
 | 4 | Migration `0003_support_schema` was recorded in Supabase's history only, so `prisma migrate deploy` would re-run it and fail | Its row was inserted into `public._prisma_migrations` with the SHA-256 checksum that matches the local `migration.sql` (the same algorithm verified against `0001_init` and `0002_roles_and_audit`). Rule recorded in DATABASE.md section 7 |
 
@@ -51,7 +51,7 @@ Also fixed: `scripts/audit-baseline.json` dropped the 5 advisories that are alre
 | AC-F02-1 | `auth.controller.integration.spec.ts`, `tenants.service.spec.ts` + live session call | pass |
 | AC-F02-2 | `supabase-auth.guard.spec.ts`, `supabase-token-verifier.service.spec.ts` + live 401 matrix | pass |
 | AC-F02-3 | `permissions.integration.spec.ts`, `tickets.controller.integration.spec.ts` + live R-developer 403 | pass |
-| AC-F03-1 | governance actions (create/disable tenant, change role) have no endpoint | **OPEN** - audit persistence is proven, the criterion's scenario is not implemented |
+| AC-F03-1 | `governance.controller.integration.spec.ts` (10 cases: three audited writes plus denial and validation) | pass |
 | AC-F03-2 | unknown tenant identifier and body/query mismatch in `tickets.controller.integration.spec.ts`; unknown role code and absent user row in `database-role-resolver.spec.ts` | pass (after fix 3) |
 | AC-F03-3 | `authorization.service.spec.ts`, `permissions.integration.spec.ts` (tenant admin lacks platform governance) | pass |
 | AC-F04-1 | `tickets.controller.integration.spec.ts` (scope check per request) | pass |
@@ -60,7 +60,7 @@ Also fixed: `scripts/audit-baseline.json` dropped the 5 advisories that are alre
 | AC-F11-1 | audit rows carry actor, tenant, resource and metadata | pass |
 | AC-F11-3 | restricted audit read gated by `AUDIT_READ`; R-developer denied | pass |
 
-9 of 10 Phase 1 criteria are satisfied. AC-F03-1 is open and is documented in TESTING.md section 3.
+All 10 Phase 1 criteria are satisfied.
 
 ## Denial and validation checks
 - Missing credential, malformed header, forged token: 401 (live + specs).
@@ -86,15 +86,15 @@ Also fixed: `scripts/audit-baseline.json` dropped the 5 advisories that are alre
 | RED seen | 15 | RED recorded in the run log for T1.02, T1.03, T1.04 and T2.01 with the failing reason for each. The 2026-10-27 additions are regression tests for behaviour that already passed, so they carry no RED |
 | Task tests pass | 20 | 109/109 |
 | Full suite, format, lint, type check and build pass | 20 | all six exit 0, including `format:check` after the fix |
-| Criteria map to tests | 13 | 9 of 10 Phase 1 criteria map to a passing test; AC-F03-1 is open (15 x 9/10, rounded down) |
+| Criteria map to tests | 15 | 10 of 10 Phase 1 criteria map to a passing test |
 | Denial and validation tests | 9 | full denial matrix plus identifier validation; body-field validation still absent |
 | Diff within scope | 10 | per-task scope respected, no unlogged dependency |
 | Docs synced | 10 | plan run log, TESTING matrix and note, DATABASE tracking rule, audit counts corrected in AGENTS.md and TESTING.md |
-| **Total** | **97** | threshold for the gate is 90 |
+| **Total** | **99** | threshold for the gate is 90 |
 
 ## Residual risks and open items
-1. AC-F03-1 stays open until a governance task implements tenant create/disable and role change endpoints. The criterion must not be reported as passing before then.
-2. Request-body field validation is absent; adding `class-validator` needs a D-xx decision.
+1. Governance covers tenant create, tenant status change and membership role change. Enterprise-organization administration and per-user disable are still absent, and no route exists to delete a tenant.
+2. Request-body field validation is absent for the ticket and auth routes; governance validates its own fields in the service. Adding `class-validator` would need a D-xx decision.
 3. `prisma migrate status` / `prisma migrate deploy` are not verified locally: `prisma.config.ts` reads `datasource.url` from `DATABASE_URL`, and the workspace has no `.env`.
 4. Role/status enum values are Proposed defaults; the owner must confirm them before production.
 5. RLS is not configured on the Supabase project; DATABASE.md section 5 lists it as defense-in-depth to add before production.

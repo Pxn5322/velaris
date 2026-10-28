@@ -6,8 +6,10 @@
  * (docs/SECURITY.md section 4). A role is in scope when it is a system
  * role (tenant_id NULL) or belongs to the membership's tenant, and the
  * membership must be ACTIVE. When several roles apply, the highest
- * privilege wins. No row, no tenantId or an unknown identity all resolve
- * to null, which PermissionsGuard turns into a denial.
+ * privilege wins. No row, no user or no active membership resolves to
+ * null, which PermissionsGuard turns into a denial. When a request names
+ * no tenant (platform governance, AC-F03-1), the resolver reads every
+ * active membership and returns the highest privilege among them.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -47,12 +49,42 @@ describe('DatabaseRoleResolver', () => {
     resolver = new DatabaseRoleResolver(prisma as unknown as PrismaService);
   });
 
-  it('returns null without a tenant scope and reads no data', async () => {
+  it('resolves the highest privilege across memberships when the request names no tenant (AC-F03-1)', async () => {
+    prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
+    prisma.membershipRole.findMany.mockResolvedValue([
+      assignment('R-agent', 'tenant-a'),
+      assignment('R-enterprise-admin', 'tenant-b'),
+    ]);
+
+    const role = await resolver.resolveRole({ identity: IDENTITY });
+
+    expect(role).toBe('R-enterprise-admin');
+    // Platform scope reads every active membership, not one tenant's.
+    expect(prisma.membershipRole.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          membership: { userId: 'user-1', status: 'ACTIVE' },
+        }),
+      }),
+    );
+  });
+
+  it('returns null without a tenant scope when the identity has no local user row', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+
     const role = await resolver.resolveRole({ identity: IDENTITY });
 
     expect(role).toBeNull();
-    expect(prisma.user.findUnique).not.toHaveBeenCalled();
     expect(prisma.membershipRole.findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns null without a tenant scope when no active membership holds a role', async () => {
+    prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
+    prisma.membershipRole.findMany.mockResolvedValue([]);
+
+    const role = await resolver.resolveRole({ identity: IDENTITY });
+
+    expect(role).toBeNull();
   });
 
   it('returns null for an identity with no local user row', async () => {

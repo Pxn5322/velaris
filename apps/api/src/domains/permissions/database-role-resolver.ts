@@ -10,6 +10,14 @@
  * privilege (role-permissions.ts ROLE_PRECEDENCE). Missing user, missing
  * membership or no in-scope role all return null, which PermissionsGuard
  * turns into a 403: the policy still denies by default.
+ *
+ * Platform scope (AC-F03-1): a route that targets no single tenant, such
+ * as creating a tenant, supplies no tenantId. The resolver then reads every
+ * ACTIVE membership and returns the highest privilege among them. Only
+ * R-enterprise-admin holds a platform permission (TENANT_MANAGE_PLATFORM),
+ * so no other role becomes reachable, and an identity with no membership
+ * still resolves to null. Routes that do name a tenant keep the tenant-
+ * scoped query, so a tenant admin can never govern another tenant.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
@@ -25,9 +33,6 @@ export class DatabaseRoleResolver implements RoleResolver {
 
   async resolveRole(lookup: RoleLookup): Promise<CanonicalRole | null> {
     const { identity, tenantId } = lookup;
-    if (!tenantId) {
-      return null;
-    }
 
     const user = await this.prisma.user.findUnique({
       where: {
@@ -44,12 +49,10 @@ export class DatabaseRoleResolver implements RoleResolver {
 
     const assigned = await this.prisma.membershipRole.findMany({
       where: {
-        membership: {
-          userId: user.id,
-          tenantId,
-          status: 'ACTIVE',
-        },
-        role: { OR: [{ tenantId: null }, { tenantId }] },
+        membership: tenantId
+          ? { userId: user.id, tenantId, status: 'ACTIVE' }
+          : { userId: user.id, status: 'ACTIVE' },
+        ...(tenantId ? { role: { OR: [{ tenantId: null }, { tenantId }] } } : {}),
       },
       select: { role: { select: { code: true } } },
     });
