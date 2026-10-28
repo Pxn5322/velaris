@@ -69,7 +69,7 @@ Use Jest for unit/domain tests, Supertest for NestJS API/integration tests, Cypr
 | AC-F14-2 | TST-AC-F14-2 | Invalid retention configuration is rejected |
 | AC-F14-3 | TST-AC-F14-3 | Restricted audit/lifecycle operation is denied without permission |
 
-Open criteria in this section: AC-F03-1 is not yet satisfiable. Audit persistence is covered by `audit.service.spec.ts` and by the `ticket.created` and `permission.denied` rows proven in the live database, but the governance actions the criterion names (create/disable a tenant, change a user role) have no endpoint, so no test can assert them yet. The criterion stays open until a governance task implements those actions. AC-F03-2 is covered: unknown tenant identifier rejection and body/query identifier mismatch are asserted in `tickets.controller.integration.spec.ts`; unknown role codes and absent user rows are asserted in `database-role-resolver.spec.ts`.
+AC-F03-1 is covered by `governance.controller.integration.spec.ts`, which drives 10 cases over the real guard chain on the real governance controller: create a tenant, set a tenant status and replace a membership role. Each success asserts both the Prisma write and the audit event (`tenant.created`, `tenant.status_changed`, `role.changed`). Denial cases cover R-tenant-admin refused platform governance (AC-F03-3) and validation cases cover a missing slug, an unknown role code, a status outside the allowed set, a tenant with no row and a membership in another tenant (AC-F03-2). AC-F03-2 identifier coverage also lives in `tickets.controller.integration.spec.ts` and `database-role-resolver.spec.ts`.
 
 ## 4. Threat tests
 | Threat | Test ID | Required evidence |

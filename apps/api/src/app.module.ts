@@ -12,6 +12,7 @@ import { WorkflowsModule } from './domains/workflows/workflows.module.js';
 import { GuardrailsModule } from './domains/guardrails/guardrails.module.js';
 import { PrismaModule } from './infrastructure/prisma/prisma.module.js';
 import { TenantsModule } from './domains/tenants/tenants.module.js';
+import { GovernanceModule } from './domains/tenants/governance.module.js';
 import { AuthModule } from './domains/auth/auth.module.js';
 import { PermissionsModule } from './domains/permissions/permissions.module.js';
 
@@ -36,6 +37,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     WorkflowsModule,
     GuardrailsModule,
     TenantsModule,
+    GovernanceModule,
     AuthModule,
     PermissionsModule,
   ],
