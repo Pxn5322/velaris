@@ -73,6 +73,7 @@ model Tenant {
   conversations          Conversation[]
   messages               Message[]
   tickets                Ticket[]
+  knowledgeSources       KnowledgeSource[]
 
   @@unique([slug])
   @@map("tenants")
@@ -231,17 +232,17 @@ enum SlaState {
 /// E-customer: end customer profile within one tenant (DATABASE.md 6).
 /// Soft delete via deleted_at; metadata_json must not store secrets.
 model Customer {
-  id          String         @id @default(uuid()) @db.Uuid
-  tenantId    String         @map("tenant_id") @db.Uuid
-  externalRef String?        @map("external_ref")
-  displayName String         @map("display_name")
-  email       String?
-  phone       String?
-  status      CustomerStatus @default(ACTIVE)
-  metadataJson Json?         @map("metadata_json")
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
-  deletedAt   DateTime?      @map("deleted_at")
+  id           String         @id @default(uuid()) @db.Uuid
+  tenantId     String         @map("tenant_id") @db.Uuid
+  externalRef  String?        @map("external_ref")
+  displayName  String         @map("display_name")
+  email        String?
+  phone        String?
+  status       CustomerStatus @default(ACTIVE)
+  metadataJson Json?          @map("metadata_json")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  deletedAt    DateTime?      @map("deleted_at")
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
   conversations Conversation[]
@@ -278,16 +279,16 @@ model Conversation {
 /// visibility distinguishes the two. No updatedAt: messages are immutable
 /// records; there is no update path in Prisma for this model.
 model Message {
-  id             String             @id @default(uuid()) @db.Uuid
-  tenantId       String             @map("tenant_id") @db.Uuid
-  conversationId String             @map("conversation_id") @db.Uuid
-  authorType     MessageAuthorType  @map("author_type")
-  authorId       String?            @map("author_id") @db.Uuid
+  id             String            @id @default(uuid()) @db.Uuid
+  tenantId       String            @map("tenant_id") @db.Uuid
+  conversationId String            @map("conversation_id") @db.Uuid
+  authorType     MessageAuthorType @map("author_type")
+  authorId       String?           @map("author_id") @db.Uuid
   visibility     MessageVisibility
   body           String
-  metadataJson   Json?              @map("metadata_json")
-  idempotencyKey String?            @map("idempotency_key")
-  createdAt      DateTime           @default(now()) @map("created_at")
+  metadataJson   Json?             @map("metadata_json")
+  idempotencyKey String?           @map("idempotency_key")
+  createdAt      DateTime          @default(now()) @map("created_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id])
   tenant       Tenant       @relation(fields: [tenantId], references: [id])
@@ -320,12 +321,102 @@ model Ticket {
   resolvedAt            DateTime?      @map("resolved_at")
   closedAt              DateTime?      @map("closed_at")
 
-  tenant              Tenant         @relation(fields: [tenantId], references: [id])
-  customer            Customer       @relation(fields: [customerId], references: [id])
-  primaryConversation Conversation?  @relation(fields: [primaryConversationId], references: [id])
+  tenant              Tenant        @relation(fields: [tenantId], references: [id])
+  customer            Customer      @relation(fields: [customerId], references: [id])
+  primaryConversation Conversation? @relation(fields: [primaryConversationId], references: [id])
 
   @@index([tenantId, status])
   @@index([tenantId, assigneeMembershipId, status])
   @@index([tenantId, updatedAt(sort: Desc)])
   @@map("tickets")
+}
+
+/// Ingestion state for a knowledge source (AC-F07-1 happy path and
+/// AC-F07-2 failure/retry reporting).
+enum KnowledgeSourceStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+/// Accepted knowledge source types (F-07: website, PDF, Markdown, FAQ,
+/// manual articles and explicitly enabled historical support information).
+enum KnowledgeSourceType {
+  WEBSITE
+  PDF
+  MARKDOWN
+  FAQ
+  MANUAL
+  HISTORY
+}
+
+/// E-knowledge-source: source metadata, ingestion status and provenance
+/// (DATABASE.md 6). Unique (tenant, type, content hash) makes
+/// re-ingestion of identical content idempotent. deleted_at supports the
+/// F-14 deletion lifecycle without losing audit references.
+model KnowledgeSource {
+  id             String                @id @default(uuid()) @db.Uuid
+  tenantId       String                @map("tenant_id") @db.Uuid
+  sourceType     KnowledgeSourceType   @map("source_type")
+  sourceUri      String?               @map("source_uri")
+  objectKey      String?               @map("object_key")
+  status         KnowledgeSourceStatus @default(PENDING)
+  contentHash    String                @map("content_hash")
+  provenanceJson Json                  @default("{}") @map("provenance_json")
+  errorCode      String?               @map("error_code")
+  createdBy      String                @map("created_by") @db.Uuid
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  deletedAt      DateTime?             @map("deleted_at")
+
+  tenant Tenant           @relation(fields: [tenantId], references: [id])
+  chunks KnowledgeChunk[]
+
+  @@unique([tenantId, sourceType, contentHash])
+  @@index([tenantId, status])
+  @@map("knowledge_sources")
+}
+
+/// E-knowledge-chunk: parsed chunk with metadata (DATABASE.md 6). Unique
+/// (source, chunk_index) makes re-indexing replace chunks instead of
+/// duplicating them. Deletion cascades from the source (F-14 cleanup).
+model KnowledgeChunk {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  sourceId     String   @map("source_id") @db.Uuid
+  chunkIndex   Int      @map("chunk_index")
+  content      String
+  metadataJson Json     @default("{}") @map("metadata_json")
+  tokenCount   Int      @map("token_count")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  source     KnowledgeSource      @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  embeddings KnowledgeEmbedding[]
+
+  @@unique([sourceId, chunkIndex])
+  @@index([tenantId, sourceId, createdAt])
+  @@map("knowledge_chunks")
+}
+
+/// E-embedding: pgvector representation linked to chunk and model
+/// (DATABASE.md 6). Unique (chunk, model) allows one vector per model
+/// version; a CHECK keeps dimensions positive; the pgvector index strategy
+/// stays deferred until T3.04 retrieval benchmarks (DATABASE.md 6).
+/// The vector value is written through SQL (Unsupported type), which
+/// T3.03's ingestion pipeline does.
+model KnowledgeEmbedding {
+  id         String                      @id @default(uuid()) @db.Uuid
+  tenantId   String                      @map("tenant_id") @db.Uuid
+  chunkId    String                      @map("chunk_id") @db.Uuid
+  embedding  Unsupported("vector(1536)")
+  model      String                      @db.VarChar(64)
+  dimensions Int
+  createdAt  DateTime                    @default(now()) @map("created_at")
+
+  chunk KnowledgeChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  @@unique([chunkId, model])
+  @@index([tenantId])
+  @@map("knowledge_embeddings")
 }
