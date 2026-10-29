@@ -9,9 +9,11 @@
  * ACTIVE membership in (AC-F04-3). No tenant scope means no data.
  *
  * POST /knowledge-sources (API-08) validates the source reference and
- * records the source with PENDING status; GET /knowledge-sources/:id
- * (API-09) reports status, errors and provenance. Each successful create
- * or retry appends one audit event before it answers (AC-F11-1).
+ * records the source with PENDING status; GET /knowledge-sources (T3.05)
+ * lists the tenant's sources newest first for the knowledge tab;
+ * GET /knowledge-sources/:id (API-09) reports status, errors and
+ * provenance. Each successful create or retry appends one audit event
+ * before it answers (AC-F11-1).
  */
 
 import {
@@ -88,6 +90,18 @@ export class KnowledgeController {
       enqueuedAt: new Date().toISOString(),
     });
     return source;
+  }
+
+  @Get()
+  @RequirePermission(PERMISSIONS.KNOWLEDGE_MANAGE)
+  async list(
+    @Query('tenantId') tenantId: string,
+    @Req() request: AuthedRequest,
+  ) {
+    // T3.05: the knowledge tab reads the tenant's source list; the same
+    // tenant scope rule applies (400 without, 403 outside membership).
+    await this.requireTenantScope(request, tenantId);
+    return this.knowledge.list(tenantId);
   }
 
   @Get(':id')

@@ -12,11 +12,15 @@
  * for roles without note.internal.read (TH-05), and status changes go
  * through the version-guarded PATCH, so a stale write surfaces as a
  * visible conflict instead of a silent overwrite (AC-F05-2).
+ *
+ * Layout follows the unified-agent example: ticket queue on the left
+ * (search + priority filter), active ticket detail in the middle, and
+ * the customer profile of the selected ticket on the right.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Inbox, RefreshCw, User } from "lucide-react";
+import { AlertTriangle, Inbox, RefreshCw, Search, User } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { getSession } from "@/lib/auth/session";
 
@@ -56,9 +60,41 @@ interface Conversation {
   channel: string;
 }
 
+interface Customer {
+  id: string;
+  displayName: string;
+  email?: string;
+  phone?: string;
+  status: string;
+}
+
+const PRIORITY_LABEL: Record<string, string> = {
+  HIGH: "HIGH",
+  MEDIUM: "MED",
+  LOW: "LOW",
+};
+
+const PRIORITY_BADGE: Record<string, string> = {
+  HIGH: "bg-red-500/20 text-red-300",
+  MEDIUM: "bg-amber-500/20 text-amber-300",
+  LOW: "bg-slate-500/20 text-slate-300",
+};
+
+/** Compact "4m ago" label for the queue cards. */
+function timeAgo(iso: string): string {
+  const delta = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(delta / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 type Phase = "loading" | "denied" | "error" | "ready";
 type Tab = "all" | "mine";
 type TimelineState = "idle" | "loading" | "empty" | "error" | "ready";
+type ProfileState = "idle" | "loading" | "error" | "ready";
 
 const STATUS_ACTIONS = [
   "IN_PROGRESS",
@@ -78,6 +114,10 @@ export default function InboxPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conflict, setConflict] = useState<string | null>(null);
   const [scope, setScope] = useState<TenantEntry | null>(null);
+  const [query, setQuery] = useState("");
+  const [priority, setPriority] = useState("ALL");
+  const [profile, setProfile] = useState<Customer | null>(null);
+  const [profileState, setProfileState] = useState<ProfileState>("idle");
 
   const load = useCallback(async () => {
     try {
@@ -125,11 +165,33 @@ export default function InboxPage() {
     return () => clearTimeout(timer);
   }, [load]);
 
+  const loadProfile = useCallback(
+    async (ticket: Ticket) => {
+      setProfile(null);
+      setProfileState("loading");
+      if (!scope) {
+        setProfileState("error");
+        return;
+      }
+      try {
+        const customer = await apiFetch<Customer>(
+          `/customers/${ticket.customerId}?tenantId=${encodeURIComponent(scope.tenantId)}`,
+        );
+        setProfile(customer);
+        setProfileState("ready");
+      } catch {
+        setProfileState("error");
+      }
+    },
+    [scope],
+  );
+
   const openTimeline = useCallback(
     async (ticket: Ticket) => {
       setSelected(ticket);
       setConflict(null);
       setTimeline("loading");
+      void loadProfile(ticket);
       if (!scope) {
         setTimeline("error");
         return;
@@ -155,7 +217,7 @@ export default function InboxPage() {
         setTimeline("error");
       }
     },
-    [scope],
+    [scope, loadProfile],
   );
 
   const changeStatus = useCallback(
@@ -195,12 +257,22 @@ export default function InboxPage() {
     [scope, load],
   );
 
-  const visibleTickets =
-    tab === "mine" && scope
-      ? tickets.filter(
-          (ticket) => ticket.assigneeMembershipId === scope.membershipId,
-        )
-      : tickets;
+  const visibleTickets = tickets.filter((ticket) => {
+    if (
+      tab === "mine" &&
+      scope &&
+      ticket.assigneeMembershipId !== scope.membershipId
+    ) {
+      return false;
+    }
+    if (priority !== "ALL" && ticket.priority !== priority) return false;
+    const needle = query.trim().toLowerCase();
+    if (!needle) return true;
+    return (
+      ticket.title.toLowerCase().includes(needle) ||
+      ticket.id.toLowerCase().includes(needle)
+    );
+  });
 
   return (
     <section className="flex-1 flex flex-col gap-4" data-testid="inbox">
@@ -251,7 +323,7 @@ export default function InboxPage() {
             <AlertTriangle aria-hidden="true" className="h-4 w-4" />
             {denial}
           </p>
-          <Link href="/portal/sign-in" className="underline mt-2 inline-block">
+          <Link href="/?signin=1" className="underline mt-2 inline-block">
             Go to sign in
           </Link>
         </div>
@@ -279,41 +351,94 @@ export default function InboxPage() {
       )}
 
       {phase === "ready" && (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-          <div className="rounded-lg border border-slate-800 overflow-hidden">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,6fr)_minmax(0,3fr)]">
+          {/* Left: ticket queue (search + priority filter) */}
+          <div className="rounded-lg border border-slate-800 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Ticket queue
+              </span>
+              <span
+                className="rounded bg-blue-600 px-1.5 py-0.5 text-xs text-white"
+                data-testid="inbox-count"
+              >
+                {visibleTickets.length}
+              </span>
+            </div>
+
+            <div className="p-3 space-y-2 border-b border-slate-800">
+              <div className="relative">
+                <Search
+                  aria-hidden="true"
+                  className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500"
+                />
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search ID or subject..."
+                  aria-label="Search tickets"
+                  data-testid="inbox-search"
+                  className="w-full rounded border border-slate-700 bg-slate-950 pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                aria-label="Filter by priority"
+                data-testid="inbox-priority"
+                className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm focus:outline-none focus:border-cyan-500"
+              >
+                <option value="ALL">All Priority</option>
+                <option value="HIGH">HIGH</option>
+                <option value="MEDIUM">MEDIUM</option>
+                <option value="LOW">LOW</option>
+              </select>
+            </div>
+
             {visibleTickets.length === 0 ? (
               <p className="p-4 text-slate-400" data-testid="inbox-empty">
                 No tickets in this view.
               </p>
             ) : (
-              <ul>
+              <ul className="divide-y divide-slate-800 overflow-y-auto">
                 {visibleTickets.map((ticket) => (
                   <li key={ticket.id}>
                     <button
                       type="button"
                       data-testid="inbox-ticket"
                       onClick={() => void openTimeline(ticket)}
-                      className={`w-full text-left px-4 py-3 border-b border-slate-800 hover:bg-slate-900 ${selected?.id === ticket.id ? "bg-slate-900" : ""}`}
+                      className={`w-full text-left px-4 py-3 hover:bg-slate-900 ${selected?.id === ticket.id ? "bg-slate-900 ring-1 ring-inset ring-cyan-500/40" : ""}`}
                     >
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="font-medium">{ticket.title}</span>
-                        <span className="text-xs text-slate-400">
-                          {ticket.status}
+                      <span className="flex items-center justify-between gap-2 text-xs">
+                        <span className="font-mono text-cyan-400">
+                          #{ticket.id.slice(0, 8)}
+                        </span>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${PRIORITY_BADGE[ticket.priority] ?? "bg-slate-500/20 text-slate-300"}`}
+                        >
+                          {PRIORITY_LABEL[ticket.priority] ?? ticket.priority}
                         </span>
                       </span>
-                      <span className="text-xs text-slate-500">
-                        {ticket.priority} ·{" "}
-                        {ticket.assigneeMembershipId
-                          ? "assigned"
-                          : "unassigned"}
+                      <span className="block mt-1 text-sm font-medium">
+                        {ticket.title}
+                      </span>
+                      <span className="block text-xs text-slate-500">
+                        {ticket.customerId.slice(0, 8)} ·{" "}
+                        {timeAgo(ticket.updatedAt)}
                       </span>
                     </button>
                   </li>
                 ))}
               </ul>
             )}
+
+            <div className="mt-auto px-4 py-2 border-t border-slate-800 text-xs text-slate-500">
+              {visibleTickets.length} of {tickets.length} tickets
+            </div>
           </div>
 
+          {/* Middle: active ticket detail */}
           <div
             className="rounded-lg border border-slate-800 p-4"
             data-testid="inbox-detail"
@@ -399,6 +524,48 @@ export default function InboxPage() {
               </>
             )}
           </div>
+
+          {/* Right: customer profile of the selected ticket */}
+          <aside
+            className="rounded-lg border border-slate-800 p-4"
+            data-testid="inbox-profile"
+          >
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Customer profile
+            </span>
+            {!selected && (
+              <p className="mt-3 text-sm text-slate-400">
+                Select a ticket to see the customer.
+              </p>
+            )}
+            {selected && profileState === "loading" && (
+              <p className="mt-3 text-sm text-slate-400" role="status">
+                Loading customer…
+              </p>
+            )}
+            {selected && profileState === "error" && (
+              <p
+                className="mt-3 text-sm text-red-300"
+                data-testid="inbox-profile-error"
+              >
+                Customer profile unavailable.
+              </p>
+            )}
+            {selected && profileState === "ready" && profile && (
+              <div className="mt-3 space-y-1">
+                <p className="text-lg font-semibold">{profile.displayName}</p>
+                {profile.email && (
+                  <p className="text-sm text-slate-400">{profile.email}</p>
+                )}
+                {profile.phone && (
+                  <p className="text-sm text-slate-400">{profile.phone}</p>
+                )}
+                <p className="text-xs text-slate-500">
+                  Status: {profile.status}
+                </p>
+              </div>
+            )}
+          </aside>
         </div>
       )}
     </section>

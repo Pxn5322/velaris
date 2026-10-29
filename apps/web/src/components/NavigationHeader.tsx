@@ -17,24 +17,16 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { useRole, UserRole } from "@/context/RoleContext";
+import { useRole } from "@/context/RoleContext";
 
 export function NavigationHeader() {
-  const { role, setRole, activeView, setActiveView, theme, toggleTheme } =
-    useRole();
+  const { role, activeView, setActiveView, theme, toggleTheme } = useRole();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const router = useRouter();
 
-  const handleRoleChange = (newRole: UserRole) => {
-    setRole(newRole);
+  const openSignIn = () => {
     setIsMobileMenuOpen(false);
-    if (newRole === "ENTERPRISE" || newRole === "ADMIN") {
-      router.push("/admin");
-    } else if (newRole === "AGENT") {
-      router.push("/workspace");
-    } else if (newRole === "USER") {
-      router.push("/portal");
-    }
+    router.push("/?signin=1");
   };
 
   const navLinks = [
@@ -82,7 +74,11 @@ export function NavigationHeader() {
     },
   ];
 
-  const visibleLinks = navLinks.filter((link) => link.roleMatch.includes(role));
+  // Role-gated: links render only for the server-resolved role; a signed-
+  // out (null) visitor sees no workspace links, only the sign-in entry.
+  const visibleLinks = role
+    ? navLinks.filter((link) => link.roleMatch.includes(role))
+    : [];
   const isLight = theme === "light";
 
   return (
@@ -129,24 +125,27 @@ export function NavigationHeader() {
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <div
-            className={`hidden lg:flex items-center gap-2 pl-3 pr-2 py-1 rounded-xl glass-panel ${isLight ? "bg-white/80" : "bg-slate-900/80"}`}
-          >
-            <UserCheck
-              className="w-3.5 h-3.5"
-              style={{ color: "var(--accent-cyan)" }}
-            />
-            <select
-              value={role}
-              onChange={(e) => handleRoleChange(e.target.value as UserRole)}
-              className="bg-transparent border-none text-xs text-heading font-bold focus:outline-none cursor-pointer"
+          {role ? (
+            <div
+              data-testid="nav-role"
+              data-role={role}
+              className={`hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl glass-panel ${isLight ? "bg-white/80" : "bg-slate-900/80"}`}
             >
-              <option value="ADMIN">Role: ADMIN</option>
-              <option value="ENTERPRISE">Role: ENTERPRISE</option>
-              <option value="AGENT">Role: AGENT</option>
-              <option value="USER">Role: USER</option>
-            </select>
-          </div>
+              <UserCheck
+                className="w-3.5 h-3.5"
+                style={{ color: "var(--accent-cyan)" }}
+              />
+              <span className="text-xs text-heading font-bold">{role}</span>
+            </div>
+          ) : (
+            <button
+              onClick={openSignIn}
+              data-testid="nav-sign-in"
+              className={`hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl glass-panel text-xs font-mono font-bold transition-all hover:border-cyan-500/40 ${isLight ? "bg-white/80 text-slate-700" : "bg-slate-900/80 text-heading"}`}
+            >
+              Sign In
+            </button>
+          )}
 
           <button
             onClick={toggleTheme}
@@ -185,67 +184,55 @@ export function NavigationHeader() {
             border: `1px solid ${isLight ? "rgba(15,23,42,0.15)" : "rgba(255,255,255,0.12)"}`,
           }}
         >
-          <div className="space-y-2">
-            <span
-              className="text-[10px] font-mono font-bold"
-              style={{ color: "var(--accent-cyan)" }}
+          {!role && (
+            <button
+              onClick={openSignIn}
+              data-testid="nav-sign-in"
+              className="w-full p-3 rounded-xl glass-panel text-xs font-mono font-bold text-heading text-center transition border border-slate-700/40 hover:border-cyan-500/40"
             >
-              Active Role Access
-            </span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
-              {["ADMIN", "ENTERPRISE", "AGENT", "USER"].map((r) => (
-                <button
-                  key={r}
-                  onClick={() => handleRoleChange(r as UserRole)}
-                  className={`p-2.5 rounded-xl text-xs font-bold text-center transition border ${
-                    role === r
-                      ? `border-current bg-blue-600/20 ${isLight ? "text-blue-700 border-blue-600" : "text-cyan-300 border-cyan-500"}`
-                      : `${isLight ? "text-slate-600 border-slate-300 bg-white" : "text-muted-custom border-slate-700/40 glass-panel"}`
-                  }`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div
-            className="space-y-2 pt-2 border-t"
-            style={{ borderColor: "var(--card-border)" }}
-          >
-            <span
-              className="text-[10px] font-mono font-bold"
-              style={{ color: "var(--accent-cyan)" }}
+              Sign In
+            </button>
+          )}
+          {role && (
+            <div
+              className="space-y-2 pt-2 border-t"
+              style={{ borderColor: "var(--card-border)" }}
             >
-              Workspace Views
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {visibleLinks.map((link) => {
-                const Icon = link.icon;
-                const isActive = activeView === link.viewId;
-                return (
-                  <Link
-                    key={link.viewId}
-                    href={link.href}
-                    onClick={() => {
-                      setActiveView(link.viewId);
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className={`p-3 rounded-xl glass-panel flex items-center gap-2.5 font-semibold text-left transition border ${
-                      isActive
-                        ? `${isLight ? "border-blue-600 bg-blue-50 text-blue-700" : "border-cyan-500 bg-blue-600/20 text-cyan-300"}`
-                        : `${isLight ? "border-slate-200 text-slate-600 hover:bg-slate-100" : "border-slate-700/40 text-muted-custom hover:text-heading"}`
-                    }`}
-                  >
-                    <Icon
-                      className="w-4 h-4"
-                      style={{ color: "var(--accent-cyan)" }}
-                    />
-                    {link.label}
-                  </Link>
-                );
-              })}
+              <span
+                className="text-[10px] font-mono font-bold"
+                style={{ color: "var(--accent-cyan)" }}
+              >
+                Workspace Views
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {visibleLinks.map((link) => {
+                  const Icon = link.icon;
+                  const isActive = activeView === link.viewId;
+                  return (
+                    <Link
+                      key={link.viewId}
+                      href={link.href}
+                      onClick={() => {
+                        setActiveView(link.viewId);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className={`p-3 rounded-xl glass-panel flex items-center gap-2.5 font-semibold text-left transition border ${
+                        isActive
+                          ? `${isLight ? "border-blue-600 bg-blue-50 text-blue-700" : "border-cyan-500 bg-blue-600/20 text-cyan-300"}`
+                          : `${isLight ? "border-slate-200 text-slate-600 hover:bg-slate-100" : "border-slate-700/40 text-muted-custom hover:text-heading"}`
+                      }`}
+                    >
+                      <Icon
+                        className="w-4 h-4"
+                        style={{ color: "var(--accent-cyan)" }}
+                      />
+                      {link.label}
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </header>

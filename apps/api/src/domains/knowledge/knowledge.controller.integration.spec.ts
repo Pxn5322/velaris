@@ -114,6 +114,31 @@ function fakeKnowledgePrisma(rows: FakeSource[] = []) {
           return row;
         },
       ),
+      findMany: vi.fn(
+        async ({
+          where,
+          orderBy,
+        }: {
+          where?: Record<string, unknown>;
+          orderBy?: { createdAt?: 'asc' | 'desc' };
+        }) => {
+          const rows = store.filter((row) =>
+            Object.entries(where ?? {}).every(([key, value]) =>
+              key === 'deletedAt' ? row.deletedAt === null : row[key] === value,
+            ),
+          );
+          if (orderBy?.createdAt) {
+            const direction = orderBy.createdAt === 'desc' ? -1 : 1;
+            rows.sort(
+              (a, b) =>
+                direction *
+                ((a.createdAt as Date).getTime() -
+                  (b.createdAt as Date).getTime()),
+            );
+          }
+          return rows;
+        },
+      ),
     },
     _store: store,
   };
@@ -204,6 +229,76 @@ describe('Knowledge source routes (integration)', () => {
       .set('Authorization', 'Bearer valid-token');
 
     expect(res.status).toBe(400);
+  });
+
+  it('lists the caller tenant sources newest first (T3.05)', async () => {
+    role = 'R-tenant-admin';
+    const source = (
+      id: string,
+      tenantId: string,
+      createdAt: Date,
+      deletedAt: Date | null = null,
+    ): FakeSource => ({
+      id,
+      tenantId,
+      sourceType: 'MARKDOWN',
+      status: 'READY',
+      errorCode: null,
+      provenanceJson: { content: 'body' },
+      contentHash: `hash-${id}`,
+      createdBy: 'user-1',
+      createdAt,
+      updatedAt: createdAt,
+      deletedAt,
+    });
+    prismaFake._store.push(
+      source('src-old', 'tenant-a', new Date('2026-01-01T00:00:00Z')),
+      source(
+        'src-deleted',
+        'tenant-a',
+        new Date('2026-03-01T00:00:00Z'),
+        new Date(),
+      ),
+      source('src-foreign', 'tenant-b', new Date('2026-05-01T00:00:00Z')),
+      source('src-new', 'tenant-a', new Date('2026-06-01T00:00:00Z')),
+    );
+
+    const res = await request(app.getHttpServer())
+      .get('/knowledge-sources?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(200);
+    // Only live rows of the caller tenant, newest first.
+    expect(res.body.map((row: { id: string }) => row.id)).toEqual([
+      'src-new',
+      'src-old',
+    ]);
+    expect(prismaFake.knowledgeSource.findMany).toHaveBeenCalledWith({
+      where: { tenantId: 'tenant-a', deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+  });
+
+  it('returns 400 for the list without a tenant scope (deny by default)', async () => {
+    role = 'R-tenant-admin';
+
+    const res = await request(app.getHttpServer())
+      .get('/knowledge-sources')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(400);
+    expect(prismaFake.knowledgeSource.findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 for the list without knowledge.manage (AC-F02-3)', async () => {
+    role = 'R-agent';
+
+    const res = await request(app.getHttpServer())
+      .get('/knowledge-sources?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(403);
+    expect(prismaFake.knowledgeSource.findMany).not.toHaveBeenCalled();
   });
 
   it('returns 403 for a guessed tenant outside the caller memberships (AC-F04-3)', async () => {

@@ -17,6 +17,7 @@ import { App } from 'supertest/types.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import { TenantsService } from '../tenants/tenants.service.js';
+import { ROLE_RESOLVER } from '../permissions/role-resolver.js';
 import { AuthController } from './auth.controller.js';
 import { SupabaseAuthGuard } from './supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
@@ -60,6 +61,7 @@ describe('GET /auth/session (integration)', () => {
   let app: INestApplication<App>;
   let fetchMock: ReturnType<typeof vi.fn>;
   let findUnique: ReturnType<typeof vi.fn>;
+  let resolveRole: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     vi.stubEnv('SUPABASE_URL', 'https://project.supabase.co');
@@ -69,12 +71,14 @@ describe('GET /auth/session (integration)', () => {
 
     findUnique = vi.fn().mockResolvedValue(USER_ROW);
     const prisma = { user: { findUnique } };
+    resolveRole = vi.fn().mockResolvedValue('R-tenant-admin');
 
     const moduleRef = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
+        { provide: ROLE_RESOLVER, useValue: { resolveRole } },
         {
           provide: TenantsService,
           useValue: new TenantsService(prisma as unknown as PrismaService),
@@ -144,6 +148,31 @@ describe('GET /auth/session (integration)', () => {
         },
       ],
     });
+    // Role-aware nav: the server resolves the role per active membership.
+    expect(res.body.role).toBe('R-tenant-admin');
+    expect(resolveRole).toHaveBeenCalledWith({
+      identity: {
+        provider: 'supabase',
+        subject: 'sub-123',
+        email: 'user@example.test',
+      },
+      tenantId: 'tenant-a',
+    });
+  });
+
+  it('returns a null role when no membership resolves one (deny by default)', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { sub: 'sub-123', email: 'user@example.test' }),
+    );
+    resolveRole.mockResolvedValue(null);
+
+    const res = await request(app.getHttpServer())
+      .get('/auth/session')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(200);
+    expect(res.body.tenantContext).not.toBeNull();
+    expect(res.body.role).toBeNull();
   });
 
   it('returns a null tenant context when no user row exists for the identity', async () => {
@@ -156,5 +185,6 @@ describe('GET /auth/session (integration)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.tenantContext).toBeNull();
+    expect(res.body.role).toBeNull();
   });
 });

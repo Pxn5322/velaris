@@ -17,6 +17,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
+import { TenantStudioKnowledge } from "./TenantStudioKnowledge";
 
 export function TenantStudioView() {
   const [activeTab, setActiveTab] = useState<string>("instructions");
@@ -173,24 +174,28 @@ export function TenantStudioView() {
         </div>
       )}
 
-      {activeTab !== "instructions" && activeTab !== "guardrails" && (
-        <div className="glass-panel p-8 rounded-2xl text-center space-y-3">
-          <Bot
-            className="w-10 h-10 mx-auto"
-            style={{ color: "var(--accent-cyan)" }}
-          />
-          <h3 className="text-base font-bold text-heading uppercase tracking-wider">
-            {activeTab} Configuration
-          </h3>
-          <p
-            className="text-xs max-w-md mx-auto"
-            style={{ color: "var(--text-muted)" }}
-          >
-            Configured tenant rules and vector retrieval parameters are active
-            for this environment.
-          </p>
-        </div>
-      )}
+      {activeTab === "knowledge" && <TenantStudioKnowledge />}
+
+      {activeTab !== "instructions" &&
+        activeTab !== "guardrails" &&
+        activeTab !== "knowledge" && (
+          <div className="glass-panel p-8 rounded-2xl text-center space-y-3">
+            <Bot
+              className="w-10 h-10 mx-auto"
+              style={{ color: "var(--accent-cyan)" }}
+            />
+            <h3 className="text-base font-bold text-heading uppercase tracking-wider">
+              {activeTab} Configuration
+            </h3>
+            <p
+              className="text-xs max-w-md mx-auto"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Configured tenant rules and vector retrieval parameters are active
+              for this environment.
+            </p>
+          </div>
+        )}
     </div>
   );
 }

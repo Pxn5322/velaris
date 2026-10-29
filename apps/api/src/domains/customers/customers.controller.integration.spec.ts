@@ -81,7 +81,8 @@ function fakePrisma(rows: Record<string, unknown>[]) {
             (c) =>
               c.tenantId === where.tenantId &&
               c.deletedAt === null &&
-              String(c.email ?? '').toLowerCase() === needle,
+              (typeof c.email === 'string' ? c.email : '').toLowerCase() ===
+                needle,
           ) ?? null
         );
       },
