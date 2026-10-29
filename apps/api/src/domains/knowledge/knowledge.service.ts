@@ -115,6 +115,19 @@ export class KnowledgeService {
   }
 
   /**
+   * Tenant-scoped source list for the knowledge tab (T3.05). Newest
+   * first; soft-deleted rows never appear, and the tenant filter keeps
+   * foreign rows out of the payload.
+   */
+  async list(tenantId: string): Promise<KnowledgeSource[]> {
+    requireText(tenantId, 'tenantId');
+    return this.prisma.knowledgeSource.findMany({
+      where: { tenantId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
    * Read one source's ingestion status (API-09: status, errors and
    * provenance). Scoped to the tenant: a foreign or soft-deleted id is
    * reported as not found, so no identifier leaks across tenants.

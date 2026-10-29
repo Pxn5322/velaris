@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
+import { PermissionsModule } from '../permissions/permissions.module.js';
 import { TenantsModule } from '../tenants/tenants.module.js';
 import { AuthController } from './auth.controller.js';
 import { SupabaseAuthGuard } from './supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
 
 @Module({
-  imports: [TenantsModule],
+  imports: [TenantsModule, PermissionsModule],
   controllers: [AuthController],
   providers: [SupabaseTokenVerifier, SupabaseAuthGuard],
   // Consumers that apply SupabaseAuthGuard on their own controllers

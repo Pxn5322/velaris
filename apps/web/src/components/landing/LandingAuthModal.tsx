@@ -3,6 +3,9 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
+import { useRole } from "@/context/RoleContext";
+import { isAuthConfigured, signIn, signOut } from "@/lib/auth/session";
+import { fetchSessionRole, routeForRole } from "@/lib/auth/uiRole";
 
 interface LandingAuthModalProps {
   isOpen: boolean;
@@ -16,15 +19,44 @@ export function LandingAuthModal({
   onClose,
 }: LandingAuthModalProps) {
   const router = useRouter();
+  const { setRole } = useRole();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onClose();
-    router.push("/workspace");
+    setError(null);
+    if (!isAuthConfigured()) {
+      setError("Sign-in is not configured.");
+      return;
+    }
+    if (!email.trim() || !password) {
+      setError("Enter your email and password.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      // Real Supabase Auth sign-in (D-03); the token rides apiFetch.
+      await signIn(email.trim(), password);
+      // The role comes from the server (membership_roles), never a picker.
+      const uiRole = await fetchSessionRole();
+      if (!uiRole) {
+        await signOut();
+        setError("This account has no workspace access.");
+        setSubmitting(false);
+        return;
+      }
+      setRole(uiRole);
+      onClose();
+      router.push(routeForRole(uiRole));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign-in failed.");
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -46,11 +78,17 @@ export function LandingAuthModal({
               : "Sign In to VELARIS"}
           </h3>
           <p className="text-xs text-muted-custom">
-            Access your tenant operations console or agent copilot workspace.
+            {mode === "signup"
+              ? "Accounts are provisioned by your administrator. Sign in with your work account."
+              : "Access your tenant operations console or agent copilot workspace."}
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 font-mono text-xs">
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4 font-mono text-xs"
+          data-testid="sign-in-form"
+        >
           <div>
             <label className="block text-muted-custom mb-1">Work Email</label>
             <input
@@ -60,6 +98,7 @@ export function LandingAuthModal({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-xl p-3 text-heading focus:outline-none focus:border-brand-cyan"
+              data-testid="sign-in-email"
             />
           </div>
           <div>
@@ -71,13 +110,25 @@ export function LandingAuthModal({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-xl p-3 text-heading focus:outline-none focus:border-brand-cyan"
+              data-testid="sign-in-password"
             />
           </div>
+          {error && (
+            <p
+              role="alert"
+              className="text-red-400 font-bold text-xs"
+              data-testid="sign-in-error"
+            >
+              {error}
+            </p>
+          )}
           <button
             type="submit"
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-brand-purple to-brand-cyan text-white font-bold text-xs shadow-lg hover:opacity-90 transition-opacity"
+            disabled={submitting}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-brand-purple to-brand-cyan text-white font-bold text-xs shadow-lg hover:opacity-90 transition-opacity disabled:opacity-60"
+            data-testid="sign-in-submit"
           >
-            Continue to Platform
+            {submitting ? "Signing in..." : "Continue to Platform"}
           </button>
         </form>
       </div>

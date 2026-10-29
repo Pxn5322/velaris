@@ -1,13 +1,16 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { getSession } from "@/lib/auth/session";
+import { fetchSessionRole, viewForRole } from "@/lib/auth/uiRole";
 
 export type UserRole = "ENTERPRISE" | "ADMIN" | "AGENT" | "USER";
 export type ThemeMode = "dark" | "light";
 
 interface RoleContextType {
-  role: UserRole;
-  setRole: (role: UserRole) => void;
+  /** Server-resolved role; null while signed out or when unmapped. */
+  role: UserRole | null;
+  setRole: (role: UserRole | null) => void;
   activeView: string;
   setActiveView: (view: string) => void;
   theme: ThemeMode;
@@ -19,7 +22,7 @@ interface RoleContextType {
 const RoleContext = createContext<RoleContextType | undefined>(undefined);
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
-  const [role, setRoleState] = useState<UserRole>("ADMIN");
+  const [role, setRoleState] = useState<UserRole | null>(null);
   const [activeView, setActiveView] = useState<string>("admin");
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [tenantId, setTenantId] = useState<string>("tenant_acme_corp");
@@ -32,16 +35,26 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     }
   }, [theme]);
 
-  const setRole = (newRole: UserRole) => {
+  const setRole = (newRole: UserRole | null) => {
     setRoleState(newRole);
-    if (newRole === "ENTERPRISE" || newRole === "ADMIN") {
-      setActiveView("admin");
-    } else if (newRole === "AGENT") {
-      setActiveView("agent");
-    } else if (newRole === "USER") {
-      setActiveView("portal");
-    }
+    if (newRole) setActiveView(viewForRole(newRole));
   };
+
+  // Hydrate the role from the server on load: the signed-in caller's
+  // canonical role comes from GET /auth/session (membership_roles), never
+  // from a client-side picker. Signed-out visitors stay null.
+  useEffect(() => {
+    if (!getSession()) return;
+    let cancelled = false;
+    void fetchSessionRole().then((mapped) => {
+      if (cancelled) return;
+      setRoleState(mapped);
+      if (mapped) setActiveView(viewForRole(mapped));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const toggleTheme = () => {
     setTheme((t) => (t === "dark" ? "light" : "dark"));

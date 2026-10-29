@@ -25,7 +25,6 @@ import {
   type RoleResolver,
 } from '../permissions/role-resolver.js';
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
-import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from '../auth/supabase-token-verifier.service.js';
 import { GovernanceController } from './governance.controller.js';

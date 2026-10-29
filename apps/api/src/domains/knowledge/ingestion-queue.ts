@@ -54,7 +54,7 @@ export class InProcessIngestionQueue implements IngestionQueue {
 
   async idle(): Promise<void> {
     while (this.inFlight.size > 0) {
-      await Promise.all([...this.inFlight.values()]);
+      await Promise.all(this.inFlight.values());
     }
   }
 }

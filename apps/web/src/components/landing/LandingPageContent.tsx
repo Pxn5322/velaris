@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { LandingSvgDefs } from "./LandingSvgDefs";
 import { LandingBackgroundCanvas } from "./LandingBackgroundCanvas";
 import { LandingHeader } from "./LandingHeader";
@@ -33,6 +33,19 @@ export function LandingPageContent() {
 
   const handleCloseAuth = useCallback(() => {
     setAuthModal((prev) => ({ ...prev, isOpen: false }));
+  }, []);
+
+  // Nav "Sign In" entries route to /?signin=1 so the existing landing
+  // sign-in modal opens instead of creating a separate sign-in page. The
+  // open runs in a scheduled callback (react-hooks/set-state-in-effect).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("signin") !== "1") return;
+    const timer = setTimeout(
+      () => setAuthModal({ isOpen: true, mode: "signin" }),
+      0,
+    );
+    return () => clearTimeout(timer);
   }, []);
 
   const handlePatternChange = useCallback(

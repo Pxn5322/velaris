@@ -30,8 +30,22 @@ jobs:
       # `.next` directory on a clean checkout. NEXT_PUBLIC stubs make the
       # sign-in pages "configured" in CI; journeys intercept every Supabase
       # and API request with page.route, so no real service is contacted.
+      # `next build` downloads Google Fonts at build time (next/font/google),
+      # which failed transiently on 2026-10-28 (run 40738675340, step died in
+      # 7s while the same commit built locally). Retry the build so a font
+      # CDN hiccup cannot redden the journey job; a real compile error still
+      # fails all three attempts.
       - name: Build apps/web for the production server
-        run: npm run build:web
+        run: |
+          for attempt in 1 2 3; do
+            if npm run build:web; then
+              exit 0
+            fi
+            echo "build attempt ${attempt} failed; retrying in 10s"
+            sleep 10
+          done
+          echo "build failed after 3 attempts"
+          exit 1
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://e2e-stub.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: e2e-stub-publishable-key

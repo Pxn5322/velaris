@@ -7,6 +7,7 @@
  * GET /auth/session (AC-F02-1).
  */
 
+import type { CanonicalRole } from '../permissions/permission.codes.js';
 import type { TenantContext } from '../tenants/tenants.service.js';
 
 export interface AuthenticatedIdentity {
@@ -18,4 +19,11 @@ export interface AuthenticatedIdentity {
 export interface AuthSessionResponse {
   identity: AuthenticatedIdentity;
   tenantContext: TenantContext | null;
+  /**
+   * Highest-privilege canonical role across the caller's active tenant
+   * memberships, resolved server-side from membership_roles (never from a
+   * client claim). Null when no membership resolves a role; the web nav
+   * renders signed-out/denied states from it.
+   */
+  role: CanonicalRole | null;
 }

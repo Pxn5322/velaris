@@ -325,16 +325,15 @@ describe('KnowledgeIngestionService (T3.03)', () => {
       const source = sourceRow();
       const p = fakePrisma([source]);
       const s = makeService(p, { maxAttempts: 3 });
-      s.embeddingProvider.embed = vi
-        .fn()
-        .mockRejectedValue(new Error('provider down'));
+      const embed = vi.fn().mockRejectedValue(new Error('provider down'));
+      s.embeddingProvider.embed = embed;
 
       const outcome = await s.run(job());
 
       expect(outcome.status).toBe('FAILED');
       expect(outcome.errorCode).toBe('RETRY_EXHAUSTED');
       expect(outcome.attempts).toBe(3);
-      expect(s.embeddingProvider.embed).toHaveBeenCalledTimes(3);
+      expect(embed).toHaveBeenCalledTimes(3);
       expect(source.status).toBe('FAILED');
       expect(p.knowledgeChunk.create).not.toHaveBeenCalled();
     });

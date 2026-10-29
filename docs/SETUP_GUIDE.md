@@ -58,7 +58,7 @@ Names below are proposed categories for the initial implementation. Add or remov
 | --- | --- | --- | --- |
 | `NODE_ENV` | web/API/worker | no | runtime environment configuration |
 | `DATABASE_URL` | API/worker/migrations | yes | local ignored `.env`; CI/host secret store |
-| `REDIS_URL` | API/worker | yes | local ignored `.env`; CI/host secret store |
+| `REDIS_URL` | API/worker BullMQ ingestion queue (D-17); when absent the API keeps the in-process adapter, so it is optional for CI and unit tests | yes | local ignored `.env`; CI/host secret store |
 | `NEXT_PUBLIC_SUPABASE_URL` | Next.js browser client and server config | no, public project URL | public app config |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Next.js browser client (portal sign-in); `NEXT_PUBLIC_SUPABASE_ANON_KEY` is accepted as the same setting (T2.04) | no, publishable key; RLS is still required for any direct database exposure | public app config |
 | `SUPABASE_URL` | NestJS API/worker | no, project URL | server environment config |
