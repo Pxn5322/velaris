@@ -1,7 +1,8 @@
 # GATE-3 evidence package (knowledge ingestion, retrieval, citations, deletion invalidation)
 
-Status: PRELIMINARY — prepared 2026-10-29. Not ready for owner sign-off:
-two live verifications remain open (sections 4 and 5).
+Status: READY FOR OWNER REVIEW — prepared 2026-10-29, live happy path
+closed the same day. One residual risk remains open (section 4.2), which
+holds the score at 95.
 
 Gate line (docs/IMPLEMENTATION_PLAN.md): "Knowledge ingestion,
 permission-aware retrieval, citations and deletion invalidation tests green."
@@ -31,7 +32,9 @@ checks in section 2 ran EXECUTED against the real Supabase project.
 | Citations carry provenance for grounded answers (AC-F09-1 groundwork) | retrieval spec asserts sourceId/sourceType/provenance/chunkIndex/model/score on every hit | pass |
 | Deletion invalidation | knowledge-schema.spec pins cascade source -> chunk -> embedding on hard delete; retrieval filters `deleted_at IS NULL` and non-READY rows; full retention/expiry lifecycle belongs to T5.02 (open) | partial (by design) |
 | Guard chain and tenant scope on every knowledge route | 15 HTTP tests: 401 no credential, 403 missing `knowledge.manage`, 400 missing scope, 403 foreign tenant, 400 unsupported type, 413 oversized content, 404 foreign/soft-deleted id | pass |
-| Live denial matrix (real Supabase project) | no credential -> 401; agent1 (R-agent) fresh token -> 403 `Missing permission: knowledge.manage`; admin1 (R-enterprise-admin, deliberately excluded from knowledge.manage) -> 403; malformed tenantId -> 403 after F-G3-1 fix (was 500) | pass |
+| Live denial matrix (real Supabase project) | no credential -> 401; agent1 (R-agent) fresh token -> 403 `Missing permission: knowledge.manage`; R-enterprise-admin -> 403 (deliberately excluded from knowledge.manage); R-tenant-admin targeting a foreign tenant -> 403 (role resolves only inside its own membership); malformed tenantId -> 403 after F-G3-1 fix (was 500) | pass |
+| Live happy path (real Supabase project, R-tenant-admin `tenant_admin@velaris.test`) | POST MARKDOWN -> 201 with contentHash, provenance and `createdBy` = auth sub; ingestion ran in-process PENDING -> READY in ~1s; GET list 200 and GET detail 200; database shows 1 `knowledge_chunks` row and 1 `knowledge_embeddings` row for that source; resubmit of identical READY content -> 201 same id, no duplicate row | pass |
+| Live failure and retry (AC-F07-2) | POST WEBSITE -> 201 PENDING -> FAILED `FETCH_NOT_CONFIGURED` (crawler not built); identical resubmit -> 201, same id, PENDING with errorCode cleared; second pass -> FAILED with the same permanent code (fails once, no retry loop); audit rows `knowledge.source_created` x3 and `knowledge.source_retried` x1 with the real actor sub `95d87e96-...` | pass |
 | E2E journeys for the knowledge tab | tests/knowledge.spec.js: loading, empty, error+retry, list with badges, failed source retry resubmit, signed-out sign-in path | pass |
 
 ## 3. Findings found this session
@@ -52,12 +55,11 @@ checks in section 2 ran EXECUTED against the real Supabase project.
 
 ## 4. Residual risks and open items (owner action wanted)
 
-1. Live happy path NOT verified: POST /knowledge-sources -> 201, ingestion to
-   READY, GET list/detail 200 against the real Supabase project. Blocked:
-   `knowledge.manage` is held only by R-tenant-admin and the project has no
-   tenant-admin member. The owner chose to create that user; the check runs
-   as soon as the email and password are available. Script ready:
-   `.livecheck-knowledge.sh` (gitignored artifacts only).
+1. CLOSED 2026-10-29: the owner created `tenant_admin@velaris.test`; its
+   app-side user, ACTIVE membership and R-tenant-admin role were seeded in
+   the development database, then the happy path, the failure path and the
+   retry path all passed against the real Supabase project (section 2).
+   Credential stored in the gitignored `.env.livecheck`, never in the repo.
 2. BullMQ adapter never ran against a real Redis: automated provisioning is
    disabled, so the owner creates the Redis Cloud database and sets
    `REDIS_URL` (setup link handed over). Without that value the factory keeps
@@ -75,14 +77,14 @@ checks in section 2 ran EXECUTED against the real Supabase project.
 | Check | Points | Evidence |
 | --- | --- | --- |
 | RED seen before the change | 15 | F-G3-1 spec failed first with the resolver querying the database; T3.02-T3.04 RED records in the run log |
-| Task tests pass | 15 | API 284 tests / 35 files; coverage 100% on all four metrics (knowledge 100%); deduction: the D-17 adapter ran only against fakes, never real Redis |
+| Task tests pass | 15 | API 284 tests / 35 files; coverage 100% on all four metrics (knowledge 100%); live happy path, failure path and retry path pass against the real database; deduction: the D-17 adapter ran only against fakes, never real Redis |
 | Full suite, format, lint, typecheck, build pass | 20 | test 0; format:check 0; lint 0/0; typecheck 0; build 0; audit:check 0; docs checker 100/100; CI + Merge gate + E2E green on 601d5ba |
 | Acceptance criteria map to passing tests | 15 | docs/TESTING.md section 3 rows AC-F07-1/2/3, AC-F09-1 with named spec files and journeys |
 | Denial/validation tests pass | 10 | 401/400/403/404/413 integration matrix, 6 knowledge journeys, live denial matrix incl. the fixed malformed-UUID case |
 | Diff within scope | 10 | api/web/tests/workflows/docs only; two runtime dependencies added under recorded decision D-17; no secret in the diff |
 | No unlogged assumption; docs synced | 10 | D-17, F-G3-1/F-G3-2 and both blockers recorded here and in the run log |
 
-Total: 95/100 (SIMULATED single-pass score). The 5 points stay out until the
-BullMQ adapter runs against a real Redis, and owner sign-off waits on the
-live happy-path check in section 4.1. Per AGENTS.md section 4 the gate score
-is advisory until the owner reviews this package.
+Total: 95/100 (SIMULATED single-pass score). The 5 points stay out until
+the BullMQ adapter runs against a real Redis (section 4.2). The live happy
+path that blocked sign-off is closed. Per AGENTS.md section 4 the gate
+score is advisory until the owner reviews this package.
