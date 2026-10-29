@@ -41,6 +41,7 @@ import {
 } from '../permissions/role-resolver.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import { KnowledgeController } from './knowledge.controller.js';
+import { INGESTION_QUEUE } from './ingestion-queue.js';
 import { KnowledgeService } from './knowledge.service.js';
 
 /** Caller with an ACTIVE membership in tenant A only. */
@@ -122,6 +123,7 @@ describe('Knowledge source routes (integration)', () => {
   let app: INestApplication<App>;
   let role: CanonicalRole | null;
   let auditRecord: ReturnType<typeof vi.fn>;
+  let enqueueMock: ReturnType<typeof vi.fn>;
   let prismaFake: ReturnType<typeof fakeKnowledgePrisma>;
 
   beforeEach(async () => {
@@ -138,6 +140,8 @@ describe('Knowledge source routes (integration)', () => {
 
     role = null;
     auditRecord = vi.fn().mockResolvedValue(undefined);
+    // No-op queue: these tests assert the contract, not the pipeline.
+    enqueueMock = vi.fn();
     prismaFake = fakeKnowledgePrisma();
     const findUnique = vi.fn().mockResolvedValue(USER_ROW);
     const resolver: RoleResolver = { resolveRole: async () => role };
@@ -152,6 +156,10 @@ describe('Knowledge source routes (integration)', () => {
         PermissionsGuard,
         { provide: PRISMA_SERVICE, useValue: prismaFake },
         { provide: AuditService, useValue: { record: auditRecord } },
+        {
+          provide: INGESTION_QUEUE,
+          useValue: { enqueue: enqueueMock, idle: async () => {} },
+        },
         { provide: ROLE_RESOLVER, useValue: resolver },
         {
           provide: TenantsService,
@@ -293,6 +301,29 @@ describe('Knowledge source routes (integration)', () => {
     expect(auditRecord).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'knowledge.source_retried' }),
     );
+  });
+
+  it('enqueues a tenant-scoped ingestion job on create (T3.03 job metadata)', async () => {
+    role = 'R-tenant-admin';
+
+    const res = await request(app.getHttpServer())
+      .post('/knowledge-sources?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ sourceType: 'FAQ', content: 'How do I reset a password?' });
+
+    expect(res.status).toBe(201);
+    expect(enqueueMock).toHaveBeenCalledTimes(1);
+    const job = enqueueMock.mock.calls[0]![0] as Record<string, unknown>;
+    expect(job).toMatchObject({
+      schemaVersion: 1,
+      tenantId: 'tenant-a',
+      sourceId: res.body.id,
+      actorId: 'sub-123',
+      idempotencyKey: `ingest:${res.body.id}`,
+    });
+    expect(job.correlationId).toBeTruthy();
+    expect(job.jobId).toBeTruthy();
+    expect(job.enqueuedAt).toBeTruthy();
   });
 
   it('reports status, error code and provenance through GET (API-09)', async () => {

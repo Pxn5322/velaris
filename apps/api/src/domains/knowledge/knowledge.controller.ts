@@ -20,12 +20,14 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  Inject,
   Param,
   Post,
   Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import type { Request } from 'express';
 import { RequirePermission } from '../../common/security/require-permission.decorator.js';
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
@@ -35,6 +37,7 @@ import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { PERMISSIONS } from '../permissions/permission.codes.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import { CreateKnowledgeSourceDto } from './dto/create-knowledge-source.dto.js';
+import { INGESTION_QUEUE, type IngestionQueue } from './ingestion-queue.js';
 import { KnowledgeService } from './knowledge.service.js';
 
 /** Express request carrying the identity SupabaseAuthGuard attached. */
@@ -47,6 +50,7 @@ export class KnowledgeController {
     private readonly knowledge: KnowledgeService,
     private readonly tenants: TenantsService,
     private readonly audit: AuditService,
+    @Inject(INGESTION_QUEUE) private readonly queue: IngestionQueue,
   ) {}
 
   @Post()
@@ -70,6 +74,18 @@ export class KnowledgeController {
       tenantId,
       actorId,
       metadata: { sourceType: source.sourceType, status: source.status },
+    });
+    // T3.03: every accepted source (new or retried) enters the ingestion
+    // queue with the job metadata contract (ARCHITECTURE.md §4).
+    this.queue.enqueue({
+      schemaVersion: 1,
+      jobId: randomUUID(),
+      idempotencyKey: `ingest:${source.id}`,
+      correlationId: randomUUID(),
+      tenantId,
+      sourceId: source.id,
+      actorId,
+      enqueuedAt: new Date().toISOString(),
     });
     return source;
   }

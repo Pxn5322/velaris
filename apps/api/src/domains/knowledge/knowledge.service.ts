@@ -247,16 +247,25 @@ function resolveContentHash(
   return `sha256:${createHash('sha256').update(canonical).digest('hex')}`;
 }
 
-/** Provenance records where the source content came from (AC-F07-1). */
+/**
+ * Provenance records where the source content came from (AC-F07-1).
+ * Inline sources keep their payload here as well: the schema has no
+ * separate content column (DATABASE.md §3), so this is where the
+ * T3.03 pipeline reads the text it parses (Proposed D-xx, run log).
+ */
 function provenanceOf(input: CreateKnowledgeSourceDto): Record<string, string> {
   const provenance: Record<string, string> = {};
   const sourceUri = optionalText(input.sourceUri);
   const objectKey = optionalText(input.objectKey);
+  const content = optionalText(input.content);
   if (sourceUri) {
     provenance.sourceUri = sourceUri;
   }
   if (objectKey) {
     provenance.objectKey = objectKey;
+  }
+  if (content) {
+    provenance.content = content;
   }
   return provenance;
 }
