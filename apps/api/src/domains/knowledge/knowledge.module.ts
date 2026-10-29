@@ -1,40 +1,22 @@
-import {
-  Module,
-  Injectable,
-  Controller,
-  Get,
-  Post,
-  Body,
-  Query,
-} from '@nestjs/common';
+import { Module } from '@nestjs/common';
+import { AuditModule } from '../audit/audit.module.js';
+import { AuthModule } from '../auth/auth.module.js';
+import { PermissionsModule } from '../permissions/permissions.module.js';
+import { TenantsModule } from '../tenants/tenants.module.js';
+import { KnowledgeController } from './knowledge.controller.js';
+import { KnowledgeService } from './knowledge.service.js';
 
-@Injectable()
-export class KnowledgeService {
-  private sources: any[] = [];
-  findAll(tenantId?: string) {
-    return tenantId
-      ? this.sources.filter((s) => s.tenantId === tenantId)
-      : this.sources;
-  }
-  create(source: any) {
-    const item = { id: 'kn_' + Date.now(), ...source, createdAt: new Date() };
-    this.sources.push(item);
-    return item;
-  }
-}
-
-@Controller('knowledge')
-export class KnowledgeController {
-  constructor(private readonly service: KnowledgeService) {}
-  @Get() findAll(@Query('tenantId') t?: string) {
-    return this.service.findAll(t);
-  }
-  @Post() create(@Body() b: any) {
-    return this.service.create(b);
-  }
-}
-
+/**
+ * Knowledge source ingestion (T3.02, F-07). Replaces the prototype stub,
+ * which exposed unguarded in-memory routes. The module mirrors
+ * TicketsModule: TenantsModule supplies the scope check, PermissionsModule
+ * and AuthModule supply the guard chain, AuditModule records source
+ * creation and retry events (AC-F11-1). `knowledge.module.spec.ts`
+ * compiles this graph, because a missing import only fails when the
+ * application boots.
+ */
 @Module({
+  imports: [TenantsModule, PermissionsModule, AuditModule, AuthModule],
   controllers: [KnowledgeController],
   providers: [KnowledgeService],
   exports: [KnowledgeService],
