@@ -23,6 +23,10 @@ type MockPrisma = {
 
 const IDENTITY = { provider: 'supabase', subject: 'sub-123' };
 
+/** Real UUID fixtures: tenantId input must parse as a UUID (see the guard). */
+const TENANT_A = '11111111-1111-4111-8111-111111111111';
+const TENANT_B = '22222222-2222-4222-8222-222222222222';
+
 function assignment(code: string, roleTenantId: string | null = null) {
   return {
     membershipId: 'membership-1',
@@ -52,8 +56,8 @@ describe('DatabaseRoleResolver', () => {
   it('resolves the highest privilege across memberships when the request names no tenant (AC-F03-1)', async () => {
     prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
     prisma.membershipRole.findMany.mockResolvedValue([
-      assignment('R-agent', 'tenant-a'),
-      assignment('R-enterprise-admin', 'tenant-b'),
+      assignment('R-agent', TENANT_A),
+      assignment('R-enterprise-admin', TENANT_B),
     ]);
 
     const role = await resolver.resolveRole({ identity: IDENTITY });
@@ -92,7 +96,7 @@ describe('DatabaseRoleResolver', () => {
 
     const role = await resolver.resolveRole({
       identity: IDENTITY,
-      tenantId: 'tenant-a',
+      tenantId: TENANT_A,
     });
 
     expect(role).toBeNull();
@@ -105,7 +109,7 @@ describe('DatabaseRoleResolver', () => {
 
     const role = await resolver.resolveRole({
       identity: IDENTITY,
-      tenantId: 'tenant-a',
+      tenantId: TENANT_A,
     });
 
     expect(role).toBeNull();
@@ -115,7 +119,7 @@ describe('DatabaseRoleResolver', () => {
     prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
     prisma.membershipRole.findMany.mockResolvedValue([]);
 
-    await resolver.resolveRole({ identity: IDENTITY, tenantId: 'tenant-a' });
+    await resolver.resolveRole({ identity: IDENTITY, tenantId: TENANT_A });
 
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: {
@@ -131,10 +135,10 @@ describe('DatabaseRoleResolver', () => {
         where: {
           membership: {
             userId: 'user-1',
-            tenantId: 'tenant-a',
+            tenantId: TENANT_A,
             status: 'ACTIVE',
           },
-          role: { OR: [{ tenantId: null }, { tenantId: 'tenant-a' }] },
+          role: { OR: [{ tenantId: null }, { tenantId: TENANT_A }] },
         },
       }),
     );
@@ -146,7 +150,7 @@ describe('DatabaseRoleResolver', () => {
 
     const role = await resolver.resolveRole({
       identity: IDENTITY,
-      tenantId: 'tenant-a',
+      tenantId: TENANT_A,
     });
 
     expect(role).toBe('R-agent');
@@ -162,7 +166,7 @@ describe('DatabaseRoleResolver', () => {
 
     const role = await resolver.resolveRole({
       identity: IDENTITY,
-      tenantId: 'tenant-a',
+      tenantId: TENANT_A,
     });
 
     expect(role).toBe('R-tenant-admin');
@@ -177,10 +181,23 @@ describe('DatabaseRoleResolver', () => {
 
     const role = await resolver.resolveRole({
       identity: IDENTITY,
-      tenantId: 'tenant-a',
+      tenantId: TENANT_A,
     });
 
     expect(role).toBeNull();
+  });
+
+  it('denies a malformed tenant id without touching the database (live check)', async () => {
+    // A non-UUID tenantId used to reach Postgres and fail with 22P02
+    // (invalid input syntax for type uuid), which surfaced as a 500.
+    const role = await resolver.resolveRole({
+      identity: IDENTITY,
+      tenantId: 'not-a-uuid',
+    });
+
+    expect(role).toBeNull();
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(prisma.membershipRole.findMany).not.toHaveBeenCalled();
   });
 
   it('still resolves a real role when an unknown code is mixed in', async () => {
@@ -192,7 +209,7 @@ describe('DatabaseRoleResolver', () => {
 
     const role = await resolver.resolveRole({
       identity: IDENTITY,
-      tenantId: 'tenant-a',
+      tenantId: TENANT_A,
     });
 
     expect(role).toBe('R-agent');

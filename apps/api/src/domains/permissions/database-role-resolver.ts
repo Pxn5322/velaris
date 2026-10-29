@@ -27,12 +27,25 @@ import type { CanonicalRole } from './permission.codes.js';
 import { highestPrivilegeRole } from './role-permissions.js';
 import type { RoleLookup, RoleResolver } from './role-resolver.js';
 
+/** Canonical UUID text form; ids in every table use this shape. */
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class DatabaseRoleResolver implements RoleResolver {
   constructor(@Inject(PRISMA_SERVICE) private readonly prisma: PrismaService) {}
 
   async resolveRole(lookup: RoleLookup): Promise<CanonicalRole | null> {
     const { identity, tenantId } = lookup;
+
+    // Live check 2026-10-29: a malformed tenantId reached Postgres and
+    // failed with 22P02 (invalid input syntax for type uuid), which the
+    // API reported as a 500. A value that cannot name a tenant can never
+    // grant one, so the policy denies before any query (deny by default,
+    // docs/SECURITY.md section 4).
+    if (tenantId && !UUID_PATTERN.test(tenantId)) {
+      return null;
+    }
 
     const user = await this.prisma.user.findUnique({
       where: {
