@@ -14,14 +14,25 @@
  * privilege. The web nav shows links for that role and nothing else.
  */
 
-import { Controller, Get, Inject, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
+import { AuditService } from '../audit/audit.service.js';
 import type {
   AuthSessionResponse,
   AuthenticatedIdentity,
 } from './auth.interface.js';
 import { SupabaseAuthGuard } from './supabase-auth.guard.js';
 import { TenantsService } from '../tenants/tenants.service.js';
+import { SignupDto } from './dto/signup.dto.js';
+import { SignupService } from './signup.service.js';
 import {
   ROLE_RESOLVER,
   type RoleResolver,
@@ -36,7 +47,33 @@ export class AuthController {
   constructor(
     private readonly tenants: TenantsService,
     @Inject(ROLE_RESOLVER) private readonly roles: RoleResolver,
+    private readonly signupService: SignupService,
+    private readonly audit: AuditService,
   ) {}
+
+  /**
+   * Tenant registration for the landing-page "Start Free" button (F-01).
+   * Public by design: there is no caller yet. Validation runs before the
+   * identity provider is touched (AC-F01-2), and one audit event records
+   * the new account (AC-F11-1 intent).
+   */
+  @Post('signup')
+  async signup(@Body() signupDto: SignupDto) {
+    const result = await this.signupService.signup(signupDto);
+    await this.audit.record({
+      action: 'user.registered',
+      resourceType: 'user',
+      resourceId: result.userId,
+      tenantId: result.tenantId,
+      actorId: result.authSubject,
+      metadata: { slug: result.slug },
+    });
+    return {
+      tenantId: result.tenantId,
+      slug: result.slug,
+      email: result.email,
+    };
+  }
 
   @Get('session')
   @UseGuards(SupabaseAuthGuard)

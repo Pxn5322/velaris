@@ -25,14 +25,16 @@ import {
   type RoleResolver,
 } from '../permissions/role-resolver.js';
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
+import { SupabaseAdminService } from '../auth/supabase-admin.service.js';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from '../auth/supabase-token-verifier.service.js';
 import { GovernanceController } from './governance.controller.js';
 import { GovernanceService } from './governance.service.js';
+import { TenantUsersService } from './tenant-users.service.js';
 
 const ENTERPRISE_ORG_ID = 'org-1';
-const TENANT_ID = 'tenant-1';
-const MEMBERSHIP_ID = 'membership-1';
+const TENANT_ID = '12121212-1212-4212-8212-121212121212';
+const MEMBERSHIP_ID = '34343434-3434-4434-8434-343434343434';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -131,6 +133,17 @@ describe('Governance routes (integration)', () => {
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
         PermissionsGuard,
+        // The controller also serves the tenant user-management routes;
+        // their own coverage lives in tenant-users.integration.spec.ts.
+        TenantUsersService,
+        {
+          provide: SupabaseAdminService,
+          useValue: {
+            requireConfigured: vi.fn(),
+            findUserByEmail: vi.fn().mockResolvedValue(null),
+            createUser: vi.fn(),
+          },
+        },
         { provide: AuditService, useValue: { record: auditRecord } },
         { provide: ROLE_RESOLVER, useValue: resolver },
         { provide: 'PRISMA_SERVICE', useValue: prisma },
@@ -247,12 +260,36 @@ describe('Governance routes (integration)', () => {
     prisma.tenant.findUnique.mockResolvedValue(null);
 
     const res = await request(app.getHttpServer())
-      .patch('/tenants/does-not-exist')
+      .patch('/tenants/56565656-5656-4656-8656-565656565656')
       .set('Authorization', 'Bearer valid-token')
       .send({ status: 'SUSPENDED' });
 
     expect(res.status).toBe(404);
     expect(prisma.tenant.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed tenant id with 400 before any lookup (F-G3-2)', async () => {
+    role = 'R-enterprise-admin';
+
+    const res = await request(app.getHttpServer())
+      .patch('/tenants/not-a-uuid')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ status: 'SUSPENDED' });
+
+    expect(res.status).toBe(400);
+    expect(prisma.tenant.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed membership id with 400 (F-G3-2)', async () => {
+    role = 'R-enterprise-admin';
+
+    const res = await request(app.getHttpServer())
+      .put(`/tenants/${TENANT_ID}/memberships/not-a-uuid/roles`)
+      .set('Authorization', 'Bearer valid-token')
+      .send({ roleCode: 'R-agent' });
+
+    expect(res.status).toBe(400);
+    expect(prisma.membershipRole.deleteMany).not.toHaveBeenCalled();
   });
 
   it('changes a membership role and persists a role.changed audit row (AC-F03-1)', async () => {

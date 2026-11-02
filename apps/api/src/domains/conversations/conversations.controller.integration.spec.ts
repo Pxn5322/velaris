@@ -129,7 +129,9 @@ function fakePrisma(conversations: FakeRow[], messages: FakeRow[]) {
         convStore.filter((c) => c.tenantId === where.tenantId),
       create: async ({ data }: { data: FakeRow }) => {
         const row: FakeRow = {
-          id: 'conv-http-' + ++convCounter,
+          id:
+            'cccccccc-0000-4000-8000-00000000' +
+            String(++convCounter).padStart(4, '0'),
           status: 'OPEN',
           version: 0,
           createdAt: new Date(),
@@ -228,15 +230,19 @@ describe('Conversations routes (integration)', () => {
     auditRecord = vi.fn().mockResolvedValue(undefined);
     prismaFake = fakePrisma(
       [
-        conversationRow('conv-live'),
-        conversationRow('conv-cust2', { customerId: 'customer-2' }),
-        conversationRow('conv-other', { tenantId: 'tenant-b' }),
+        conversationRow('cccccccc-0000-4000-8000-000000000001'),
+        conversationRow('cccccccc-0000-4000-8000-000000000002', {
+          customerId: 'customer-2',
+        }),
+        conversationRow('cccccccc-0000-4000-8000-000000000003', {
+          tenantId: 'tenant-b',
+        }),
       ],
       [
         {
           id: 'msg-public',
           tenantId: 'tenant-a',
-          conversationId: 'conv-live',
+          conversationId: 'cccccccc-0000-4000-8000-000000000001',
           authorType: 'AGENT',
           authorId: null,
           visibility: 'CUSTOMER_VISIBLE',
@@ -248,7 +254,7 @@ describe('Conversations routes (integration)', () => {
         {
           id: 'msg-internal',
           tenantId: 'tenant-a',
-          conversationId: 'conv-live',
+          conversationId: 'cccccccc-0000-4000-8000-000000000001',
           authorType: 'AGENT',
           authorId: null,
           visibility: 'INTERNAL',
@@ -328,7 +334,10 @@ describe('Conversations routes (integration)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
     expect(res.body.map((c: { id: string }) => c.id)).toEqual(
-      expect.arrayContaining(['conv-live', 'conv-cust2']),
+      expect.arrayContaining([
+        'cccccccc-0000-4000-8000-000000000001',
+        'cccccccc-0000-4000-8000-000000000002',
+      ]),
     );
   });
 
@@ -340,7 +349,7 @@ describe('Conversations routes (integration)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0]).toMatchObject({
-      id: 'conv-live',
+      id: 'cccccccc-0000-4000-8000-000000000001',
       customerId: 'customer-1',
     });
   });
@@ -348,7 +357,9 @@ describe('Conversations routes (integration)', () => {
   it('R-customer reads 404 for another customer conversation in the same tenant', async () => {
     role = 'R-customer';
     const res = await request(app.getHttpServer())
-      .get('/conversations/conv-cust2?tenantId=tenant-a')
+      .get(
+        '/conversations/cccccccc-0000-4000-8000-000000000002?tenantId=tenant-a',
+      )
       .set('Authorization', 'Bearer valid-token');
     expect(res.status).toBe(404);
   });
@@ -362,7 +373,9 @@ describe('Conversations routes (integration)', () => {
     expect(list.status).toBe(200);
     expect(list.body).toHaveLength(0);
     const one = await request(app.getHttpServer())
-      .get('/conversations/conv-live?tenantId=tenant-a')
+      .get(
+        '/conversations/cccccccc-0000-4000-8000-000000000001?tenantId=tenant-a',
+      )
       .set('Authorization', 'Bearer valid-token');
     expect(one.status).toBe(404);
   });
@@ -370,7 +383,9 @@ describe('Conversations routes (integration)', () => {
   it('denies a guessed tenant-B conversation (AC-F04-3)', async () => {
     role = 'R-agent';
     const res = await request(app.getHttpServer())
-      .get('/conversations/conv-live?tenantId=tenant-b')
+      .get(
+        '/conversations/cccccccc-0000-4000-8000-000000000001?tenantId=tenant-b',
+      )
       .set('Authorization', 'Bearer valid-token');
     expect(res.status).toBe(403);
   });
@@ -378,7 +393,9 @@ describe('Conversations routes (integration)', () => {
   it('TH-05: an R-customer timeline never serializes an internal note', async () => {
     role = 'R-customer';
     const res = await request(app.getHttpServer())
-      .get('/conversations/conv-live?tenantId=tenant-a')
+      .get(
+        '/conversations/cccccccc-0000-4000-8000-000000000001?tenantId=tenant-a',
+      )
       .set('Authorization', 'Bearer valid-token');
     expect(res.status).toBe(200);
     const bodies = (res.body.messages as { body: string }[]).map((m) => m.body);
@@ -389,7 +406,9 @@ describe('Conversations routes (integration)', () => {
   it('an R-agent timeline includes the internal note', async () => {
     role = 'R-agent';
     const res = await request(app.getHttpServer())
-      .get('/conversations/conv-live?tenantId=tenant-a')
+      .get(
+        '/conversations/cccccccc-0000-4000-8000-000000000001?tenantId=tenant-a',
+      )
       .set('Authorization', 'Bearer valid-token');
     expect(res.status).toBe(200);
     expect(res.body.messages).toHaveLength(2);
@@ -399,7 +418,9 @@ describe('Conversations routes (integration)', () => {
   it('R-customer cannot post a message (AC-F05-3)', async () => {
     role = 'R-customer';
     const res = await request(app.getHttpServer())
-      .post('/conversations/conv-live/messages?tenantId=tenant-a')
+      .post(
+        '/conversations/cccccccc-0000-4000-8000-000000000001/messages?tenantId=tenant-a',
+      )
       .set('Authorization', 'Bearer valid-token')
       .send({ body: 'I want to reply' });
     expect(res.status).toBe(403);
@@ -408,7 +429,9 @@ describe('Conversations routes (integration)', () => {
   it('R-agent posts a customer-visible message and it is audited', async () => {
     role = 'R-agent';
     const res = await request(app.getHttpServer())
-      .post('/conversations/conv-live/messages?tenantId=tenant-a')
+      .post(
+        '/conversations/cccccccc-0000-4000-8000-000000000001/messages?tenantId=tenant-a',
+      )
       .set('Authorization', 'Bearer valid-token')
       .send({ body: 'We are on it' });
     expect(res.status).toBe(201);
@@ -451,7 +474,9 @@ describe('Conversations routes (integration)', () => {
   it('R-agent updates conversation state with the version guard (AC-F05-1)', async () => {
     role = 'R-agent';
     const ok = await request(app.getHttpServer())
-      .patch('/conversations/conv-live?tenantId=tenant-a')
+      .patch(
+        '/conversations/cccccccc-0000-4000-8000-000000000001?tenantId=tenant-a',
+      )
       .set('Authorization', 'Bearer valid-token')
       .send({ status: 'PENDING', expectedVersion: 0 });
     expect(ok.status).toBe(200);
@@ -461,7 +486,9 @@ describe('Conversations routes (integration)', () => {
     );
 
     const stale = await request(app.getHttpServer())
-      .patch('/conversations/conv-live?tenantId=tenant-a')
+      .patch(
+        '/conversations/cccccccc-0000-4000-8000-000000000001?tenantId=tenant-a',
+      )
       .set('Authorization', 'Bearer valid-token')
       .send({ status: 'RESOLVED', expectedVersion: 0 });
     expect(stale.status).toBe(409);

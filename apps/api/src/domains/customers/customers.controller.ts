@@ -15,6 +15,7 @@ import {
   ForbiddenException,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Req,
@@ -82,7 +83,7 @@ export class CustomersController {
   @Get(':customerId')
   @RequirePermission(PERMISSIONS.TICKET_READ)
   async findOne(
-    @Param('customerId') customerId: string,
+    @Param('customerId', ParseUUIDPipe) customerId: string,
     @Query('tenantId') tenantId: string,
     @Req() request: AuthedRequest,
   ) {

@@ -82,7 +82,9 @@ function fakeTicketPrisma(tickets: FakeTicket[]) {
         store.filter((r) => r.tenantId === where.tenantId),
       create: async ({ data }: { data: FakeTicket }) => {
         const row: FakeTicket = {
-          id: 'ticket-http-' + ++counter,
+          id:
+            'aaaaaaaa-0000-4000-8000-00000000' +
+            String(++counter).padStart(4, '0'),
           status: 'OPEN',
           assigneeMembershipId: null,
           slaState: 'NOT_SET',
@@ -325,17 +327,33 @@ describe('Tickets routes (integration)', () => {
     role = 'R-agent';
 
     const res = await request(app.getHttpServer())
-      .get('/tickets/any-id?tenantId=tenant-b')
+      .get('/tickets/aaaaaaaa-0000-4000-8000-000000000009?tenantId=tenant-b')
       .set('Authorization', 'Bearer valid-token');
 
     expect(res.status).toBe(403);
   });
 
+  it('rejects a malformed ticket id with 400 (F-G3-2)', async () => {
+    role = 'R-agent';
+
+    const res = await request(app.getHttpServer())
+      .get('/tickets/not-a-uuid?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(400);
+  });
+
   it('R-customer list returns only tickets of their own customer row', async () => {
     role = 'R-customer';
     prismaFake._store.push(
-      seededTicket({ id: 'ticket-mine', customerId: 'customer-1' }),
-      seededTicket({ id: 'ticket-theirs', customerId: 'customer-2' }),
+      seededTicket({
+        id: 'aaaaaaaa-0000-4000-8000-000000000001',
+        customerId: 'customer-1',
+      }),
+      seededTicket({
+        id: 'aaaaaaaa-0000-4000-8000-000000000002',
+        customerId: 'customer-2',
+      }),
     );
 
     const res = await request(app.getHttpServer())
@@ -344,33 +362,43 @@ describe('Tickets routes (integration)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
-    expect(res.body[0]).toMatchObject({ id: 'ticket-mine' });
+    expect(res.body[0]).toMatchObject({
+      id: 'aaaaaaaa-0000-4000-8000-000000000001',
+    });
   });
 
   it('R-customer reads their own ticket but gets 404 for another customer ticket', async () => {
     role = 'R-customer';
     prismaFake._store.push(
-      seededTicket({ id: 'ticket-mine', customerId: 'customer-1' }),
-      seededTicket({ id: 'ticket-theirs', customerId: 'customer-2' }),
+      seededTicket({
+        id: 'aaaaaaaa-0000-4000-8000-000000000001',
+        customerId: 'customer-1',
+      }),
+      seededTicket({
+        id: 'aaaaaaaa-0000-4000-8000-000000000002',
+        customerId: 'customer-2',
+      }),
     );
 
     const mine = await request(app.getHttpServer())
-      .get('/tickets/ticket-mine?tenantId=tenant-a')
+      .get('/tickets/aaaaaaaa-0000-4000-8000-000000000001?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token');
     expect(mine.status).toBe(200);
 
     const theirs = await request(app.getHttpServer())
-      .get('/tickets/ticket-theirs?tenantId=tenant-a')
+      .get('/tickets/aaaaaaaa-0000-4000-8000-000000000002?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token');
     expect(theirs.status).toBe(404);
   });
 
   it('applies a valid transition over HTTP and audits it (AC-F05-1)', async () => {
     role = 'R-agent';
-    prismaFake._store.push(seededTicket({ id: 'ticket-live' }));
+    prismaFake._store.push(
+      seededTicket({ id: 'aaaaaaaa-0000-4000-8000-000000000003' }),
+    );
 
     const res = await request(app.getHttpServer())
-      .patch('/tickets/ticket-live?tenantId=tenant-a')
+      .patch('/tickets/aaaaaaaa-0000-4000-8000-000000000003?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token')
       .send({ status: 'IN_PROGRESS', expectedVersion: 0 });
 
@@ -379,7 +407,7 @@ describe('Tickets routes (integration)', () => {
     expect(auditRecord).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'ticket.updated',
-        resourceId: 'ticket-live',
+        resourceId: 'aaaaaaaa-0000-4000-8000-000000000003',
         tenantId: 'tenant-a',
         actorId: 'sub-123',
       }),
@@ -389,11 +417,14 @@ describe('Tickets routes (integration)', () => {
   it('rejects an invalid transition over HTTP with 409 (AC-F05-2)', async () => {
     role = 'R-agent';
     prismaFake._store.push(
-      seededTicket({ id: 'ticket-waiting', status: 'PENDING_CUSTOMER' }),
+      seededTicket({
+        id: 'aaaaaaaa-0000-4000-8000-000000000005',
+        status: 'PENDING_CUSTOMER',
+      }),
     );
 
     const res = await request(app.getHttpServer())
-      .patch('/tickets/ticket-waiting?tenantId=tenant-a')
+      .patch('/tickets/aaaaaaaa-0000-4000-8000-000000000005?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token')
       .send({ status: 'OPEN' });
 
@@ -402,10 +433,12 @@ describe('Tickets routes (integration)', () => {
 
   it('refuses a direct close over HTTP with 409 (migration-0003 invariant)', async () => {
     role = 'R-agent';
-    prismaFake._store.push(seededTicket({ id: 'ticket-direct' }));
+    prismaFake._store.push(
+      seededTicket({ id: 'aaaaaaaa-0000-4000-8000-000000000006' }),
+    );
 
     const res = await request(app.getHttpServer())
-      .patch('/tickets/ticket-direct?tenantId=tenant-a')
+      .patch('/tickets/aaaaaaaa-0000-4000-8000-000000000006?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token')
       .send({ status: 'CLOSED' });
 
@@ -414,10 +447,12 @@ describe('Tickets routes (integration)', () => {
 
   it('rejects a stale expectedVersion over HTTP with 409 (AC-F05-2)', async () => {
     role = 'R-agent';
-    prismaFake._store.push(seededTicket({ id: 'ticket-edited', version: 2 }));
+    prismaFake._store.push(
+      seededTicket({ id: 'aaaaaaaa-0000-4000-8000-000000000004', version: 2 }),
+    );
 
     const res = await request(app.getHttpServer())
-      .patch('/tickets/ticket-edited?tenantId=tenant-a')
+      .patch('/tickets/aaaaaaaa-0000-4000-8000-000000000004?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token')
       .send({ priority: 'URGENT', expectedVersion: 1 });
 
@@ -426,10 +461,12 @@ describe('Tickets routes (integration)', () => {
 
   it('does not audit a refused update (AC-F05-2 side effects)', async () => {
     role = 'R-agent';
-    prismaFake._store.push(seededTicket({ id: 'ticket-refused' }));
+    prismaFake._store.push(
+      seededTicket({ id: 'aaaaaaaa-0000-4000-8000-000000000007' }),
+    );
 
     const res = await request(app.getHttpServer())
-      .patch('/tickets/ticket-refused?tenantId=tenant-a')
+      .patch('/tickets/aaaaaaaa-0000-4000-8000-000000000007?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token')
       .send({ status: 'CLOSED', expectedVersion: 99 });
 

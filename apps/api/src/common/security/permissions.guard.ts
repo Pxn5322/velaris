@@ -15,6 +15,7 @@
  */
 
 import {
+  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -35,6 +36,10 @@ import {
   type RoleResolver,
 } from '../../domains/permissions/role-resolver.js';
 import { PERMISSION_DECORATOR_KEY } from './require-permission.decorator.js';
+
+/** Canonical UUID shape accepted for path tenant identifiers (F-G3-2). */
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type GuardedRequest = {
   user?: AuthenticatedIdentity;
@@ -105,11 +110,24 @@ export class PermissionsGuard implements CanActivate {
    * Tenant the request targets. Provisional source (query/params) until
    * a request-scoped tenant context exists; the value only selects which
    * membership to read, so a forged value cannot grant a role.
+   *
+   * F-G3-2: a tenant id that arrives as a path parameter must be a UUID.
+   * A malformed one is a client input error, so it answers 400 before any
+   * query runs, instead of a 500 from the database driver. Query values
+   * keep their existing behaviour: the resolver denies them (F-G3-1).
    */
   private readTenantId(request: GuardedRequest): string | undefined {
     const fromQuery = request.query?.tenantId;
     const fromParams = request.params?.tenantId;
-    const value = fromQuery ?? fromParams;
-    return typeof value === 'string' ? value : undefined;
+    if (fromQuery !== undefined && fromQuery !== null) {
+      return typeof fromQuery === 'string' ? fromQuery : undefined;
+    }
+    if (fromParams === undefined || fromParams === null) {
+      return undefined;
+    }
+    if (typeof fromParams !== 'string' || !UUID_PATTERN.test(fromParams)) {
+      throw new BadRequestException('tenantId must be a UUID');
+    }
+    return fromParams;
   }
 }

@@ -88,7 +88,9 @@ function fakePrisma(rows: Record<string, unknown>[]) {
       },
       create: async ({ data }: { data: Record<string, unknown> }) => {
         const row = {
-          id: 'cust-http-' + ++counter,
+          id:
+            'dddddddd-0000-4000-8000-00000000' +
+            String(++counter).padStart(4, '0'),
           status: 'ACTIVE',
           email: null,
           phone: null,
@@ -125,7 +127,7 @@ describe('Customers routes (integration)', () => {
     role = null;
     prismaFake = fakePrisma([
       {
-        id: 'cust-a',
+        id: 'dddddddd-0000-4000-8000-000000000001',
         tenantId: 'tenant-a',
         displayName: 'Alice',
         status: 'ACTIVE',
@@ -136,7 +138,7 @@ describe('Customers routes (integration)', () => {
         updatedAt: new Date(),
       },
       {
-        id: 'cust-a2',
+        id: 'dddddddd-0000-4000-8000-000000000002',
         tenantId: 'tenant-a',
         displayName: 'Alice2',
         status: 'ACTIVE',
@@ -147,7 +149,7 @@ describe('Customers routes (integration)', () => {
         updatedAt: new Date(),
       },
       {
-        id: 'cust-b',
+        id: 'dddddddd-0000-4000-8000-000000000003',
         tenantId: 'tenant-b',
         displayName: 'Bob',
         status: 'ACTIVE',
@@ -227,7 +229,10 @@ describe('Customers routes (integration)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
     expect(res.body.map((c: { id: string }) => c.id)).toEqual(
-      expect.arrayContaining(['cust-a', 'cust-a2']),
+      expect.arrayContaining([
+        'dddddddd-0000-4000-8000-000000000001',
+        'dddddddd-0000-4000-8000-000000000002',
+      ]),
     );
   });
 
@@ -238,13 +243,15 @@ describe('Customers routes (integration)', () => {
       .set('Authorization', 'Bearer valid-token');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
-    expect(res.body[0]).toMatchObject({ id: 'cust-a' });
+    expect(res.body[0]).toMatchObject({
+      id: 'dddddddd-0000-4000-8000-000000000001',
+    });
   });
 
   it('R-customer is refused another customer row in the same tenant', async () => {
     role = 'R-customer';
     const res = await request(app.getHttpServer())
-      .get('/customers/cust-a2?tenantId=tenant-a')
+      .get('/customers/dddddddd-0000-4000-8000-000000000002?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token');
     expect(res.status).toBe(403);
   });
@@ -252,7 +259,9 @@ describe('Customers routes (integration)', () => {
   it('R-customer with no matching customer row sees nothing (deny by default)', async () => {
     role = 'R-customer';
     const store = prismaFake._store;
-    const row = store.find((c) => c.id === 'cust-a');
+    const row = store.find(
+      (c) => c.id === 'dddddddd-0000-4000-8000-000000000001',
+    );
     if (row) {
       row.email = 'someone-else@example.test';
     }
@@ -262,7 +271,7 @@ describe('Customers routes (integration)', () => {
     expect(list.status).toBe(200);
     expect(list.body).toHaveLength(0);
     const one = await request(app.getHttpServer())
-      .get('/customers/cust-a?tenantId=tenant-a')
+      .get('/customers/dddddddd-0000-4000-8000-000000000001?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token');
     expect(one.status).toBe(403);
   });
@@ -278,16 +287,18 @@ describe('Customers routes (integration)', () => {
   it('fetches one customer inside the scope', async () => {
     role = 'R-agent';
     const res = await request(app.getHttpServer())
-      .get('/customers/cust-a?tenantId=tenant-a')
+      .get('/customers/dddddddd-0000-4000-8000-000000000001?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token');
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: 'cust-a' });
+    expect(res.body).toMatchObject({
+      id: 'dddddddd-0000-4000-8000-000000000001',
+    });
   });
 
   it('refuses a customer row from another tenant (AC-F04-3)', async () => {
     role = 'R-agent';
     const res = await request(app.getHttpServer())
-      .get('/customers/cust-b?tenantId=tenant-a')
+      .get('/customers/dddddddd-0000-4000-8000-000000000003?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token');
     expect(res.status).toBe(403);
   });
