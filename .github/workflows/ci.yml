@@ -112,8 +112,23 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:ci-offline-check@localhost:5432/velaris
         run: npx prisma generate
+      # `next build` downloads Google Fonts at build time (next/font/google),
+      # which failed transiently on 2026-11-02 (run 41426929417, attempt 1:
+      # 36 Turbopack errors on '@vercel/turbopack-next/internal/font/google/font'
+      # while every other job and the local build passed). Retry the build so
+      # a font CDN hiccup cannot redden master; a real compile error still
+      # fails all three attempts. Same pattern as e2e.yml.
       - name: Build all workspaces (nest build + next build)
-        run: npm run build
+        run: |
+          for attempt in 1 2 3; do
+            if npm run build; then
+              exit 0
+            fi
+            echo "build attempt ${attempt} failed; retrying in 10s"
+            sleep 10
+          done
+          echo "build failed after 3 attempts"
+          exit 1
 
   audit:
     name: Dependency audit (baseline gate)
