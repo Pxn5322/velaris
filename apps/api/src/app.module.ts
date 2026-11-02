@@ -16,6 +16,7 @@ import { TenantsModule } from './domains/tenants/tenants.module.js';
 import { GovernanceModule } from './domains/tenants/governance.module.js';
 import { AuthModule } from './domains/auth/auth.module.js';
 import { PermissionsModule } from './domains/permissions/permissions.module.js';
+import { AiModule } from './domains/ai/ai.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -42,6 +43,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     GovernanceModule,
     AuthModule,
     PermissionsModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
