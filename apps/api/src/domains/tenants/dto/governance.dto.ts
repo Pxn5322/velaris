@@ -20,3 +20,14 @@ export class SetTenantStatusDto {
 export class SetMembershipRoleDto {
   roleCode!: string;
 }
+
+export class AddMemberDto {
+  email!: string;
+  roleCode!: string;
+  /** Optional: creates the auth account when none exists yet. */
+  password?: string;
+}
+
+export class SetMembershipStatusDto {
+  status!: 'ACTIVE' | 'SUSPENDED';
+}

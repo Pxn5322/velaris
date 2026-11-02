@@ -24,6 +24,7 @@ import {
   Get,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -108,7 +109,7 @@ export class ConversationsController {
   @Get(':conversationId')
   @RequirePermission(PERMISSIONS.TICKET_READ)
   async findOne(
-    @Param('conversationId') conversationId: string,
+    @Param('conversationId', ParseUUIDPipe) conversationId: string,
     @Query('tenantId') tenantId: string,
     @Req() request: AuthedRequest,
   ) {
@@ -144,7 +145,7 @@ export class ConversationsController {
   @Patch(':conversationId')
   @RequirePermission(PERMISSIONS.TICKET_WRITE)
   async updateStatus(
-    @Param('conversationId') conversationId: string,
+    @Param('conversationId', ParseUUIDPipe) conversationId: string,
     @Query('tenantId') tenantId: string,
     @Req() request: AuthedRequest,
     @Body() updateConversationDto: UpdateConversationDto,
@@ -169,7 +170,7 @@ export class ConversationsController {
   @Post(':conversationId/messages')
   @RequirePermission(PERMISSIONS.TICKET_WRITE)
   async sendMessage(
-    @Param('conversationId') conversationId: string,
+    @Param('conversationId', ParseUUIDPipe) conversationId: string,
     @Query('tenantId') tenantId: string,
     @Req() request: AuthedRequest,
     @Body() sendMessageDto: SendMessageDto,

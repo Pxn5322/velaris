@@ -16,7 +16,9 @@
 import {
   Body,
   Controller,
+  Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Put,
@@ -31,11 +33,17 @@ import type { AuthenticatedIdentity } from '../auth/auth.interface.js';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { PERMISSIONS } from '../permissions/permission.codes.js';
 import {
+  AddMemberDto,
   CreateTenantDto,
   SetMembershipRoleDto,
+  SetMembershipStatusDto,
   SetTenantStatusDto,
 } from './dto/governance.dto.js';
 import { GovernanceService } from './governance.service.js';
+import {
+  TenantUsersService,
+  type TenantMemberView,
+} from './tenant-users.service.js';
 
 /** Express request carrying the identity SupabaseAuthGuard attached. */
 type AuthedRequest = Request & { user?: AuthenticatedIdentity };
@@ -45,6 +53,7 @@ type AuthedRequest = Request & { user?: AuthenticatedIdentity };
 export class GovernanceController {
   constructor(
     private readonly governance: GovernanceService,
+    private readonly users: TenantUsersService,
     private readonly audit: AuditService,
   ) {}
 
@@ -69,7 +78,7 @@ export class GovernanceController {
   @Patch(':tenantId')
   @RequirePermission(PERMISSIONS.TENANT_MANAGE_PLATFORM)
   async setTenantStatus(
-    @Param('tenantId') tenantId: string,
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Req() request: AuthedRequest,
     @Body() setStatusDto: SetTenantStatusDto,
   ) {
@@ -91,8 +100,8 @@ export class GovernanceController {
   @Put(':tenantId/memberships/:membershipId/roles')
   @RequirePermission(PERMISSIONS.ROLE_MANAGE)
   async setMembershipRole(
-    @Param('tenantId') tenantId: string,
-    @Param('membershipId') membershipId: string,
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('membershipId', ParseUUIDPipe) membershipId: string,
     @Req() request: AuthedRequest,
     @Body() setRoleDto: SetMembershipRoleDto,
   ) {
@@ -108,6 +117,64 @@ export class GovernanceController {
       tenantId,
       actorId: request.user?.subject,
       metadata: { roleCode: result.roleCode },
+    });
+    return result;
+  }
+
+  /**
+   * Tenant user management (F-03, AC-F03-1). Each route declares its own
+   * permission and is scoped to the tenant in the path: ROLE_MANAGE to
+   * read the member list, USER_CREATE to add a member, USER_DISABLE to
+   * suspend or reinstate one. The guard resolves the caller's role for
+   * that tenant, so only a member of the tenant can reach these handlers.
+   */
+  @Get(':tenantId/users')
+  @RequirePermission(PERMISSIONS.ROLE_MANAGE)
+  async listUsers(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+  ): Promise<TenantMemberView[]> {
+    return this.users.list(tenantId);
+  }
+
+  @Post(':tenantId/users')
+  @RequirePermission(PERMISSIONS.USER_CREATE)
+  async addUser(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Req() request: AuthedRequest,
+    @Body() addMemberDto: AddMemberDto,
+  ) {
+    const member = await this.users.add(tenantId, addMemberDto);
+    await this.audit.record({
+      action: 'user.added',
+      resourceType: 'membership',
+      resourceId: member.membershipId,
+      tenantId,
+      actorId: request.user?.subject,
+      metadata: { email: member.email, roleCode: member.roles[0] },
+    });
+    return member;
+  }
+
+  @Patch(':tenantId/memberships/:membershipId/status')
+  @RequirePermission(PERMISSIONS.USER_DISABLE)
+  async setMembershipStatus(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('membershipId', ParseUUIDPipe) membershipId: string,
+    @Req() request: AuthedRequest,
+    @Body() setStatusDto: SetMembershipStatusDto,
+  ) {
+    const result = await this.users.setMembershipStatus(
+      tenantId,
+      membershipId,
+      setStatusDto,
+    );
+    await this.audit.record({
+      action: 'user.status_changed',
+      resourceType: 'membership',
+      resourceId: membershipId,
+      tenantId,
+      actorId: request.user?.subject,
+      metadata: { status: result.status },
     });
     return result;
   }

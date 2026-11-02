@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module.js';
 import { PermissionsModule } from '../permissions/permissions.module.js';
 import { GovernanceController } from './governance.controller.js';
 import { GovernanceService } from './governance.service.js';
+import { TenantUsersService } from './tenant-users.service.js';
 
 /**
  * Platform governance module (AC-F03-1). It is separate from
@@ -16,6 +17,6 @@ import { GovernanceService } from './governance.service.js';
 @Module({
   imports: [PermissionsModule, AuditModule, AuthModule],
   controllers: [GovernanceController],
-  providers: [GovernanceService],
+  providers: [GovernanceService, TenantUsersService],
 })
 export class GovernanceModule {}

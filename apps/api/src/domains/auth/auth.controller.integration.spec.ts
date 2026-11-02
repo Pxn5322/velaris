@@ -15,10 +15,16 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
+import {
+  PRISMA_SERVICE,
+  type PrismaService,
+} from '../../infrastructure/prisma/prisma.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import { ROLE_RESOLVER } from '../permissions/role-resolver.js';
 import { AuthController } from './auth.controller.js';
+import { SignupService } from './signup.service.js';
+import { SupabaseAdminService } from './supabase-admin.service.js';
 import { SupabaseAuthGuard } from './supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
 
@@ -78,6 +84,12 @@ describe('GET /auth/session (integration)', () => {
       providers: [
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
+        SignupService,
+        SupabaseAdminService,
+        // The controller emits one audit event from the public signup
+        // route; this spec exercises GET /auth/session only.
+        { provide: AuditService, useValue: { record: vi.fn() } },
+        { provide: PRISMA_SERVICE, useValue: prisma },
         { provide: ROLE_RESOLVER, useValue: { resolveRole } },
         {
           provide: TenantsService,

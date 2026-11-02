@@ -61,4 +61,30 @@ test.describe("landing page (AC-F01-1)", () => {
       header.getByRole("button", { name: /Start Free/ }),
     ).toBeVisible();
   });
+
+  test("Start Free opens the tenant registration form (F-01)", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    const header = page.locator("header");
+    await header.getByRole("button", { name: /Start Free/ }).click();
+
+    // Registration asks for the workspace the new tenant will administer.
+    await expect(
+      page.getByRole("heading", { name: "Create your workspace" }),
+    ).toBeVisible();
+    await expect(page.getByTestId("sign-up-workspace")).toBeVisible();
+    await expect(page.getByTestId("sign-in-submit")).toHaveText(
+      "Create workspace",
+    );
+
+    // The Sign In entry point still opens the plain sign-in form.
+    await page.getByLabel("Close dialog").click();
+    await header.getByRole("button", { name: "Sign In" }).click();
+    await expect(page.getByTestId("sign-up-workspace")).toHaveCount(0);
+    await expect(page.getByTestId("sign-in-submit")).toHaveText(
+      "Continue to Platform",
+    );
+  });
 });

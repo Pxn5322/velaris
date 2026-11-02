@@ -1,9 +1,7 @@
 {
   "@nestjs/mau": "moderate",
-  "@nestjs/platform-express": "high",
   "external-editor": "low",
   "inquirer": "low",
-  "multer": "high",
   "next": "critical",
   "tmp": "high",
   "undici": "high"

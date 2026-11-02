@@ -59,7 +59,29 @@ export class BullMqIngestionQueue implements IngestionQueue, OnModuleDestroy {
   enqueue(job: IngestionJob): void {
     // jobId = idempotency key: while that job still exists, BullMQ drops
     // the duplicate, mirroring the in-process suppression.
-    void this.queue.add('ingest', job, { jobId: job.idempotencyKey });
+    //
+    // Two rules the live check against Redis Cloud proved (they are
+    // invisible while bullmq is mocked):
+    // 1. BullMQ forbids ':' in a custom job id, so the id is sanitised
+    //    here while the payload keeps the real idempotency key;
+    // 2. queue.add throws or rejects on a bad job - either would reach
+    //    Node as an uncaught error and take the whole process down.
+    const options = { jobId: bullJobId(job.idempotencyKey) };
+    try {
+      void Promise.resolve(this.queue.add('ingest', job, options)).catch(
+        (error: unknown) => this.reportEnqueueFailure(error),
+      );
+    } catch (error) {
+      this.reportEnqueueFailure(error);
+    }
+  }
+
+  /** A lost enqueue must stay visible in the log, never crash the API. */
+  private reportEnqueueFailure(error: unknown): void {
+    console.error(
+      '[queue] ingestion job not enqueued:',
+      error instanceof Error ? error.message : error,
+    );
   }
 
   async idle(): Promise<void> {
@@ -78,6 +100,15 @@ export class BullMqIngestionQueue implements IngestionQueue, OnModuleDestroy {
     this.queueConnection.disconnect();
     this.workerConnection.disconnect();
   }
+}
+
+/**
+ * BullMQ job id for an idempotency key: ':' separates Redis key segments,
+ * so BullMQ rejects it in a custom id (observed live against Redis 8.6).
+ * The payload carries the untouched key, so suppression semantics stay.
+ */
+export function bullJobId(idempotencyKey: string): string {
+  return idempotencyKey.replace(/:/g, '-');
 }
 
 /**

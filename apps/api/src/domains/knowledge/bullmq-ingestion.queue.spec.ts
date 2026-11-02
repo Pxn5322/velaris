@@ -102,12 +102,47 @@ describe('BullMqIngestionQueue', () => {
     await queue.onModuleDestroy();
   });
 
-  it('adds one durable job under the idempotency key', () => {
+  it('adds one durable job under a BullMQ-safe id', () => {
     queue.enqueue(job());
 
+    // BullMQ rejects ':' in a custom id (live check, Redis 8.6): the id
+    // is sanitised while the payload keeps the real idempotency key.
     expect(mocks.queueAdd).toHaveBeenCalledWith('ingest', job(), {
-      jobId: 'ingest:src-1',
+      jobId: 'ingest-src-1',
     });
+    const options = mocks.queueAdd.mock.calls[0][2] as { jobId: string };
+    expect(options.jobId).not.toContain(':');
+  });
+
+  it('keeps the idempotency key untouched inside the payload', () => {
+    queue.enqueue(job());
+
+    const payload = mocks.queueAdd.mock.calls[0][1] as IngestionJob;
+    expect(payload.idempotencyKey).toBe('ingest:src-1');
+  });
+
+  it('never lets a failed add take the process down (live-check regression)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mocks.queueAdd.mockRejectedValueOnce(
+      new Error('Custom Id cannot contain :'),
+    );
+
+    expect(() => queue.enqueue(job())).not.toThrow();
+
+    await vi.waitFor(() => expect(errorSpy).toHaveBeenCalledTimes(1));
+    expect(String(errorSpy.mock.calls[0][0])).toContain('not enqueued');
+    errorSpy.mockRestore();
+  });
+
+  it('also survives a synchronous throw from the queue add', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mocks.queueAdd.mockImplementationOnce(() => {
+      throw new Error('Custom Id cannot contain :');
+    });
+
+    expect(() => queue.enqueue(job())).not.toThrow();
+    expect(String(errorSpy.mock.calls[0][0])).toContain('not enqueued');
+    errorSpy.mockRestore();
   });
 
   it('runs the ingestion runner from the BullMQ processor', async () => {

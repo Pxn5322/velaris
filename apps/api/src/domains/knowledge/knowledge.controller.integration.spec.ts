@@ -89,7 +89,9 @@ function fakeKnowledgePrisma(rows: FakeSource[] = []) {
       ),
       create: vi.fn(async ({ data }: { data: FakeSource }) => {
         const row: FakeSource = {
-          id: 'src-http-' + ++counter,
+          id:
+            'eeeeeeee-0000-4000-8000-00000000' +
+            String(++counter).padStart(4, '0'),
           status: 'PENDING',
           errorCode: null,
           provenanceJson: {},
@@ -215,7 +217,9 @@ describe('Knowledge source routes (integration)', () => {
 
   it('returns 403 for an authenticated principal without knowledge.manage (AC-F02-3)', async () => {
     const res = await request(app.getHttpServer())
-      .get('/knowledge-sources/src-1?tenantId=tenant-a')
+      .get(
+        '/knowledge-sources/eeeeeeee-0000-4000-8000-000000000001?tenantId=tenant-a',
+      )
       .set('Authorization', 'Bearer valid-token');
 
     expect(res.status).toBe(403);
@@ -225,7 +229,7 @@ describe('Knowledge source routes (integration)', () => {
     role = 'R-tenant-admin';
 
     const res = await request(app.getHttpServer())
-      .get('/knowledge-sources/src-1')
+      .get('/knowledge-sources/eeeeeeee-0000-4000-8000-000000000001')
       .set('Authorization', 'Bearer valid-token');
 
     expect(res.status).toBe(400);
@@ -424,7 +428,7 @@ describe('Knowledge source routes (integration)', () => {
   it('reports status, error code and provenance through GET (API-09)', async () => {
     role = 'R-tenant-admin';
     prismaFake._store.push({
-      id: 'src-failed',
+      id: 'eeeeeeee-0000-4000-8000-000000000004',
       tenantId: 'tenant-a',
       sourceType: 'WEBSITE',
       sourceUri: 'https://example.test/broken',
@@ -436,12 +440,14 @@ describe('Knowledge source routes (integration)', () => {
     });
 
     const res = await request(app.getHttpServer())
-      .get('/knowledge-sources/src-failed?tenantId=tenant-a')
+      .get(
+        '/knowledge-sources/eeeeeeee-0000-4000-8000-000000000004?tenantId=tenant-a',
+      )
       .set('Authorization', 'Bearer valid-token');
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
-      id: 'src-failed',
+      id: 'eeeeeeee-0000-4000-8000-000000000004',
       status: 'FAILED',
       errorCode: 'FETCH_FAILED',
     });
@@ -454,9 +460,21 @@ describe('Knowledge source routes (integration)', () => {
     role = 'R-tenant-admin';
 
     const res = await request(app.getHttpServer())
-      .get('/knowledge-sources/missing?tenantId=tenant-a')
+      .get(
+        '/knowledge-sources/eeeeeeee-0000-4000-8000-0000000000ff?tenantId=tenant-a',
+      )
       .set('Authorization', 'Bearer valid-token');
 
     expect(res.status).toBe(404);
+  });
+
+  it('rejects a malformed source id with 400 (F-G3-2)', async () => {
+    role = 'R-tenant-admin';
+
+    const res = await request(app.getHttpServer())
+      .get('/knowledge-sources/not-a-uuid?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(400);
   });
 });

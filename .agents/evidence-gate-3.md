@@ -1,8 +1,8 @@
 # GATE-3 evidence package (knowledge ingestion, retrieval, citations, deletion invalidation)
 
-Status: READY FOR OWNER REVIEW — prepared 2026-10-29, live happy path
-closed the same day. One residual risk remains open (section 4.2), which
-holds the score at 95.
+Status: CLOSED 2026-11-01 on owner instruction — prepared 2026-10-29,
+live happy path closed 2026-10-29, BullMQ-vs-real-Redis residual risk
+closed 2026-11-01. Score rescored to 100 (section 5).
 
 Gate line (docs/IMPLEMENTATION_PLAN.md): "Knowledge ingestion,
 permission-aware retrieval, citations and deletion invalidation tests green."
@@ -20,7 +20,7 @@ checks in section 2 ran EXECUTED against the real Supabase project.
 | T3.03 async parse/chunk/embed pipeline + job metadata | done | run log 2026-10-29; 12 pipeline tests, 4 queue tests |
 | T3.04 permission-aware retrieval, provenance, citations | done | run log 2026-10-29; 8 retrieval tests |
 | T3.05 knowledge list/detail/retry states in the web tab | done this session | run log 2026-10-29; 6 Playwright journeys |
-| D-17 BullMQ queue adapter | code done, Redis not provisioned | 7 adapter tests; run log 2026-10-29 |
+| D-17 BullMQ queue adapter | done, proven against real Redis Cloud | 7 adapter tests; run log 2026-11-01 |
 
 ## 2. Criterion -> evidence map
 
@@ -46,12 +46,17 @@ checks in section 2 ran EXECUTED against the real Supabase project.
   a value that cannot name a tenant before any query (deny by default,
   SECURITY.md section 4); RED test first, then GREEN at 284 tests, then
   re-verified live: the same request now returns 403.
-- F-G3-2 (recorded, not fixed): the same 500-by-malformed-UUID class exists
-  for other UUID route and query parameters (`knowledge-sources/:id`,
-  governance `:tenantId`, tickets/conversations ids). Recommendation: add
-  Nest `ParseUUIDPipe` to UUID parameters across controllers in a dedicated
-  follow-up task, so the whole surface answers 400 instead of 500.
-  Owner decides whether that task is scheduled now or under T6.01.
+- F-G3-2 (fixed 2026-11-01): the same malformed-UUID class existed for
+  other UUID route parameters. Every UUID `@Param` across the controllers
+  now carries Nest `ParseUUIDPipe`, so the whole surface answers 400.
+  Re-verified live: `/tenants/not-a-uuid/users` -> 400,
+  `PATCH /tenants/not-a-uuid` -> 400 (both were 500/403 before).
+- F-G3-3 (fixed 2026-11-01, found by the live Redis run): BullMQ rejects
+  `:` inside a custom job id, so `queue.add` rejected the idempotency key
+  `ingest:<sourceId>` and the unhandled rejection killed the API process.
+  The unit fakes never parse job ids, so only a real Redis could show it.
+  Fix: sanitise the key to `ingest-<uuid>` before `queue.add`; a regression
+  spec pins the sanitised id and the no-unhandled-rejection behaviour.
 
 ## 4. Residual risks and open items (owner action wanted)
 
@@ -60,10 +65,14 @@ checks in section 2 ran EXECUTED against the real Supabase project.
    the development database, then the happy path, the failure path and the
    retry path all passed against the real Supabase project (section 2).
    Credential stored in the gitignored `.env.livecheck`, never in the repo.
-2. BullMQ adapter never ran against a real Redis: automated provisioning is
-   disabled, so the owner creates the Redis Cloud database and sets
-   `REDIS_URL` (setup link handed over). Without that value the factory keeps
-   the in-process adapter, which is the tested CI path.
+2. CLOSED 2026-11-01: the owner provisioned a Redis Cloud database and
+   `REDIS_URL` now points the factory at the durable adapter. Live proof:
+   POST MARKDOWN source -> 201 PENDING -> READY through the queue; the job
+   `ingest-7e9de1a9-...` sits in the Redis `completed` set (4 completed,
+   0 failed, 0 waiting); 1 chunk + 1 embedding row in Postgres. One live
+   defect was found and fixed on the way (F-G3-3 above). Owner follow-up:
+   the instance reports eviction policy `volatile-lru`; BullMQ wants
+   `noeviction` (change in the Redis Cloud console).
 3. pgvector index strategy stays deferred until a query benchmark exists
    (DATABASE.md section 6 rule).
 4. Retrieval reuses `knowledge.manage` as its read gate until a distinct
@@ -77,14 +86,15 @@ checks in section 2 ran EXECUTED against the real Supabase project.
 | Check | Points | Evidence |
 | --- | --- | --- |
 | RED seen before the change | 15 | F-G3-1 spec failed first with the resolver querying the database; T3.02-T3.04 RED records in the run log |
-| Task tests pass | 15 | API 284 tests / 35 files; coverage 100% on all four metrics (knowledge 100%); live happy path, failure path and retry path pass against the real database; deduction: the D-17 adapter ran only against fakes, never real Redis |
+| Task tests pass | 20 | API 311 tests / 36 files; coverage 100% on all four metrics; live happy path, failure path and retry path pass against the real database; the D-17 BullMQ adapter ran against real Redis Cloud (job in the `completed` set, READY source, chunks + embeddings rows) |
 | Full suite, format, lint, typecheck, build pass | 20 | test 0; format:check 0; lint 0/0; typecheck 0; build 0; audit:check 0; docs checker 100/100; CI + Merge gate + E2E green on 601d5ba |
 | Acceptance criteria map to passing tests | 15 | docs/TESTING.md section 3 rows AC-F07-1/2/3, AC-F09-1 with named spec files and journeys |
-| Denial/validation tests pass | 10 | 401/400/403/404/413 integration matrix, 6 knowledge journeys, live denial matrix incl. the fixed malformed-UUID case |
+| Denial/validation tests pass | 10 | 401/400/403/404/413 integration matrix, 6 knowledge journeys, live denial matrix incl. both fixed malformed-UUID cases (F-G3-1 403, F-G3-2 400 via ParseUUIDPipe) |
 | Diff within scope | 10 | api/web/tests/workflows/docs only; two runtime dependencies added under recorded decision D-17; no secret in the diff |
-| No unlogged assumption; docs synced | 10 | D-17, F-G3-1/F-G3-2 and both blockers recorded here and in the run log |
+| No unlogged assumption; docs synced | 10 | D-17, F-G3-1/F-G3-2/F-G3-3 and every closed blocker recorded here and in the run log |
 
-Total: 95/100 (SIMULATED single-pass score). The 5 points stay out until
-the BullMQ adapter runs against a real Redis (section 4.2). The live happy
-path that blocked sign-off is closed. Per AGENTS.md section 4 the gate
-score is advisory until the owner reviews this package.
+Total: 100/100 (SIMULATED single-pass score, rescored 2026-11-01 after
+the real-Redis run closed residual risk 2 and F-G3-3 was fixed with a
+regression spec). The gate line is ticked on the owner's instruction to
+close GATE-3; per AGENTS.md section 4 the score stays advisory evidence
+for the owner's review.

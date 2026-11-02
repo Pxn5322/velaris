@@ -18,6 +18,7 @@ import {
   Get,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -104,7 +105,7 @@ export class TicketsController {
   @Get(':id')
   @RequirePermission(PERMISSIONS.TICKET_READ)
   async findOne(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Query('tenantId') tenantId: string,
     @Req() request: AuthedRequest,
   ) {
@@ -124,7 +125,7 @@ export class TicketsController {
   @Patch(':id')
   @RequirePermission(PERMISSIONS.TICKET_WRITE)
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Query('tenantId') tenantId: string,
     @Req() request: AuthedRequest,
     @Body() updateTicketDto: UpdateTicketDto,
@@ -149,7 +150,7 @@ export class TicketsController {
   @Delete(':id')
   @RequirePermission(PERMISSIONS.TICKET_WRITE)
   async remove(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Query('tenantId') tenantId: string,
     @Req() request: AuthedRequest,
   ) {

@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { AiAgentService } from './ai-agent.service.js';
 import { CreateAiAgentDto } from './dto/create-ai-agent.dto.js';
 
@@ -17,7 +25,7 @@ export class AiAgentController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.aiAgentService.findOne(id);
   }
 }

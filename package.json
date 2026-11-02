@@ -29,5 +29,8 @@
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.3",
     "prisma": "^7.10.1"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
   }
 }

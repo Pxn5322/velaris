@@ -61,8 +61,14 @@ const USER_ROW = {
 
 /** Tenant rows for the disabled-tenant operation check. */
 const TENANT_ROWS: Record<string, { id: string; status: string }> = {
-  'tenant-a': { id: 'tenant-a', status: 'ACTIVE' },
-  'tenant-suspended': { id: 'tenant-suspended', status: 'SUSPENDED' },
+  '90909090-9090-4909-8909-909090909090': {
+    id: '90909090-9090-4909-8909-909090909090',
+    status: 'ACTIVE',
+  },
+  '78787878-7878-4878-8878-787878787878': {
+    id: '78787878-7878-4878-8878-787878787878',
+    status: 'SUSPENDED',
+  },
 };
 
 type AuthedRequest = Request & {
@@ -234,10 +240,10 @@ describe('RBAC checks (integration)', () => {
     role = 'R-tenant-admin';
 
     const rejected = await request(app.getHttpServer())
-      .post('/harness/tenants/tenant-suspended/operations')
+      .post('/harness/tenants/78787878-7878-4878-8878-787878787878/operations')
       .set('Authorization', 'Bearer valid-token');
     const allowed = await request(app.getHttpServer())
-      .post('/harness/tenants/tenant-a/operations')
+      .post('/harness/tenants/90909090-9090-4909-8909-909090909090/operations')
       .set('Authorization', 'Bearer valid-token');
 
     expect(rejected.status).toBe(403);

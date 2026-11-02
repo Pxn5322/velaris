@@ -24,6 +24,7 @@ import {
   Get,
   Inject,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Req,
@@ -107,7 +108,7 @@ export class KnowledgeController {
   @Get(':id')
   @RequirePermission(PERMISSIONS.KNOWLEDGE_MANAGE)
   async findOne(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Query('tenantId') tenantId: string,
     @Req() request: AuthedRequest,
   ) {
