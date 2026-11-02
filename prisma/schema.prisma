@@ -74,6 +74,10 @@ model Tenant {
   messages               Message[]
   tickets                Ticket[]
   knowledgeSources       KnowledgeSource[]
+  aiAgents               AiAgent[]
+  agentVersions          AiAgentVersion[]
+  agentToolGrants        AgentToolGrant[]
+  evaluationRuns         EvaluationRun[]
 
   @@unique([slug])
   @@map("tenants")
@@ -109,6 +113,7 @@ model TenantMembership {
   tenant Tenant           @relation(fields: [tenantId], references: [id])
   user   User             @relation(fields: [userId], references: [id])
   roles  MembershipRole[]
+  ownedAgents AiAgent[]
 
   @@unique([tenantId, userId])
   @@index([userId, status])
@@ -419,4 +424,117 @@ model KnowledgeEmbedding {
   @@unique([chunkId, model])
   @@index([tenantId])
   @@map("knowledge_embeddings")
+}
+
+enum AgentStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+enum AgentVersionStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum EvaluationRunStatus {
+  PENDING
+  RUNNING
+  PASSED
+  FAILED
+}
+
+/// E-agent: agent identity and tenant-scoped configuration (DATABASE.md 6,
+/// F-08). ownerMembershipId names the accountable tenant member; the row
+/// is deleted only when its owner or tenant is, so the pointer uses the
+/// default RESTRICT rather than a silent orphan.
+model AiAgent {
+  id                String      @id @default(uuid()) @db.Uuid
+  tenantId          String      @map("tenant_id") @db.Uuid
+  name              String
+  description       String      @default("")
+  status            AgentStatus @default(DRAFT)
+  ownerMembershipId String      @map("owner_membership_id") @db.Uuid
+  activeVersionId   String?     @map("active_version_id") @db.Uuid
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  tenant        Tenant                @relation(fields: [tenantId], references: [id])
+  ownerMember   TenantMembership      @relation(fields: [ownerMembershipId], references: [id])
+  activeVersion AiAgentVersion?       @relation("AgentActiveVersion", fields: [activeVersionId], references: [id], onDelete: SetNull)
+  versions      AiAgentVersion[]      @relation("AgentVersions")
+
+  @@index([tenantId, name])
+  @@map("ai_agents")
+}
+
+/// E-agent-version: immutable configuration snapshot (DATABASE.md 6,
+/// AC-F08-1). Unique (agent, version) orders snapshots; published rows
+/// are immutable in the database itself (BEFORE UPDATE trigger in
+/// migration 0005) so the audit ground truth cannot be rewritten.
+/// No updatedAt column: an immutable row has no meaningful update time.
+model AiAgentVersion {
+  id          String              @id @default(uuid()) @db.Uuid
+  tenantId    String              @map("tenant_id") @db.Uuid
+  agentId     String              @map("agent_id") @db.Uuid
+  version     Int
+  configJson  Json                @map("config_json")
+  createdBy   String              @map("created_by") @db.Uuid
+  createdAt   DateTime            @default(now()) @map("created_at")
+  publishedAt DateTime?           @map("published_at")
+  status      AgentVersionStatus  @default(DRAFT)
+
+  tenant         Tenant            @relation(fields: [tenantId], references: [id])
+  agent          AiAgent           @relation("AgentVersions", fields: [agentId], references: [id], onDelete: Cascade)
+  activeFor      AiAgent[]         @relation("AgentActiveVersion")
+  toolGrants     AgentToolGrant[]
+  evaluationRuns EvaluationRun[]
+
+  @@unique([agentId, version])
+  @@index([tenantId, agentId])
+  @@map("ai_agent_versions")
+}
+
+/// E-agent-tool-grant: explicit agent-to-tool capability grant
+/// (DATABASE.md 6, F-10). Unique (version, tool) so a capability cannot
+/// be granted twice; execution rechecks current authorization at run time
+/// (T4.04). tool_id references ai_tool_definitions, which a later tool
+/// registry task adds, so the column stays a plain UUID until then.
+model AgentToolGrant {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  agentVersionId String   @map("agent_version_id") @db.Uuid
+  toolId         String   @map("tool_id") @db.Uuid
+  grantedBy      String   @map("granted_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id])
+  agentVersion AiAgentVersion @relation(fields: [agentVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([agentVersionId, toolId])
+  @@index([tenantId])
+  @@map("agent_tool_grants")
+}
+
+/// E-evaluation-run: dataset/agent-version result summary (DATABASE.md 6,
+/// F-08). AC-F08-2 reads failureReasonsJson to block publication with
+/// actionable findings; aggregateJson holds the score summary.
+model EvaluationRun {
+  id                 String              @id @default(uuid()) @db.Uuid
+  tenantId           String              @map("tenant_id") @db.Uuid
+  agentVersionId     String              @map("agent_version_id") @db.Uuid
+  datasetVersion     String              @map("dataset_version")
+  provider           String              @db.VarChar(64)
+  model              String              @db.VarChar(64)
+  status             EvaluationRunStatus @default(PENDING)
+  aggregateJson      Json                @default("{}") @map("aggregate_json")
+  failureReasonsJson Json                @default("[]") @map("failure_reasons_json")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  completedAt        DateTime?           @map("completed_at")
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id])
+  agentVersion AiAgentVersion @relation(fields: [agentVersionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, agentVersionId])
+  @@map("evaluation_runs")
 }
