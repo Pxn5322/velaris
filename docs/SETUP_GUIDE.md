@@ -124,6 +124,8 @@ Each section remains a setup plan, not a verified instruction, until the provide
 2. Configure provider adapter and model names through environment/config; never hard-code keys or assume fallback parity.
 3. Use synthetic evaluation cases; verify timeout, rate-limit, outage, retrieval and citation behavior.
 4. **Verify:** Not configured; evaluation suite passes and critical guardrail failures block publishing.
+5. The evaluation runner is a code-level port, not an environment variable: `EVALUATION_SUBJECT` in `apps/api/src/domains/ai/evaluation/evaluation.service.ts` has no default provider. Until a runner is registered, the evaluation route answers 503 `Evaluation runner is not configured for this deployment` and records no run. The publish gate reads recorded runs only, so publishing stays blocked for that dataset. This fail-closed behaviour is deliberate (ARCHITECTURE D-23); do not bypass the gate.
+   - **Verify:** `evaluation.service.spec.ts` case "answers 503 when no runner is configured instead of faking a run".
 
 ### 5.7 Other third-party services
 N/A — no specific email, chat channel, CRM or external integration provider is confirmed for the first release. Add provider-specific setup only after the integration priority is approved.
@@ -148,4 +150,5 @@ N/A — no specific email, chat channel, CRM or external integration provider is
 
 | Symptom (exact error) | Likely cause | Fix |
 | --- | --- | --- |
+| `Evaluation runner is not configured for this deployment` (503) | No `EVALUATION_SUBJECT` provider is registered in this environment | Register the evaluation runner; do not bypass the publish gate (ARCHITECTURE D-23) |
 | Not yet observed | Application has not been scaffolded or run | Record exact error, command, environment and recovery after reproducing |
