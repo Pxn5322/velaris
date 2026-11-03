@@ -14,5 +14,16 @@ export type {
   EvalExpectation,
   RunSummary,
 } from './types.js';
-export { getDataset, listDatasets, REQUIRED_DATASET_VERSIONS } from './datasets.js';
+export {
+  ADVERSARIAL_DATASET_VERSIONS,
+  getDataset,
+  listDatasets,
+  REQUIRED_DATASET_VERSIONS,
+} from './datasets.js';
+export { ADVERSARIAL_DATASETS } from './adversarial.js';
+export {
+  ADVERSARIAL_REFERENCE_ANSWERS,
+  ADVERSARIAL_UNSAFE_ANSWERS,
+  type UnsafeAnswerFixture,
+} from './fixtures.js';
 export { scoreCase, scoreDataset, summarise } from './scoring.js';
