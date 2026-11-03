@@ -18,11 +18,13 @@ import {
   X,
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
+import { adminScopeForRole } from "@/lib/auth/uiRole";
 
 export function NavigationHeader() {
   const { role, activeView, setActiveView, theme, toggleTheme } = useRole();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const router = useRouter();
+  const adminLabel = adminScopeForRole(role).navLabel;
 
   const openSignIn = () => {
     setIsMobileMenuOpen(false);
@@ -34,7 +36,7 @@ export function NavigationHeader() {
       roleMatch: ["ENTERPRISE", "ADMIN"],
       href: "/admin",
       viewId: "admin",
-      label: "Platform Admin",
+      label: adminLabel,
       icon: Shield,
     },
     {

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Shield, Users, Lock, Cpu, Settings, Activity } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
+import { adminScopeForRole } from "@/lib/auth/uiRole";
 
 export function AdminView() {
   const [activeTab, setActiveTab] = useState<
@@ -11,8 +12,9 @@ export function AdminView() {
   const [userSearch, setUserSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [statusFilter] = useState("ALL");
-  const { theme } = useRole();
+  const { role, theme } = useRole();
   const isLight = theme === "light";
+  const scope = adminScopeForRole(role);
 
   const usersData = [
     {
@@ -69,10 +71,10 @@ export function AdminView() {
             className="text-xs font-mono uppercase tracking-widest font-bold"
             style={{ color: "var(--accent-cyan)" }}
           >
-            Enterprise Platform Administration
+            {scope.eyebrow}
           </span>
           <h1 className="text-2xl font-bold font-display text-heading">
-            Global Control Center
+            {scope.title}
           </h1>
         </div>
         <span
@@ -85,7 +87,7 @@ export function AdminView() {
             border: "1px solid var(--card-border)",
           }}
         >
-          Role: Platform Admin
+          Role: {scope.roleLabel}
         </span>
       </div>
 
@@ -123,7 +125,27 @@ export function AdminView() {
         })}
       </div>
 
-      {activeTab === "analytics" && (
+      {activeTab === "analytics" && !scope.platformWide && (
+        <div className="glass-panel p-8 rounded-2xl text-center space-y-3 border border-slate-700/50">
+          <Shield
+            className="w-10 h-10 mx-auto"
+            style={{ color: "var(--accent-cyan)" }}
+          />
+          <h3 className="text-base font-bold text-heading uppercase tracking-wider">
+            Platform analytics are not available to this role
+          </h3>
+          <p
+            className="text-xs max-w-md mx-auto"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Platform-wide figures cover every tenant, so only the enterprise
+            administrator reads them. Tenant-scoped analytics arrive with the
+            analytics task.
+          </p>
+        </div>
+      )}
+
+      {activeTab === "analytics" && scope.platformWide && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="glass-panel p-5 rounded-2xl border border-slate-700/50">
             <span
