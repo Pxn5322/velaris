@@ -32,6 +32,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { Request } from 'express';
+import { currentCorrelationId } from '../../common/logging/correlation.js';
 import { RequirePermission } from '../../common/security/require-permission.decorator.js';
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -84,7 +85,9 @@ export class KnowledgeController {
       schemaVersion: 1,
       jobId: randomUUID(),
       idempotencyKey: `ingest:${source.id}`,
-      correlationId: randomUUID(),
+      // T5.01: the job continues the request that queued it, so its audit
+      // rows and logs carry the same correlation id.
+      correlationId: currentCorrelationId() ?? randomUUID(),
       tenantId,
       sourceId: source.id,
       actorId,

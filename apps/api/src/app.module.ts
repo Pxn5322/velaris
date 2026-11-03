@@ -17,12 +17,15 @@ import { GovernanceModule } from './domains/tenants/governance.module.js';
 import { AuthModule } from './domains/auth/auth.module.js';
 import { PermissionsModule } from './domains/permissions/permissions.module.js';
 import { AiModule } from './domains/ai/ai.module.js';
+import { CorrelationModule } from './common/logging/correlation.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
 @Module({
   imports: [
     PrismaModule,
+    // T5.01: request correlation id on every route, before the guards.
+    CorrelationModule,
     // Distributed tracing, auto-correlated logs, request/job metrics, error
     // telemetry, alarms, and more — out of the box. Sign up at https://observe.nestjs.com
     ObserveModule.forRoot({
