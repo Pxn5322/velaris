@@ -30,6 +30,7 @@ Provider: Supabase-managed PostgreSQL + Prisma, with pgvector proposed for initi
 | E-agent | AiAgent | Agent identity and tenant-scoped configuration | Tenant | internal | while active plus version history | F-08,F-09,F-10,F-11 |
 | E-agent-version | AiAgentVersion | Immutable published/draft configuration snapshot | Tenant | internal/restricted | retention policy not yet selected | F-08,F-11 |
 | E-tool | AiToolDefinition | Tool schema, risk, timeout and approval metadata | Tenant/platform | internal/restricted | versioned while referenced | F-08,F-10 |
+| E-tool-approval | ToolApprovalRequest | One human decision per consequential tool proposal: proposal hash, status, decider, expiry and one-time consumption | Tenant | internal/restricted | 30 minutes by default, then expired | F-10 |
 | E-agent-tool-grant | AgentToolGrant | Explicit agent-to-tool capability grant | Tenant | restricted | retain audit history | F-08,F-10 |
 | E-workflow | AiWorkflow | Versioned schema-driven workflow | Tenant | internal | while active plus versions | F-08,F-09 |
 | E-evaluation-run | EvaluationRun | Dataset/agent version and result summary | Tenant/platform | internal/restricted | governance policy not yet selected | F-08,F-11 |
@@ -63,7 +64,8 @@ Proposed baseline fields and constraints; exact Prisma schema and field types ar
 - `ai_agents(id, tenant_id, name, description, status, owner_membership_id, active_version_id nullable, created_at, updated_at)`; tenant/name index.
 - `ai_agent_versions(id, tenant_id, agent_id, version, config_json, created_by, created_at, published_at nullable, status)`; unique `(agent_id,version)`; published versions immutable.
 - `ai_tool_definitions(id, tenant_id nullable, name, input_schema_json, output_schema_json, required_permission, risk_level, approval_required, timeout_ms, retry_policy_json, enabled)`; unique name in scope; schemas validated on registration.
-- `agent_tool_grants(id, tenant_id, agent_version_id, tool_id, granted_by, created_at)`; unique version/tool; execution rechecks current authorization.
+- `agent_tool_grants(id, tenant_id, agent_version_id, tool_id, granted_by, created_at)`; unique version/tool; execution rechecks current authorization. `tool_id` carries a foreign key to `ai_tool_definitions` since migration `0006_tool_definitions` (T4.04), so a grant cannot name an unregistered tool.
+- `tool_approval_requests(id, tenant_id, tool_definition_id, agent_version_id, proposal_hash, proposal_json, requested_by, status, decided_by, decided_at, expires_at, consumed_at, created_at)` (T4.04); a proposal that needs approval never executes while the row is PENDING, REJECTED or EXPIRED, and an APPROVED row is claimed once by a conditional update. Deciding needs `ai.tool.approve`.
 - `ai_workflows(id, tenant_id, name, version, trigger_json, nodes_json, guardrails_json, enabled, created_at)`; unique tenant/name/version.
 - `evaluation_runs(id, tenant_id, agent_version_id, dataset_version, provider, model, status, aggregate_json, failure_reasons_json, created_at, completed_at nullable)`.
 - `ai_traces(id, tenant_id, correlation_id, agent_id, agent_version_id, provider, model, outcome, latency_ms, usage_json, spans_metadata_json, created_at, expires_at)`; avoid raw secrets and minimize message content.

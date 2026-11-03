@@ -21,6 +21,8 @@ export const PERMISSIONS = {
   KNOWLEDGE_MANAGE: 'knowledge.manage',
   AI_AGENT_CONFIGURE: 'ai.agent.configure',
   AI_AGENT_PUBLISH: 'ai.agent.publish',
+  /** Decide a consequential AI tool approval (T4.04, F-10; D-20). */
+  AI_TOOL_APPROVE: 'ai.tool.approve',
   AUDIT_READ: 'audit.read',
   ANALYTICS_READ: 'analytics.read',
 } as const;

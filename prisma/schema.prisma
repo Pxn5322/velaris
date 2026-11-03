@@ -78,6 +78,8 @@ model Tenant {
   agentVersions          AiAgentVersion[]
   agentToolGrants        AgentToolGrant[]
   evaluationRuns         EvaluationRun[]
+  toolDefinitions        AiToolDefinition[]
+  toolApprovals          ToolApprovalRequest[]
 
   @@unique([slug])
   @@map("tenants")
@@ -437,6 +439,23 @@ enum AgentVersionStatus {
   PUBLISHED
 }
 
+/// F-10 risk tiers. HIGH and CRITICAL always need a human decision, even
+/// when the definition forgot `approvalRequired` (tool-execution enforces
+/// the floor in code; the column alone is not trusted).
+enum ToolRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ToolApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
 enum EvaluationRunStatus {
   PENDING
   RUNNING
@@ -486,20 +505,82 @@ model AiAgentVersion {
 
   tenant         Tenant            @relation(fields: [tenantId], references: [id])
   agent          AiAgent           @relation("AgentVersions", fields: [agentId], references: [id], onDelete: Cascade)
-  activeFor      AiAgent[]         @relation("AgentActiveVersion")
+  activeFor      AiAgent[]             @relation("AgentActiveVersion")
   toolGrants     AgentToolGrant[]
   evaluationRuns EvaluationRun[]
+  toolApprovals  ToolApprovalRequest[]
 
   @@unique([agentId, version])
   @@index([tenantId, agentId])
   @@map("ai_agent_versions")
 }
 
+/// E-tool: registered tool with schema, risk and approval metadata
+/// (DATABASE.md 6, F-10). A NULL tenant_id is a platform tool available to
+/// every tenant; a set tenant_id keeps the definition tenant-owned. The
+/// model never invents a tool: only a row here can be proposed, and
+/// tool-execution rechecks permission, grant, schema and approval at run
+/// time (T4.04). `timeout_ms` is bounded by a CHECK constraint added in the
+/// migration so a bad row cannot disable the execution deadline.
+model AiToolDefinition {
+  id                 String        @id @default(uuid()) @db.Uuid
+  tenantId           String?       @map("tenant_id") @db.Uuid
+  name               String        @db.VarChar(128)
+  description        String?
+  inputSchemaJson    Json          @map("input_schema_json")
+  outputSchemaJson   Json?         @map("output_schema_json")
+  requiredPermission String        @map("required_permission") @db.VarChar(64)
+  riskLevel          ToolRiskLevel @default(MEDIUM) @map("risk_level")
+  approvalRequired   Boolean       @default(false) @map("approval_required")
+  timeoutMs          Int           @default(10000) @map("timeout_ms")
+  retryPolicyJson    Json          @default("{}") @map("retry_policy_json")
+  enabled            Boolean       @default(true)
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  tenant    Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  grants    AgentToolGrant[]
+  approvals ToolApprovalRequest[]
+
+  @@unique([tenantId, name])
+  @@index([name])
+  @@map("ai_tool_definitions")
+}
+
+/// E-tool-approval: one human decision per consequential tool proposal
+/// (F-10, AC-F10-2). A proposal that needs approval never executes while
+/// the row is PENDING, REJECTED or EXPIRED; only an APPROVED row that has
+/// not expired lets the same proposal run, and it runs at most once
+/// (consumed_at). proposal_hash binds the decision to the exact arguments.
+model ToolApprovalRequest {
+  id               String             @id @default(uuid()) @db.Uuid
+  tenantId         String             @map("tenant_id") @db.Uuid
+  toolDefinitionId String             @map("tool_definition_id") @db.Uuid
+  agentVersionId   String             @map("agent_version_id") @db.Uuid
+  proposalHash     String             @map("proposal_hash") @db.VarChar(64)
+  proposalJson     Json               @map("proposal_json")
+  requestedBy      String             @map("requested_by") @db.Uuid
+  status           ToolApprovalStatus @default(PENDING)
+  decidedBy        String?            @map("decided_by") @db.Uuid
+  decidedAt        DateTime?          @map("decided_at")
+  expiresAt        DateTime           @map("expires_at")
+  consumedAt       DateTime?          @map("consumed_at")
+  createdAt        DateTime           @default(now()) @map("created_at")
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tool         AiToolDefinition @relation(fields: [toolDefinitionId], references: [id], onDelete: Cascade)
+  agentVersion AiAgentVersion  @relation(fields: [agentVersionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([tenantId, toolDefinitionId, proposalHash, status])
+  @@map("tool_approval_requests")
+}
+
 /// E-agent-tool-grant: explicit agent-to-tool capability grant
 /// (DATABASE.md 6, F-10). Unique (version, tool) so a capability cannot
 /// be granted twice; execution rechecks current authorization at run time
-/// (T4.04). tool_id references ai_tool_definitions, which a later tool
-/// registry task adds, so the column stays a plain UUID until then.
+/// (T4.04). tool_id references ai_tool_definitions, so a grant cannot name
+/// a tool that does not exist.
 model AgentToolGrant {
   id             String   @id @default(uuid()) @db.Uuid
   tenantId       String   @map("tenant_id") @db.Uuid
@@ -508,11 +589,13 @@ model AgentToolGrant {
   grantedBy      String   @map("granted_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at")
 
-  tenant       Tenant         @relation(fields: [tenantId], references: [id])
-  agentVersion AiAgentVersion @relation(fields: [agentVersionId], references: [id], onDelete: Cascade)
+  tenant       Tenant           @relation(fields: [tenantId], references: [id])
+  agentVersion AiAgentVersion   @relation(fields: [agentVersionId], references: [id], onDelete: Cascade)
+  tool         AiToolDefinition @relation(fields: [toolId], references: [id], onDelete: Restrict)
 
   @@unique([agentVersionId, toolId])
   @@index([tenantId])
+  @@index([toolId])
   @@map("agent_tool_grants")
 }
 
