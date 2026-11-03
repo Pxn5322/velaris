@@ -15,11 +15,18 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 /** HTTP error carrying the response status for state decisions. */
 export class ApiError extends Error {
   readonly status: number;
+  /** Safe response body, kept so the UI can show actionable findings. */
+  readonly body: Record<string, unknown>;
 
-  constructor(status: number, message: string) {
+  constructor(
+    status: number,
+    message: string,
+    body: Record<string, unknown> = {},
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -44,6 +51,7 @@ export async function apiFetch<T>(
     throw new ApiError(
       response.status,
       errorBody.message || `API error ${response.status}`,
+      errorBody as Record<string, unknown>,
     );
   }
 
