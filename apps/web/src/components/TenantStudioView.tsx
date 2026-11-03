@@ -18,6 +18,10 @@ import {
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import { TenantStudioKnowledge } from "./TenantStudioKnowledge";
+import {
+  TenantStudioEvaluation,
+  TenantStudioVersions,
+} from "./TenantStudioAgents";
 
 export function TenantStudioView() {
   const [activeTab, setActiveTab] = useState<string>("instructions");
@@ -176,9 +180,15 @@ export function TenantStudioView() {
 
       {activeTab === "knowledge" && <TenantStudioKnowledge />}
 
+      {activeTab === "evals" && <TenantStudioEvaluation />}
+
+      {activeTab === "versions" && <TenantStudioVersions />}
+
       {activeTab !== "instructions" &&
         activeTab !== "guardrails" &&
-        activeTab !== "knowledge" && (
+        activeTab !== "knowledge" &&
+        activeTab !== "evals" &&
+        activeTab !== "versions" && (
           <div className="glass-panel p-8 rounded-2xl text-center space-y-3">
             <Bot
               className="w-10 h-10 mx-auto"
