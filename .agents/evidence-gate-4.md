@@ -1,7 +1,9 @@
 # GATE-4 evidence package (governed AI agent MVP)
 
-Status: PREPARED 2026-11-03, awaiting the owner decision. The gate line in
-`docs/IMPLEMENTATION_PLAN.md` stays unchecked until the owner approves it.
+Status: CLOSED 2026-11-03 on owner instruction, Option A. The owner accepted
+the gate mechanics at 95/100 with the missing evaluation runner recorded as a
+production condition (D-23, `docs/IMPLEMENTATION_PLAN.md` Phase 6) rather than
+as Phase 5 work. The score is unchanged and the gap stays visible in section 4.
 
 Gate line: "Required AI evaluation gates, permission checks, citations,
 escalation and immutable version behavior are green."
@@ -100,10 +102,11 @@ because the runner is not wired.
 
 ## 6. Owner decision requested
 
-Option A (recommended): approve GATE-4 as green for the gate mechanics, tick
-the gate line, and record "wire the evaluation runner" as a condition that
-blocks the first production agent publish, not Phase 5 work. The evidence
-above is complete for what T4.01 to T4.07 promised.
+Option A (recommended, SELECTED by the owner on 2026-11-03): approve GATE-4 as
+green for the gate mechanics, tick the gate line, and record "wire the
+evaluation runner" as a condition that blocks the first production agent
+publish, not Phase 5 work. The evidence above is complete for what T4.01 to
+T4.07 promised.
 
 Option B: hold GATE-4 until the runner lands, so every criterion is proven
 end to end, including one live evaluation of a real agent version.
