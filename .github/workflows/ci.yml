@@ -112,12 +112,12 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:ci-offline-check@localhost:5432/velaris
         run: npx prisma generate
-      # `next build` downloads Google Fonts at build time (next/font/google),
-      # which failed transiently on 2026-11-02 (run 41426929417, attempt 1:
-      # 36 Turbopack errors on '@vercel/turbopack-next/internal/font/google/font'
-      # while every other job and the local build passed). Retry the build so
-      # a font CDN hiccup cannot redden master; a real compile error still
-      # fails all three attempts. Same pattern as e2e.yml.
+      # Fonts are self-hosted since D-25, so `next build` no longer downloads
+      # from a font CDN; the retry keeps the job resilient to other transient
+      # failures. Before D-25 the same step failed on
+      # '@vercel/turbopack-next/internal/font/google/font' three times
+      # (runs 41426929417, 41629476374, 41656114439). A real compile error
+      # still fails all three attempts. Same pattern as e2e.yml.
       - name: Build all workspaces (nest build + next build)
         run: |
           for attempt in 1 2 3; do
