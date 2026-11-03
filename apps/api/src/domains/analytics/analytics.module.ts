@@ -5,6 +5,7 @@
  */
 
 import { Module } from '@nestjs/common';
+import { AuditModule } from '../audit/audit.module.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { PermissionsModule } from '../permissions/permissions.module.js';
 import { TenantsModule } from '../tenants/tenants.module.js';
@@ -12,7 +13,7 @@ import { AnalyticsController } from './analytics.controller.js';
 import { AnalyticsService } from './analytics.service.js';
 
 @Module({
-  imports: [TenantsModule, PermissionsModule, AuthModule],
+  imports: [TenantsModule, PermissionsModule, AuditModule, AuthModule],
   controllers: [AnalyticsController],
   providers: [AnalyticsService],
   exports: [AnalyticsService],
