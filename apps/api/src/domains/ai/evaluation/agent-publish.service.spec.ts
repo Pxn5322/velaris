@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import { REQUIRED_DATASET_VERSIONS } from 'ai-evals';
 import {
   AgentPublishService,
   type PublishFinding,
@@ -16,6 +17,17 @@ const agentId = '33333333-3333-4333-8333-333333333333';
 const agentVersionId = '22222222-2222-4222-8222-222222222222';
 
 const admin = { tenantId, userId: 'user-a', role: 'R-tenant-admin' };
+
+/** A run record that passes, for every dataset the gate requires. */
+const PASSING_RUNS: Record<
+  string,
+  { status: string; failureReasonsJson: unknown }
+> = {
+  'support-triage@1.0.0': { status: 'PASSED', failureReasonsJson: [] },
+  'safety-refusal@1.0.0': { status: 'PASSED', failureReasonsJson: [] },
+  'adversarial-injection@1.0.0': { status: 'PASSED', failureReasonsJson: [] },
+  'adversarial-boundary@1.0.0': { status: 'PASSED', failureReasonsJson: [] },
+};
 
 const validSchema = {
   type: 'object',
@@ -51,10 +63,9 @@ function harness(
         }
       : options.version;
 
-  const runs = options.runs ?? {
-    'support-triage@1.0.0': { status: 'PASSED', failureReasonsJson: [] },
-    'safety-refusal@1.0.0': { status: 'PASSED', failureReasonsJson: [] },
-  };
+  // The adversarial sets are part of the suite since T4.07, so a scenario
+  // must state the runs it supplies for all four versions.
+  const runs = options.runs ?? PASSING_RUNS;
 
   const versionFindFirst = vi.fn().mockResolvedValue(version);
   const runFindFirst = vi.fn(
@@ -141,11 +152,15 @@ describe('AgentPublishService', () => {
       service.publish({ agentVersionId, actor: admin }),
     );
 
-    expect(findings.map((finding) => finding.code)).toEqual([
-      'missing_evaluation',
-      'missing_evaluation',
-    ]);
-    expect(findings[0]?.message).toContain('support-triage@1.0.0');
+    expect(findings).toHaveLength(REQUIRED_DATASET_VERSIONS.length);
+    for (const version of REQUIRED_DATASET_VERSIONS) {
+      expect(
+        findings.some((finding) => finding.message.includes(version)),
+      ).toBe(true);
+    }
+    expect(
+      findings.every((finding) => finding.code === 'missing_evaluation'),
+    ).toBe(true);
     expect(versionUpdate).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
   });
@@ -169,6 +184,14 @@ describe('AgentPublishService', () => {
           ],
         },
         'safety-refusal@1.0.0': { status: 'PASSED', failureReasonsJson: [] },
+        'adversarial-injection@1.0.0': {
+          status: 'PASSED',
+          failureReasonsJson: [],
+        },
+        'adversarial-boundary@1.0.0': {
+          status: 'PASSED',
+          failureReasonsJson: [],
+        },
       },
     });
 
@@ -202,6 +225,14 @@ describe('AgentPublishService', () => {
           ],
         },
         'safety-refusal@1.0.0': { status: 'PASSED', failureReasonsJson: [] },
+        'adversarial-injection@1.0.0': {
+          status: 'PASSED',
+          failureReasonsJson: [],
+        },
+        'adversarial-boundary@1.0.0': {
+          status: 'PASSED',
+          failureReasonsJson: [],
+        },
       },
     });
 
@@ -219,6 +250,14 @@ describe('AgentPublishService', () => {
       runs: {
         'support-triage@1.0.0': { status: 'FAILED', failureReasonsJson: null },
         'safety-refusal@1.0.0': { status: 'PASSED', failureReasonsJson: [] },
+        'adversarial-injection@1.0.0': {
+          status: 'PASSED',
+          failureReasonsJson: [],
+        },
+        'adversarial-boundary@1.0.0': {
+          status: 'PASSED',
+          failureReasonsJson: [],
+        },
       },
     });
 
@@ -239,6 +278,14 @@ describe('AgentPublishService', () => {
           failureReasonsJson: [{ severity: 'CRITICAL', findings: [] }],
         },
         'safety-refusal@1.0.0': { status: 'PASSED', failureReasonsJson: [] },
+        'adversarial-injection@1.0.0': {
+          status: 'PASSED',
+          failureReasonsJson: [],
+        },
+        'adversarial-boundary@1.0.0': {
+          status: 'PASSED',
+          failureReasonsJson: [],
+        },
       },
     });
 
@@ -301,6 +348,14 @@ describe('AgentPublishService', () => {
               findings: [],
             },
           ],
+        },
+        'adversarial-injection@1.0.0': {
+          status: 'PASSED',
+          failureReasonsJson: [],
+        },
+        'adversarial-boundary@1.0.0': {
+          status: 'PASSED',
+          failureReasonsJson: [],
         },
       },
     });

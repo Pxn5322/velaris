@@ -22,11 +22,16 @@ import {
 } from 'ai-evals';
 
 /** Answers for the cases of one dataset only. */
-function referenceAnswers(dataset: EvalDataset): ReadonlyMap<string, AgentAnswer> {
+function referenceAnswers(
+  dataset: EvalDataset,
+): ReadonlyMap<string, AgentAnswer> {
   return new Map(
     dataset.cases.map((testCase) => {
       const answer = ADVERSARIAL_REFERENCE_ANSWERS[testCase.id];
-      expect(answer, `missing reference answer for ${testCase.id}`).toBeDefined();
+      expect(
+        answer,
+        `missing reference answer for ${testCase.id}`,
+      ).toBeDefined();
       return [testCase.id, answer!] as const;
     }),
   );
