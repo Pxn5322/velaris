@@ -1,3 +1,6 @@
+// Load local env first: env.ts must stay the first import so every later
+// module sees SUPABASE_*, DATABASE_URL and REDIS_URL (see env.ts).
+import './env.js';
 import { NestFactory } from '@nestjs/core';
 import { AppModule, ObserveInstrument } from './app.module.js';
 import { configureApp } from './app.setup.js';

@@ -48,7 +48,10 @@ Create accounts only with explicit owner authorization. Do not paste credentials
 - Clone the monorepo and install from the repository root with `npm install` (npm workspaces, single root lockfile; recorded as D-09 on 2026-10-22).
 - Generate the Prisma client after every install with `npx prisma generate`. npm blocks install scripts here, so `@prisma/client` exports no `PrismaClient` until this command runs. Type check and build fail without it (observed in CI on 2026-10-26; the CI type-check and build jobs run this step).
 - Configure package scripts and workspace tooling as described in `docs/CODE_STYLE.md`.
-- Run locally: `npm run dev:api` (NestJS API on port 3000) and `npm run dev:web` (Next.js on port 3001), both from the repository root. These dev commands are documented here but not verified in a recorded run.
+- Run locally: `npm run dev:api` (NestJS API on port 3000) and `npm run dev:web` (Next.js on port 3001), both from the repository root. Verified 2026-11-02: both servers answered HTTP 200 locally, and registration through the landing page created a workspace end to end.
+- The API loads a local `.env` file itself (`apps/api/src/env.ts`, Node's built-in `process.loadEnvFile`, no extra package). It reads `<repo>/.env` first, then `apps/api/.env`. A value that already exists in the process environment always wins, so a deployment secret is never shadowed by a file. A missing file is not an error: CI and unit tests run without one.
+- Create the local file once. Copy the names from section 4 and fill the values from your secret store. `apps/web/.env.local` holds the public `NEXT_PUBLIC_*` names and is read by Next.js automatically. Both files are git-ignored.
+- If two terminals share one machine, set `PORT` explicitly for the API (`PORT=3000 npm run dev:api`). Node reads `PORT=0` as "pick any free port", so an inherited `PORT=0` moves the API off 3000 and the browser cannot reach it.
 - Verify: root `npm install`, `npm run build`, `npm run test`, `npm run lint` and `npm run typecheck` were run on 2026-10-23 (Windows). Build, tests and type check pass; lint reports 0 errors and 0 warnings. Record tool versions with future runs.
 
 ## 4. Environment variables (canonical list of names)
@@ -61,13 +64,13 @@ Names below are proposed categories for the initial implementation. Add or remov
 | `REDIS_URL` | API/worker BullMQ ingestion queue (D-17); when absent the API keeps the in-process adapter, so it is optional for CI and unit tests | yes | local ignored `.env`; CI/host secret store |
 | `NEXT_PUBLIC_SUPABASE_URL` | Next.js browser client and server config | no, public project URL | public app config |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Next.js browser client (portal sign-in); `NEXT_PUBLIC_SUPABASE_ANON_KEY` is accepted as the same setting (T2.04) | no, publishable key; RLS is still required for any direct database exposure | public app config |
-| `SUPABASE_URL` | NestJS API/worker | no, project URL | server environment config |
+| `SUPABASE_URL` | NestJS API/worker | no, project URL | server environment config (local: `<repo>/.env`) |
 | `SUPABASE_PUBLISHABLE_KEY` | NestJS API token verifier (apikey header on `GET /auth/v1/user`) | no, public project key | server environment config |
 | `SUPABASE_JWT_ISSUER` | NestJS token verifier, if configured separately | no | server environment config |
 | `GROQ_API_KEY` | API `GroqLlmProvider` development adapter (D-18); when absent the factory keeps the offline deterministic adapter, so it is optional for CI and unit tests | yes | local ignored `.env`; CI/host secret store |
 | `GROQ_MODEL` | API Groq adapter model name (default `openai/gpt-oss-120b`) | no | runtime environment configuration |
 | `CORS_ORIGIN` | NestJS HTTP CORS allowlist (`src/app.setup.ts`); comma-separated origins | no, defaults to `http://localhost:3000,http://localhost:3001` | server environment config; set the real web origin in every deployment |
-| `SUPABASE_SERVICE_ROLE_KEY` | server-only administrative operations, only where justified | yes | server secret store; never browser-exposed |
+| `SUPABASE_SERVICE_ROLE_KEY` | server-only administrative operations, only where justified; `POST /auth/signup` and member creation answer 503 "Account registration is not configured on this deployment" when this name or `SUPABASE_URL` is missing | yes | server secret store; never browser-exposed |
 | `LLM_PROVIDER` | API/worker | no | environment config |
 | `LLM_API_KEY` | AI adapter | yes | secret store |
 | `EMBEDDING_PROVIDER` | worker/API | no | environment config |

@@ -31,3 +31,6 @@ Desktop.ini
 .vscode/
 *.swp
 *.swo
+
+# local dev server logs
+.dev-*.log
