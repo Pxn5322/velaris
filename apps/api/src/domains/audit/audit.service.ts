@@ -4,12 +4,15 @@
  * One create path, no update and no delete: audit rows are history
  * (docs/DATABASE.md section 5, E-audit-event). A persistence failure
  * propagates to the caller, so a sensitive action never completes while
- * appearing to be recorded. requestId stays unset until the correlation
- * middleware of F-13 supplies it.
+ * appearing to be recorded. `requestId` comes from the caller when it names
+ * one, otherwise from the request correlation context (T5.01, F-13), so an
+ * audit row can always be traced back to the HTTP request or job that caused
+ * it.
  */
 
 import { Inject, Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { currentCorrelationId } from '../../common/logging/correlation.js';
 import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 
@@ -40,7 +43,7 @@ export class AuditService {
         tenantId: event.tenantId,
         actorId: event.actorId,
         metadataJson: event.metadata,
-        requestId: event.requestId,
+        requestId: event.requestId ?? currentCorrelationId(),
       },
     });
   }

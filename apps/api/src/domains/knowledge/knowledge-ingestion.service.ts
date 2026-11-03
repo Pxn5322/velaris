@@ -24,6 +24,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
+import { runWithCorrelationId } from '../../common/logging/correlation.js';
 import {
   PRISMA_SERVICE,
   type PrismaService,
@@ -72,8 +73,17 @@ export class KnowledgeIngestionService implements IngestionRunner {
     readonly embeddingProvider: EmbeddingProvider = new LocalDeterministicEmbeddingProvider(),
   ) {}
 
-  /** Execute one job to a durable outcome. Never throws on job failure. */
+  /**
+   * Execute one job to a durable outcome. Never throws on job failure. The
+   * job's correlation id becomes the context of the work, so logs and audit
+   * rows written during ingestion trace back to the request that queued it
+   * (T5.01).
+   */
   async run(job: IngestionJob): Promise<IngestionJobOutcome> {
+    return runWithCorrelationId(job.correlationId, () => this.executeJob(job));
+  }
+
+  private async executeJob(job: IngestionJob): Promise<IngestionJobOutcome> {
     // Tenant scope first: a foreign or deleted id resolves to no row.
     const source = await this.prisma.knowledgeSource.findFirst({
       where: { id: job.sourceId, tenantId: job.tenantId, deletedAt: null },

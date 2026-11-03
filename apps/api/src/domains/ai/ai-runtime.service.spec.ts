@@ -25,6 +25,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { KnowledgeRetrievalService } from '../knowledge/knowledge-retrieval.service.js';
 import type { RetrievalHit } from '../knowledge/knowledge-retrieval.service.js';
 import type { LlmProvider } from '../../infrastructure/llm/llm.provider.js';
+import { runWithCorrelationId } from '../../common/logging/correlation.js';
 import { AiRuntimeService, toResult } from './ai-runtime.service.js';
 import type { CanonicalRole } from '../permissions/permission.codes.js';
 
@@ -329,5 +330,34 @@ describe('AiRuntimeService (T4.03)', () => {
       expect(result.escalation?.excerpts).toHaveLength(2);
       expect(result.escalation?.reason).toBe('provider_unavailable');
     });
+  });
+});
+
+describe('AiRuntimeService trace metadata (T5.01, AC-F11-1)', () => {
+  it('carries the correlation id of the unit of work', async () => {
+    const { service: runtime } = service();
+
+    const result = await runWithCorrelationId('trace-ai', () =>
+      runtime.handle(base),
+    );
+
+    expect(result.trace).toEqual({
+      correlationId: 'trace-ai',
+      tenantId: 'tenant-a',
+      outcome: 'respond',
+      model: 'fake-model',
+      attempts: 1,
+      citationCount: 1,
+    });
+    // Trace metadata must not copy message or document content.
+    expect(JSON.stringify(result.trace)).not.toContain('refunds take');
+  });
+
+  it('reports null when no context exists instead of inventing an id', async () => {
+    const { service: runtime } = service();
+
+    const result = await runtime.handle(base);
+
+    expect(result.trace.correlationId).toBeNull();
   });
 });

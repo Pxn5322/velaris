@@ -47,6 +47,7 @@ import {
   type LlmMessage,
   type LlmProvider,
 } from '../../infrastructure/llm/llm.provider.js';
+import { currentCorrelationId } from '../../common/logging/correlation.js';
 import type { CanonicalRole } from '../permissions/permission.codes.js';
 
 /** Injection token for the grounding similarity threshold. */
@@ -113,6 +114,21 @@ export interface AiRuntimeResult {
   attempts: number;
   /** Handoff context; null on respond. */
   escalation: AiEscalation | null;
+  /**
+   * Trace metadata for the run (T5.01, F-11). Correlation links it to the
+   * request or job that caused it; no message content is copied here.
+   */
+  trace: AiTraceMetadata;
+}
+
+/** Minimal trace metadata; persistence belongs to the trace pipeline. */
+export interface AiTraceMetadata {
+  correlationId: string | null;
+  tenantId: string;
+  outcome: AiOutcome;
+  model: string | null;
+  attempts: number;
+  citationCount: number;
 }
 
 /**
@@ -174,7 +190,7 @@ export function toResult(state: {
   citations: AiCitation[];
   attempts: number;
   escalation: AiEscalation | null;
-}): AiRuntimeResult {
+}): Omit<AiRuntimeResult, 'trace'> {
   return {
     outcome: state.outcome ?? 'escalate',
     reason: state.reason ?? 'provider_unavailable',
@@ -213,7 +229,18 @@ export class AiRuntimeService {
       throw new BadRequestException('tenantId is required');
     }
     const state = await this.graph.invoke({ request });
-    return toResult(state);
+    const result = toResult(state);
+    return {
+      ...result,
+      trace: {
+        correlationId: currentCorrelationId() ?? null,
+        tenantId: request.tenantId,
+        outcome: result.outcome,
+        model: result.model,
+        attempts: result.attempts,
+        citationCount: result.citations.length,
+      },
+    };
   }
 
   private buildGraph() {
