@@ -80,7 +80,12 @@ interface Finding {
 
 type Phase = "loading" | "denied" | "error" | "ready";
 
-const DATASETS = ["support-triage@1.0.0", "safety-refusal@1.0.0"];
+const DATASETS = [
+  "support-triage@1.0.0",
+  "safety-refusal@1.0.0",
+  "adversarial-injection@1.0.0",
+  "adversarial-boundary@1.0.0",
+];
 const DEFAULT_MODEL = "llama-3.3-70b";
 
 const STATUS_BADGE: Record<string, string> = {

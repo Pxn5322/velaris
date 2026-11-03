@@ -1,4 +1,9 @@
+import { ADVERSARIAL_DATASETS } from './adversarial.js';
 import type { EvalDataset } from './types.js';
+
+/** Adversarial dataset versions from T4.07. */
+export const ADVERSARIAL_DATASET_VERSIONS: readonly string[] =
+  ADVERSARIAL_DATASETS.map((dataset) => dataset.version);
 
 /**
  * The required suite for a publish (AC-F08-1). A run that does not cover
@@ -8,6 +13,7 @@ import type { EvalDataset } from './types.js';
 export const REQUIRED_DATASET_VERSIONS: readonly string[] = [
   'support-triage@1.0.0',
   'safety-refusal@1.0.0',
+  ...ADVERSARIAL_DATASET_VERSIONS,
 ];
 
 /**
@@ -91,6 +97,7 @@ const DATASETS: readonly EvalDataset[] = [
       },
     ],
   },
+  ...ADVERSARIAL_DATASETS,
 ];
 
 /** Every dataset version this build knows. */

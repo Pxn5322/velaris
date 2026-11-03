@@ -15,7 +15,7 @@ Operating contract for AI coding agents. Read this whole file, then load only th
 | Format | `npm run format:check` (root, all workspaces); fix with `npm run format` | Verified 2026-10-27: exit 0 after Prettier ran over both workspaces; CI job `format` enforces it. Earlier: API 2026-10-22, web 2026-10-24 (owner approved one-time Prettier rewrite of 34 design files, rendering verified by 3/3 E2E journeys) |
 | Lint | `npm run lint` | Verified 2026-10-23: 0 errors, 0 warnings (oxlint for API, ESLint for web) |
 | Type check | `npm run typecheck` | Verified 2026-10-23: exit 0 (`tsc --noEmit` per workspace) |
-| Test (all) | `npm run test` | Verified 2026-11-03: API suite green (49 files, 491 tests) |
+| Test (all) | `npm run test` | Verified 2026-11-03: API suite green (50 files, 497 tests) |
 | End-to-end | `npm run e2e:web` | Verified 2026-11-03: 28/28 journeys green against the production build of `apps/web` (landing AC-F01-1, agent inbox AC-F06/J-04, customer portal J-03; workflow .github/workflows/e2e.yml) |
 | Build | `npm run build` | Verified 2026-10-23: nest + next build green |
 | Run app | `PORT=3000 npm run dev:api` + `npm run dev:web` | Verified 2026-11-02: API on 3000 and web on 3001 answered HTTP 200, and landing-page registration returned 201 with a real workspace. The API loads `<repo>/.env` itself (`apps/api/src/env.ts`). Set `PORT` explicitly: an inherited `PORT=0` moves the API to a random port |
