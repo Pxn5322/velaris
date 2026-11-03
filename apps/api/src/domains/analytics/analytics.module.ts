@@ -1,27 +1,18 @@
-import { Module, Injectable, Controller, Get, Query } from '@nestjs/common';
+/**
+ * Tenant analytics (T5.03, F-12). Replaces the placeholder in-memory
+ * summary. The module mirrors KnowledgeModule: TenantsModule supplies the
+ * scope check, and PermissionsModule plus AuthModule supply the guard chain.
+ */
 
-@Injectable()
-export class AnalyticsService {
-  getOverview(tenantId?: string) {
-    return {
-      totalTickets: 128,
-      deflectionRate: '42%',
-      avgResolutionTimeMinutes: 14,
-      aiResolutionRate: '68%',
-      tenantId: tenantId || 'all',
-    };
-  }
-}
-
-@Controller('analytics')
-export class AnalyticsController {
-  constructor(private readonly service: AnalyticsService) {}
-  @Get('overview') getOverview(@Query('tenantId') t?: string) {
-    return this.service.getOverview(t);
-  }
-}
+import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module.js';
+import { PermissionsModule } from '../permissions/permissions.module.js';
+import { TenantsModule } from '../tenants/tenants.module.js';
+import { AnalyticsController } from './analytics.controller.js';
+import { AnalyticsService } from './analytics.service.js';
 
 @Module({
+  imports: [TenantsModule, PermissionsModule, AuthModule],
   controllers: [AnalyticsController],
   providers: [AnalyticsService],
   exports: [AnalyticsService],
