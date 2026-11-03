@@ -141,3 +141,4 @@ A reviewer may use an LLM, but the record must distinguish a simulated review pa
 | Date | Commit/task | Suite | Result | Evidence | Owner / follow-up |
 | --- | --- | --- | --- | --- | --- |
 | Not run | Documentation-only generation | App tests | Not run | No application repository was inspected or executed | Configure after repo scaffold |
+| 2026-11-03 | GATE-4 evidence package | API unit and integration, coverage, build, Playwright, audit, docs | pass | `npm run test` 497/497 (50 files); coverage 100/99.6/100/100; `npm run e2e:web` 28/28; build, lint, typecheck, format, audit and docs checker exit 0; CI green on `0cd34cd` | Owner decision on `.agents/evidence-gate-4.md` (95/100); no evaluation runner yet (D-23) |
