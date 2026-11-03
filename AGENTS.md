@@ -18,7 +18,7 @@ Operating contract for AI coding agents. Read this whole file, then load only th
 | Test (all) | `npm run test` | Verified 2026-10-24: API suite green (5 files, 27 tests) |
 | End-to-end | `npm run e2e:web` | Verified 2026-10-29: 16/16 journeys green against the production build of `apps/web` (landing AC-F01-1, agent inbox AC-F06/J-04, customer portal J-03; workflow .github/workflows/e2e.yml) |
 | Build | `npm run build` | Verified 2026-10-23: nest + next build green |
-| Run app | Not configured | `npm run dev:api` / `npm run dev:web` documented but not verified in a recorded run |
+| Run app | `PORT=3000 npm run dev:api` + `npm run dev:web` | Verified 2026-11-02: API on 3000 and web on 3001 answered HTTP 200, and landing-page registration returned 201 with a real workspace. The API loads `<repo>/.env` itself (`apps/api/src/env.ts`). Set `PORT` explicitly: an inherited `PORT=0` moves the API to a random port |
 | Docs checker | `python scripts/check_docs.py --draft` | Verified 2026-10-24: 0 errors, 0 warnings, 100/100 |
 | Dependency audit | `npm run audit:check` | Verified 2026-10-27: exit 0 against scripts/audit-baseline.json (8 known advisories: 1 critical, 4 high, 1 moderate, 2 low); fails CI on a new advisory or severity increase |
 
@@ -101,6 +101,12 @@ Every feature or fix starts on its own branch and ends merged back; `master` onl
 - The approval gate fails closed when it cannot read reviews. Record approval only after a real human review.
 - Branch protection for `master` (required reviews and required status checks) is a repository setting. The owner enables it under Settings -> Branches. Repository files cannot enable it.
 - Record every role pass as EXECUTED or SIMULATED, as section 3.3 requires.
+
+### 3.6 Autonomous task loop (owner instruction, 2026-11-02)
+- After one task is complete and merged, start the next eligible task without waiting for the owner.
+- Plan the next task first: resolve its linked IDs, define its acceptance criteria, and write them into the run log.
+- Stop and ask the owner only when a person must decide: a scope change, a new runtime dependency without an approved D-xx record, a production action, or an unknown that blocks progress.
+- After every commit that triggers CI, wait until all CI checks pass before starting the next task. If a check fails, fix it first. Never continue on a red pipeline.
 
 ## 4. Confidence score (evidence-based)
 Each item earns points only when backed by a command/test result; no evidence means zero.
