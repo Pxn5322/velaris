@@ -1,26 +1,42 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { RoleProvider } from "@/context/RoleContext";
 import { AppShell } from "@/components/AppShell";
 
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+// The font files are local (src/app/fonts, SIL Open Font License) so a build
+// never fetches from a font CDN. See docs/ARCHITECTURE.md D-25.
+const inter = localFont({
+  src: "./fonts/inter.woff2",
+  weight: "300 700",
+  style: "normal",
   variable: "--font-inter",
+  display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  style: ["normal", "italic"],
+const jetbrainsMono = localFont({
+  src: [
+    {
+      path: "./fonts/jetbrains-mono.woff2",
+      weight: "400 700",
+      style: "normal",
+    },
+    {
+      path: "./fonts/jetbrains-mono-italic.woff2",
+      weight: "400 700",
+      style: "italic",
+    },
+  ],
   variable: "--font-jetbrains-mono",
+  display: "swap",
 });
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["500", "700"],
+const spaceGrotesk = localFont({
+  src: "./fonts/space-grotesk.woff2",
+  weight: "500 700",
+  style: "normal",
   variable: "--font-space-grotesk",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
