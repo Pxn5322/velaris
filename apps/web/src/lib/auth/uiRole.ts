@@ -25,6 +25,40 @@ export function mapUiRole(
   return UI_ROLE_BY_CANONICAL[canonical] ?? null;
 }
 
+/**
+ * Headings and data scope for the administration view.
+ *
+ * R-enterprise-admin (ENTERPRISE) administers the platform.
+ * R-tenant-admin (ADMIN) administers one tenant. A tenant administrator
+ * must not read platform-wide figures, so that role gets tenant wording
+ * and no platform-wide panel. Unknown or signed-out roles fall back to the
+ * narrower tenant labels (deny by default).
+ */
+export function adminScopeForRole(role: UserRole | null): {
+  eyebrow: string;
+  title: string;
+  roleLabel: string;
+  navLabel: string;
+  platformWide: boolean;
+} {
+  if (role === "ENTERPRISE") {
+    return {
+      eyebrow: "Enterprise Platform Administration",
+      title: "Global Control Center",
+      roleLabel: "Platform Admin",
+      navLabel: "Platform Admin",
+      platformWide: true,
+    };
+  }
+  return {
+    eyebrow: "Workspace Administration",
+    title: "Tenant Control Center",
+    roleLabel: "Tenant Admin",
+    navLabel: "Administration",
+    platformWide: false,
+  };
+}
+
 /** Default app view for each UI role (kept in one place for nav + auth). */
 export function viewForRole(role: UserRole): string {
   if (role === "AGENT") return "agent";
