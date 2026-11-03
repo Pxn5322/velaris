@@ -18,6 +18,7 @@ import { AuthModule } from './domains/auth/auth.module.js';
 import { PermissionsModule } from './domains/permissions/permissions.module.js';
 import { AiModule } from './domains/ai/ai.module.js';
 import { CorrelationModule } from './common/logging/correlation.module.js';
+import { RetentionModule } from './domains/retention/retention.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -26,6 +27,8 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     PrismaModule,
     // T5.01: request correlation id on every route, before the guards.
     CorrelationModule,
+    // T5.02: retention sweep and availability filters (F-14).
+    RetentionModule,
     // Distributed tracing, auto-correlated logs, request/job metrics, error
     // telemetry, alarms, and more — out of the box. Sign up at https://observe.nestjs.com
     ObserveModule.forRoot({

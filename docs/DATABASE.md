@@ -58,7 +58,7 @@ Proposed baseline fields and constraints; exact Prisma schema and field types ar
 - `messages(id, tenant_id, conversation_id, author_type, author_id nullable, visibility, body, metadata_json, idempotency_key nullable, created_at)`; `visibility` distinguishes customer-visible from internal; tenant/conversation/time index; unique idempotency scope where used.
 - `tickets(id, tenant_id, customer_id, primary_conversation_id nullable, title, status, priority, sla_state, assignee_membership_id nullable, tags, version, created_at, updated_at, resolved_at nullable, closed_at nullable)`; valid status enum; tenant/status/assignee indexes; optimistic concurrency through version.
 - `ticket_assignments(id, tenant_id, ticket_id, from_membership_id nullable, to_membership_id nullable, actor_id, reason nullable, created_at)`; append history, tenant/time index.
-- `knowledge_sources(id, tenant_id, source_type, source_uri nullable, object_key nullable, status, content_hash, provenance_json, error_code nullable, created_by, created_at, updated_at, deleted_at nullable)`; unique tenant/source/content identity as appropriate; status index.
+- `knowledge_sources(id, tenant_id, source_type, source_uri nullable, object_key nullable, status, content_hash, provenance_json, error_code nullable, created_by, created_at, updated_at, deleted_at nullable, retention_days nullable, expires_at nullable)`; unique tenant/source/content identity as appropriate; status and tenant/expiry indexes. A source past `expires_at` is unavailable at once, and the sweep marks it deleted and removes its chunks (migration `0007_retention_lifecycle`, T5.02).
 - `knowledge_chunks(id, tenant_id, source_id, chunk_index, content, metadata_json, token_count, created_at)`; unique `(source_id,chunk_index)`; tenant/source index.
 - `knowledge_embeddings(id, tenant_id, chunk_id, embedding vector, model, dimensions, created_at)`; unique chunk/model version; vector index chosen after query benchmark; filter by tenant and permission metadata before returning content.
 - `ai_agents(id, tenant_id, name, description, status, owner_membership_id, active_version_id nullable, created_at, updated_at)`; tenant/name index.
@@ -75,6 +75,7 @@ Proposed baseline fields and constraints; exact Prisma schema and field types ar
 - `outbox_events(id, tenant_id nullable, event_type, schema_version, payload_json, correlation_id, occurred_at, published_at nullable, attempts)`; indexed unpublished events.
 - `kpi_snapshots(id, tenant_id nullable, metric_code, formula_version, period_start, period_end, dimensions_json, value_numeric, calculated_at)`; unique metric/scope/period/dimension hash.
 - `ai_memories(id, tenant_id, customer_id nullable, scope, content, provenance_json, confidence, permission_scope_json, created_at, expires_at, deleted_at nullable)`; opt-in, tenant-filtered, expiring and source-deletion-aware.
+- `retention_policies(id, tenant_id, category, retention_days, updated_by nullable, created_at, updated_at)`; unique `(tenant_id, category)`; `retention_days` is 1..3650 by API validation and a CHECK (AC-F14-2, T5.02).
 
 ## 4. Relationships and delete behavior
 - EnterpriseOrganization has many Tenants; tenant deletion is a lifecycle workflow, not an uncontrolled cascade.
