@@ -376,12 +376,17 @@ model KnowledgeSource {
   createdAt      DateTime              @default(now()) @map("created_at")
   updatedAt      DateTime              @updatedAt @map("updated_at")
   deletedAt      DateTime?             @map("deleted_at")
+  /// T5.02 retention window chosen at ingest time; null means no expiry.
+  retentionDays Int?                   @map("retention_days")
+  /// Instant after which the source and its chunks must not be retrievable.
+  expiresAt     DateTime?              @map("expires_at")
 
   tenant Tenant           @relation(fields: [tenantId], references: [id])
   chunks KnowledgeChunk[]
 
   @@unique([tenantId, sourceType, contentHash])
   @@index([tenantId, status])
+  @@index([tenantId, expiresAt])
   @@map("knowledge_sources")
 }
 
@@ -426,6 +431,71 @@ model KnowledgeEmbedding {
   @@unique([chunkId, model])
   @@index([tenantId])
   @@map("knowledge_embeddings")
+}
+
+/// Retention categories a tenant can configure (T5.02, AC-F14-2).
+enum RetentionCategory {
+  KNOWLEDGE
+  TRACES
+  MEMORY
+}
+
+/// E-ai-trace: AI run metadata, outcome and correlation (DATABASE.md 6).
+/// No message content and no credentials; the correlation id links the run to
+/// the request, audit rows and logs (T5.01). `expires_at` bounds retention.
+model AiTrace {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  correlationId     String   @map("correlation_id")
+  agentId           String?  @map("agent_id") @db.Uuid
+  agentVersionId    String?  @map("agent_version_id") @db.Uuid
+  provider          String
+  model             String?
+  outcome           String
+  latencyMs         Int      @map("latency_ms")
+  usageJson         Json     @default("{}") @map("usage_json")
+  spansMetadataJson Json     @default("{}") @map("spans_metadata_json")
+  createdAt         DateTime @default(now()) @map("created_at")
+  expiresAt         DateTime @map("expires_at")
+
+  @@index([correlationId])
+  @@index([tenantId, createdAt])
+  @@index([expiresAt])
+  @@map("ai_traces")
+}
+
+/// E-memory: opt-in scoped memory with provenance and expiry (DATABASE.md 6).
+/// A row with a past `expires_at` or a set `deleted_at` is never retrievable.
+model AiMemory {
+  id                  String    @id @default(uuid()) @db.Uuid
+  tenantId            String    @map("tenant_id") @db.Uuid
+  customerId          String?   @map("customer_id") @db.Uuid
+  scope               String
+  content             String
+  provenanceJson      Json      @default("{}") @map("provenance_json")
+  confidence          Float
+  permissionScopeJson Json      @default("{}") @map("permission_scope_json")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  expiresAt           DateTime  @map("expires_at")
+  deletedAt           DateTime? @map("deleted_at")
+
+  @@index([tenantId, expiresAt])
+  @@map("ai_memories")
+}
+
+/// Tenant retention configuration per category (T5.02, AC-F14-2).
+/// Bounds are enforced by the API contract and a database CHECK.
+model RetentionPolicy {
+  id            String            @id @default(uuid()) @db.Uuid
+  tenantId      String            @map("tenant_id") @db.Uuid
+  category      RetentionCategory
+  retentionDays Int               @map("retention_days")
+  updatedBy     String?           @map("updated_by") @db.Uuid
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  @@unique([tenantId, category])
+  @@map("retention_policies")
 }
 
 enum AgentStatus {

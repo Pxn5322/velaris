@@ -70,6 +70,36 @@ function jsonResponse(status: number, body: unknown): Response {
 
 type FakeSource = Record<string, unknown>;
 
+/**
+ * Minimal Prisma where matcher for the fields these routes read: equality,
+ * `OR`, and the `expiresAt` comparison the T5.02 availability filter uses.
+ */
+function matchesWhere(
+  row: FakeSource,
+  where: Record<string, unknown>,
+): boolean {
+  return Object.entries(where).every(([key, value]) => {
+    if (key === 'OR') {
+      const clauses = value as Record<string, unknown>[];
+      return clauses.some((clause) => matchesWhere(row, clause));
+    }
+    const actual = row[key] ?? null;
+    if (key === 'deletedAt') {
+      return actual === null;
+    }
+    if (key === 'expiresAt') {
+      if (value === null) {
+        return actual === null;
+      }
+      const op = value as Record<string, Date>;
+      if ('gt' in op) return actual !== null && (actual as Date) > op.gt;
+      if ('lte' in op) return actual !== null && (actual as Date) <= op.lte;
+      return actual === value;
+    }
+    return row[key] === value;
+  });
+}
+
 function fakeKnowledgePrisma(rows: FakeSource[] = []) {
   const store = [...rows];
   let counter = 0;
@@ -80,12 +110,7 @@ function fakeKnowledgePrisma(rows: FakeSource[] = []) {
           where,
         }: {
           where: Record<string, unknown> & { deletedAt?: null };
-        }) =>
-          store.find((row) =>
-            Object.entries(where).every(([key, value]) =>
-              key === 'deletedAt' ? row.deletedAt === null : row[key] === value,
-            ),
-          ) ?? null,
+        }) => store.find((row) => matchesWhere(row, where)) ?? null,
       ),
       create: vi.fn(async ({ data }: { data: FakeSource }) => {
         const row: FakeSource = {
@@ -124,11 +149,7 @@ function fakeKnowledgePrisma(rows: FakeSource[] = []) {
           where?: Record<string, unknown>;
           orderBy?: { createdAt?: 'asc' | 'desc' };
         }) => {
-          const rows = store.filter((row) =>
-            Object.entries(where ?? {}).every(([key, value]) =>
-              key === 'deletedAt' ? row.deletedAt === null : row[key] === value,
-            ),
-          );
+          const rows = store.filter((row) => matchesWhere(row, where ?? {}));
           if (orderBy?.createdAt) {
             const direction = orderBy.createdAt === 'desc' ? -1 : 1;
             rows.sort(
@@ -242,6 +263,7 @@ describe('Knowledge source routes (integration)', () => {
       tenantId: string,
       createdAt: Date,
       deletedAt: Date | null = null,
+      expiresAt: Date | null = null,
     ): FakeSource => ({
       id,
       tenantId,
@@ -254,6 +276,7 @@ describe('Knowledge source routes (integration)', () => {
       createdAt,
       updatedAt: createdAt,
       deletedAt,
+      expiresAt,
     });
     prismaFake._store.push(
       source('src-old', 'tenant-a', new Date('2026-01-01T00:00:00Z')),
@@ -265,6 +288,13 @@ describe('Knowledge source routes (integration)', () => {
       ),
       source('src-foreign', 'tenant-b', new Date('2026-05-01T00:00:00Z')),
       source('src-new', 'tenant-a', new Date('2026-06-01T00:00:00Z')),
+      source(
+        'src-expired',
+        'tenant-a',
+        new Date('2026-07-01T00:00:00Z'),
+        null,
+        new Date('2026-08-01T00:00:00Z'),
+      ),
     );
 
     const res = await request(app.getHttpServer())
@@ -278,9 +308,46 @@ describe('Knowledge source routes (integration)', () => {
       'src-old',
     ]);
     expect(prismaFake.knowledgeSource.findMany).toHaveBeenCalledWith({
-      where: { tenantId: 'tenant-a', deletedAt: null },
+      where: {
+        tenantId: 'tenant-a',
+        deletedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }],
+      },
       orderBy: { createdAt: 'desc' },
     });
+  });
+
+  const EXPIRED_ID = 'cccccccc-0000-4000-8000-000000000001';
+
+  it('hides an expired source from the list and the detail route (AC-F14-1)', async () => {
+    role = 'R-tenant-admin';
+    prismaFake._store.push({
+      id: EXPIRED_ID,
+      tenantId: 'tenant-a',
+      sourceType: 'MARKDOWN',
+      status: 'READY',
+      errorCode: null,
+      provenanceJson: { content: 'body' },
+      contentHash: 'hash-expired',
+      createdBy: 'user-1',
+      createdAt: new Date('2026-07-01T00:00:00Z'),
+      updatedAt: new Date('2026-07-01T00:00:00Z'),
+      deletedAt: null,
+      expiresAt: new Date('2026-08-01T00:00:00Z'),
+    });
+
+    const list = await request(app.getHttpServer())
+      .get('/knowledge-sources?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+    expect(list.status).toBe(200);
+    expect(list.body.map((row: { id: string }) => row.id)).not.toContain(
+      EXPIRED_ID,
+    );
+
+    const detail = await request(app.getHttpServer())
+      .get(`/knowledge-sources/${EXPIRED_ID}?tenantId=tenant-a`)
+      .set('Authorization', 'Bearer valid-token');
+    expect(detail.status).toBe(404);
   });
 
   it('returns 400 for the list without a tenant scope (deny by default)', async () => {

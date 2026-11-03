@@ -33,6 +33,7 @@ import {
   PayloadTooLargeException,
 } from '@nestjs/common';
 import type { KnowledgeSource } from '@prisma/client';
+import { activeKnowledgeSourceWhere } from '../retention/retention-policy.js';
 import {
   PRISMA_SERVICE,
   type PrismaService,
@@ -116,27 +117,28 @@ export class KnowledgeService {
 
   /**
    * Tenant-scoped source list for the knowledge tab (T3.05). Newest
-   * first; soft-deleted rows never appear, and the tenant filter keeps
-   * foreign rows out of the payload.
+   * first; soft-deleted and expired rows never appear (T5.02), and the
+   * tenant filter keeps foreign rows out of the payload.
    */
   async list(tenantId: string): Promise<KnowledgeSource[]> {
     requireText(tenantId, 'tenantId');
     return this.prisma.knowledgeSource.findMany({
-      where: { tenantId, deletedAt: null },
+      where: { tenantId, ...activeKnowledgeSourceWhere(new Date()) },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   /**
    * Read one source's ingestion status (API-09: status, errors and
-   * provenance). Scoped to the tenant: a foreign or soft-deleted id is
-   * reported as not found, so no identifier leaks across tenants.
+   * provenance). Scoped to the tenant: a foreign, soft-deleted or expired
+   * id is reported as not found, so no identifier leaks across tenants and
+   * an expired source disappears on time (T5.02).
    */
   async findOne(id: string, tenantId: string): Promise<KnowledgeSource> {
     requireText(id, 'id');
     requireText(tenantId, 'tenantId');
     const source = await this.prisma.knowledgeSource.findFirst({
-      where: { id, tenantId, deletedAt: null },
+      where: { id, tenantId, ...activeKnowledgeSourceWhere(new Date()) },
     });
     if (!source) {
       throw new NotFoundException(`Knowledge source with ID ${id} not found`);

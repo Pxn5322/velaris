@@ -108,6 +108,8 @@ export class KnowledgeRetrievalService {
       WHERE c.tenant_id = ${params.tenantId}
         AND s.status = 'READY'
         AND s.deleted_at IS NULL
+        -- T5.02: an expired source is unavailable even before the sweep.
+        AND (s.expires_at IS NULL OR s.expires_at > now())
         AND e.model = ${this.embeddingProvider.model}
       ORDER BY e.embedding <=> ${literal}::vector
       LIMIT ${limit}`;
