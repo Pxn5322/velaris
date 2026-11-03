@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { KnowledgeModule } from '../knowledge/knowledge.module.js';
+import { ToolsModule } from './tools/tools.module.js';
 import { LLM_PROVIDER } from '../../infrastructure/llm/llm.provider.js';
 import { createLlmProvider } from '../../infrastructure/llm/llm.provider.factory.js';
 import { AiRuntimeService } from './ai-runtime.service.js';
@@ -13,7 +14,7 @@ import { AiRuntimeService } from './ai-runtime.service.js';
  * retriever (T3.04), so the guard chain runs before any model call.
  */
 @Module({
-  imports: [KnowledgeModule],
+  imports: [KnowledgeModule, ToolsModule],
   providers: [
     {
       // D-18: GROQ_API_KEY selects the Groq adapter; without a key the
@@ -23,6 +24,6 @@ import { AiRuntimeService } from './ai-runtime.service.js';
     },
     AiRuntimeService,
   ],
-  exports: [AiRuntimeService],
+  exports: [AiRuntimeService, ToolsModule],
 })
 export class AiModule {}

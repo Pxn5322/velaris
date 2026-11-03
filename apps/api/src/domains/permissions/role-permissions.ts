@@ -22,6 +22,8 @@ const ENTERPRISE_ADMIN: readonly PermissionCode[] = [
   P.ROLE_MANAGE,
   P.AUDIT_READ,
   P.ANALYTICS_READ,
+  // T4.04 (D-20): a platform owner may decide a consequential tool action.
+  P.AI_TOOL_APPROVE,
 ];
 
 /** Own-tenant scope only. Platform governance stays denied (AC-F03-3). */
@@ -36,6 +38,9 @@ const TENANT_ADMIN: readonly PermissionCode[] = [
   P.KNOWLEDGE_MANAGE,
   P.AI_AGENT_CONFIGURE,
   P.AI_AGENT_PUBLISH,
+  // T4.04 (D-20): the tenant owner approves consequential tool actions;
+  // R-agent and R-customer never hold this code (AC-F10-3).
+  P.AI_TOOL_APPROVE,
   P.AUDIT_READ,
   P.ANALYTICS_READ,
 ];
