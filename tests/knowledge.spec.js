@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from "@playwright/test";
+import { expectNoSeriousA11yViolations } from "./a11y.js";
 
 /**
  * Journey J-05 / T3.05 verify: the knowledge source tab.
@@ -185,6 +186,9 @@ test.describe("knowledge sources tab (T3.05, AC-F07)", () => {
       "FETCH_FAILED",
     );
     await expect(page.getByTestId("knowledge-retry-source")).toBeVisible();
+
+    // NFR-08: the knowledge view with a failed source and its retry.
+    await expectNoSeriousA11yViolations(page, "knowledge source detail");
 
     // Retry resubmits the original reference and the row restarts as PENDING.
     await page.getByTestId("knowledge-retry-source").click();

@@ -5,7 +5,6 @@ import { AppService } from './app.service.js';
 import { TicketsModule } from './domains/tickets/tickets.module.js';
 import { ConversationsModule } from './domains/conversations/conversations.module.js';
 import { CustomersModule } from './domains/customers/customers.module.js';
-import { AgentsModule } from './domains/agents/agents.module.js';
 import { AiAgentModule } from './domains/ai-agent/ai-agent.module.js';
 import { AnalyticsModule } from './domains/analytics/analytics.module.js';
 import { AuditQueryModule } from './domains/audit/audit-query.module.js';
@@ -41,7 +40,6 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     TicketsModule,
     ConversationsModule,
     CustomersModule,
-    AgentsModule,
     AiAgentModule,
     AnalyticsModule,
     AuditQueryModule,

@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from "@playwright/test";
+import { expectNoSeriousA11yViolations } from "./a11y.js";
 
 /**
  * Journey J-05 / T5.04 verify: analytics, audit trail and AI traces.
@@ -293,6 +294,9 @@ test.describe("analytics and governance views (T5.04, AC-F12 / AC-F11-3)", () =>
     await expect(
       page.getByTestId("analytics-value-open_ticket_backlog"),
     ).toHaveText("7");
+
+    // NFR-08: the analytics view with KPI values rendered.
+    await expectNoSeriousA11yViolations(page, "analytics KPI view");
   });
 
   test("marks a stale summary instead of implying live data", async ({

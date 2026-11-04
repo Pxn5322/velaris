@@ -423,7 +423,7 @@ export default function InboxPage() {
                       <span className="block mt-1 text-sm font-medium">
                         {ticket.title}
                       </span>
-                      <span className="block text-xs text-slate-500">
+                      <span className="block text-xs text-slate-400">
                         {ticket.customerId.slice(0, 8)} ·{" "}
                         {timeAgo(ticket.updatedAt)}
                       </span>
@@ -433,7 +433,7 @@ export default function InboxPage() {
               </ul>
             )}
 
-            <div className="mt-auto px-4 py-2 border-t border-slate-800 text-xs text-slate-500">
+            <div className="mt-auto px-4 py-2 border-t border-slate-800 text-xs text-slate-400">
               {visibleTickets.length} of {tickets.length} tickets
             </div>
           </div>
@@ -450,7 +450,7 @@ export default function InboxPage() {
             ) : (
               <>
                 <h2 className="text-lg font-semibold">{selected.title}</h2>
-                <p className="text-xs text-slate-500 mb-2">
+                <p className="text-xs text-slate-400 mb-2">
                   {selected.status} · priority {selected.priority} · v
                   {selected.version}
                 </p>
@@ -504,7 +504,7 @@ export default function InboxPage() {
                         key={message.id}
                         className="rounded border border-slate-800 p-2 text-sm"
                       >
-                        <span className="flex items-center gap-2 text-xs text-slate-500">
+                        <span className="flex items-center gap-2 text-xs text-slate-400">
                           <User aria-hidden="true" className="h-3 w-3" />
                           {message.authorType}
                           {message.visibility === "INTERNAL" && (
@@ -560,7 +560,7 @@ export default function InboxPage() {
                 {profile.phone && (
                   <p className="text-sm text-slate-400">{profile.phone}</p>
                 )}
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-400">
                   Status: {profile.status}
                 </p>
               </div>

@@ -83,7 +83,7 @@ Values below are Proposed starting points, not approved brand decisions. No cont
 - Mobile web: prioritize message/ticket content and primary actions; tables become cards or horizontally scrollable with accessible labels. Native mobile apps are deferred.
 
 ## 9. Accessibility
-- Target WCAG 2.2 AA for critical journeys.
+- Target WCAG 2.2 AA for critical journeys. Measured 2026-11-04 (T6.02): metadata text on the dark panels uses slate-400 on slate-900 (about 7.5:1) because slate-500 measured about 4.1:1, under the 4.5:1 floor for normal text. Navigation links carry a 32 px target (WCAG 2.2 2.5.8), and a global `:focus-visible` rule draws a 2 px `--accent-cyan` ring so a control that sets `focus:outline-none` still shows focus.
 - Keyboard-only completion for signup, ticket handling, knowledge upload, agent configuration/testing/publishing and human escalation.
 - Visible focus indicators; no keyboard traps outside modal patterns; logical focus order.
 - Semantic headings, landmarks, labels, table headers and status announcements.

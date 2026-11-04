@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from "@playwright/test";
+import { expectNoSeriousA11yViolations } from "./a11y.js";
 
 /**
  * Journey J-04 / T2.04 verify: the role-aware agent inbox.
@@ -250,5 +251,8 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await expect(page.getByTestId("inbox-conflict")).toContainText(
       "Stale ticket version",
     );
+
+    // NFR-08: the agent workspace with a rendered timeline.
+    await expectNoSeriousA11yViolations(page, "agent inbox timeline");
   });
 });

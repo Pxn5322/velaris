@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from "@playwright/test";
+import { expectNoSeriousA11yViolations } from "./a11y.js";
 
 /**
  * Journey J-03 / T2.04: customer portal sign-in and conversation timeline.
@@ -114,6 +115,9 @@ test.describe("customer portal (J-03)", () => {
     );
     // No redirect on failure.
     await expect(page).toHaveURL(/\/portal\/sign-in/);
+
+    // NFR-08: the sign-in form announces its error and stays labelled.
+    await expectNoSeriousA11yViolations(page, "portal sign-in error");
   });
 
   test("sign-in validates an empty form before any request", async ({
@@ -166,6 +170,7 @@ test.describe("customer portal (J-03)", () => {
     );
     // The API serialized the customer view: two visible messages, and the
     // customer page never renders an internal-note marker.
+    await expectNoSeriousA11yViolations(page, "customer portal timeline");
     await expect(page.getByTestId("portal-timeline").locator("li")).toHaveCount(
       2,
     );

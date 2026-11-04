@@ -19,13 +19,16 @@
     "format:check": "npm run format:check --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:api": "npm run test --workspace apps/api",
+    "test:cov": "npm run test:cov --workspaces --if-present",
     "audit:check": "node scripts/check-audit-baseline.mjs",
+    "inventory:check": "node scripts/check-route-inventory.mjs",
     "e2e": "npm run test:e2e --workspace apps/api",
     "e2e:web": "playwright test"
   },
   "keywords": [],
   "type": "commonjs",
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.3",
     "prisma": "^7.10.1"

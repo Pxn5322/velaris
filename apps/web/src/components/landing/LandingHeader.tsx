@@ -60,35 +60,39 @@ export function LandingHeader({ onOpenAuth }: LandingHeaderProps) {
           </span>
         </Link>
 
-        {/* Desktop Nav Items */}
+        {/*
+          Desktop nav items. `py-1.5 -my-1.5` grows each link to a 32 px
+          target for WCAG 2.2 AA 2.5.8 (T6.02) without moving the row: the
+          negative margin cancels the padding in the layout.
+        */}
         <nav className="hidden lg:flex items-center gap-8 text-sm font-medium">
           <a
             href="#product"
-            className="text-muted-custom hover:text-brand-cyan transition-colors"
+            className="py-1.5 -my-1.5 text-muted-custom hover:text-brand-cyan transition-colors"
           >
             Product
           </a>
           <a
             href="#solutions"
-            className="text-muted-custom hover:text-brand-cyan transition-colors"
+            className="py-1.5 -my-1.5 text-muted-custom hover:text-brand-cyan transition-colors"
           >
             Solutions
           </a>
           <a
             href="#security"
-            className="text-muted-custom hover:text-brand-cyan transition-colors"
+            className="py-1.5 -my-1.5 text-muted-custom hover:text-brand-cyan transition-colors"
           >
             Security
           </a>
           <a
             href="#pricing"
-            className="text-muted-custom hover:text-brand-cyan transition-colors"
+            className="py-1.5 -my-1.5 text-muted-custom hover:text-brand-cyan transition-colors"
           >
             Pricing
           </a>
           <a
             href="#resources"
-            className="text-muted-custom hover:text-brand-cyan transition-colors"
+            className="py-1.5 -my-1.5 text-muted-custom hover:text-brand-cyan transition-colors"
           >
             Resources
           </a>
