@@ -1,9 +1,11 @@
 # GATE-5 evidence package (observability, analytics and lifecycle)
 
-Status: OPEN, awaiting the owner tick. The owner chose Option B on 2026-11-04:
-hold the gate and add T5.06. T5.06 shipped as `2579261`, and section 7 records
-the re-run that closes finding F-1. This package still does not tick the gate
-line.
+Status: CLOSED, approved by the owner on 2026-11-04. The owner chose Option B on
+2026-11-04: hold the gate and add T5.06. T5.06 shipped as `2579261`, section 7
+records the re-run that closes finding F-1 at 100/100, and the owner then chose
+Option A in 7.5: tick GATE-5. The gate line is ticked in
+`docs/IMPLEMENTATION_PLAN.md`. Residual risks 1-5 of 7.4 stay open and belong to
+Phase 6.
 
 Gate line: "Trace/audit completeness, retention, analytics scope and
 idempotency checks green."
@@ -228,3 +230,7 @@ gate criterion, and residual risk 1 records it either way.
 
 Option C: tick GATE-5 and open API-13 as the first Phase 6 item, before T6.01
 runs the full regression suite.
+
+Owner decision (2026-11-04): Option A. GATE-5 is ticked. The five residual
+risks in 7.4 are recorded as Phase 6 work, and T6.01 runs the full regression
+suites against the state this package describes.
