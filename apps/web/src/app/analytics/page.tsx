@@ -1,7 +1,7 @@
-﻿"use client";
+"use client";
 
-import { AdminView } from "@/components/AdminView";
+import { AnalyticsView } from "@/components/analytics/AnalyticsView";
 
 export default function AnalyticsPage() {
-  return <AdminView />;
+  return <AnalyticsView />;
 }

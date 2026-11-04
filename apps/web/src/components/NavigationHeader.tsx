@@ -9,6 +9,7 @@ import {
   Layers,
   Bot,
   BarChart3,
+  ClipboardList,
   Inbox,
   UserCheck,
   LifeBuoy,
@@ -52,6 +53,13 @@ export function NavigationHeader() {
       viewId: "analytics",
       label: "Analytics",
       icon: BarChart3,
+    },
+    {
+      roleMatch: ["ENTERPRISE", "ADMIN"],
+      href: "/audit",
+      viewId: "audit",
+      label: "Audit",
+      icon: ClipboardList,
     },
     {
       roleMatch: ["AGENT"],
