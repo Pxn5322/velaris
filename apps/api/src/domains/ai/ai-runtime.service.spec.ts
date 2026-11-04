@@ -20,13 +20,18 @@
  * around the LLM port; the port itself stays retry-free.
  */
 
-import { ForbiddenException } from '@nestjs/common';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ForbiddenException, Logger } from '@nestjs/common';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { KnowledgeRetrievalService } from '../knowledge/knowledge-retrieval.service.js';
 import type { RetrievalHit } from '../knowledge/knowledge-retrieval.service.js';
 import type { LlmProvider } from '../../infrastructure/llm/llm.provider.js';
 import { runWithCorrelationId } from '../../common/logging/correlation.js';
-import { AiRuntimeService, toResult } from './ai-runtime.service.js';
+import {
+  AiRuntimeService,
+  toResult,
+  type AiTraceMetadata,
+} from './ai-runtime.service.js';
+import type { AiTraceService } from './ai-trace.service.js';
 import type { CanonicalRole } from '../permissions/permission.codes.js';
 
 function hit(overrides: Partial<RetrievalHit> = {}): RetrievalHit {
@@ -61,19 +66,35 @@ function retrievalFake(hits: RetrievalHit[] = [hit()]) {
   } as unknown as KnowledgeRetrievalService;
 }
 
+function traceFake() {
+  return {
+    record: vi.fn(
+      async (_input: { trace: AiTraceMetadata; provider: string }) => 'trace-1',
+    ),
+  };
+}
+
 function service(
   retrieval = retrievalFake(),
   llm = llmFake(),
   threshold?: number,
+  traces = traceFake(),
 ): {
   service: AiRuntimeService;
   retrieval: KnowledgeRetrievalService;
   llm: LlmProvider;
+  traces: ReturnType<typeof traceFake>;
 } {
   return {
-    service: new AiRuntimeService(retrieval, llm, threshold),
+    service: new AiRuntimeService(
+      retrieval,
+      llm,
+      traces as unknown as AiTraceService,
+      threshold,
+    ),
     retrieval,
     llm,
+    traces,
   };
 }
 
@@ -348,6 +369,8 @@ describe('AiRuntimeService trace metadata (T5.01, AC-F11-1)', () => {
       model: 'fake-model',
       attempts: 1,
       citationCount: 1,
+      latencyMs: expect.any(Number),
+      traceId: 'trace-1',
     });
     // Trace metadata must not copy message or document content.
     expect(JSON.stringify(result.trace)).not.toContain('refunds take');
@@ -359,5 +382,60 @@ describe('AiRuntimeService trace metadata (T5.01, AC-F11-1)', () => {
     const result = await runtime.handle(base);
 
     expect(result.trace.correlationId).toBeNull();
+  });
+});
+
+describe('AiRuntimeService trace persistence (T5.06, AC-F11-1)', () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('writes exactly one row per run with the correlation id of the request', async () => {
+    const { service: runtime, traces } = service();
+
+    const result = await runWithCorrelationId('run-1', () =>
+      runtime.handle(base),
+    );
+
+    expect(traces.record).toHaveBeenCalledTimes(1);
+    const input = traces.record.mock.calls[0][0];
+    expect(input.trace).toMatchObject({
+      correlationId: 'run-1',
+      tenantId: 'tenant-a',
+      outcome: 'respond',
+      model: 'fake-model',
+      attempts: 1,
+      citationCount: 1,
+    });
+    expect(input.trace.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(input.provider).toBe('local');
+    expect(result.trace.traceId).toBe('trace-1');
+    // Operational metadata only: the message never reaches the trace.
+    expect(JSON.stringify(input)).not.toContain('refunds');
+  });
+
+  it('writes a row for a run that escalates instead of answering', async () => {
+    const { service: runtime, traces } = service(retrievalFake([]));
+
+    const result = await runtime.handle(base);
+
+    expect(result.outcome).toBe('abstain');
+    expect(traces.record).toHaveBeenCalledTimes(1);
+    expect(traces.record.mock.calls[0][0].trace.outcome).toBe('abstain');
+  });
+
+  it('answers the customer when the trace write fails, and logs the failure', async () => {
+    const logged = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => {});
+    const { service: runtime, traces } = service();
+    traces.record.mockRejectedValueOnce(new Error('database down'));
+
+    const result = await runtime.handle(base);
+
+    expect(result.outcome).toBe('respond');
+    expect(result.text?.trim().length).toBeGreaterThan(0);
+    expect(result.trace.traceId).toBeNull();
+    expect(logged).toHaveBeenCalledTimes(1);
+    expect(String(logged.mock.calls[0][0])).toContain('trace');
   });
 });

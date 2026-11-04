@@ -22,6 +22,18 @@ import { Injectable } from '@nestjs/common';
 
 export const LLM_PROVIDER = 'LLM_PROVIDER';
 
+/**
+ * Injection token naming the selected provider family for trace rows
+ * (T5.06). The port exposes a model, not a vendor, so the selection is
+ * resolved from configuration instead of guessed from a model string.
+ */
+export const LLM_PROVIDER_NAME = 'LLM_PROVIDER_NAME';
+
+/** Provider family selected by configuration (D-18). */
+export function resolveLlmProviderName(): 'groq' | 'local' {
+  return process.env.GROQ_API_KEY?.trim() ? 'groq' : 'local';
+}
+
 export type LlmRole = 'system' | 'user' | 'assistant';
 
 export interface LlmMessage {
