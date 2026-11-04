@@ -1,4 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /**
  * Shared HTTP application configuration (browser CORS).
@@ -19,6 +21,27 @@ import type { INestApplication } from '@nestjs/common';
  * behavior is the production behavior.
  */
 export function configureApp(app: INestApplication): void {
+  // Webhook signatures cover the exact bytes the sender signed (T5.05), so the
+  // JSON parser keeps them on the request. The 2 MB parser ceiling stays above
+  // the 1 MB webhook limit in the controller, so an oversized body is refused
+  // by a guarded route with 413 instead of an unparsed parser error.
+  // `verify` reaches body-parser unchanged; the Nest option type omits it, so
+  // the cast documents that gap instead of dropping the hook.
+  type BodyParserOptions = Parameters<
+    NestExpressApplication['useBodyParser']
+  >[1];
+  (app as NestExpressApplication).useBodyParser('json', {
+    limit: '2mb',
+    verify: (
+      request: IncomingMessage,
+      _response: ServerResponse,
+      buffer: Buffer,
+    ) => {
+      (request as IncomingMessage & { rawBody?: Buffer }).rawBody =
+        Buffer.from(buffer);
+    },
+  } as unknown as BodyParserOptions);
+
   const raw = process.env.CORS_ORIGIN;
   const origins = (
     raw ? raw.split(',') : ['http://localhost:3000', 'http://localhost:3001']

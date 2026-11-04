@@ -25,6 +25,8 @@ export const PERMISSIONS = {
   AI_TOOL_APPROVE: 'ai.tool.approve',
   AUDIT_READ: 'audit.read',
   ANALYTICS_READ: 'analytics.read',
+  /** Register webhook endpoints for the own tenant (T5.05, D-30). */
+  INTEGRATION_MANAGE: 'integration.manage',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

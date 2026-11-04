@@ -22,6 +22,8 @@ const ENTERPRISE_ADMIN: readonly PermissionCode[] = [
   P.ROLE_MANAGE,
   P.AUDIT_READ,
   P.ANALYTICS_READ,
+  // T5.05 (D-30): the platform owner may register webhook endpoints.
+  P.INTEGRATION_MANAGE,
   // T4.04 (D-20): a platform owner may decide a consequential tool action.
   P.AI_TOOL_APPROVE,
 ];
@@ -43,6 +45,8 @@ const TENANT_ADMIN: readonly PermissionCode[] = [
   P.AI_TOOL_APPROVE,
   P.AUDIT_READ,
   P.ANALYTICS_READ,
+  // T5.05 (D-30): a tenant owner registers the tenant's own endpoints.
+  P.INTEGRATION_MANAGE,
 ];
 
 /** Support work on permitted tickets; no governance, no knowledge admin. */
