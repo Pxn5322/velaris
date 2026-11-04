@@ -13,9 +13,9 @@ Operating contract for AI coding agents. Read this whole file, then load only th
 | Purpose | Command | Status |
 | --- | --- | --- |
 | Format | `npm run format:check` (root, all workspaces); fix with `npm run format` | Verified 2026-11-04: exit 0 after Prettier ran over the T5.04 files; CI job `format` enforces it. Earlier 2026-10-27: exit 0 after Prettier ran over both workspaces; CI job `format` enforces it. Earlier: API 2026-10-22, web 2026-10-24 (owner approved one-time Prettier rewrite of 34 design files, rendering verified by 3/3 E2E journeys) |
-| Lint | `npm run lint` | Verified 2026-10-23: 0 errors, 0 warnings (oxlint for API, ESLint for web) |
+| Lint | `npm run lint` | Verified 2026-11-04 (T6.01): exit 0 with 0 errors and 14 warnings (oxlint for API, ESLint for web). The 14 are unbound-method and unused-variable findings in two existing API spec files and do not fail CI; T6.01 records them as clean-up. Earlier 2026-10-23: 0 errors, 0 warnings |
 | Type check | `npm run typecheck` | Verified 2026-10-23: exit 0 (`tsc --noEmit` per workspace) |
-| Test (all) | `npm run test` | Verified 2026-11-04: API suite green (60 files, 581 tests) |
+| Test (all) | `npm run test` | Verified 2026-11-04 (T6.01): 623 tests green, 601 in 63 API files and 22 in 2 `packages/ai-evals` files; the root command now includes the eval package. Earlier: API 581 tests in 60 files |
 | End-to-end | `npm run e2e:web` | Verified 2026-11-04: 38/38 journeys green against the production build of `apps/web` (landing AC-F01-1, agent inbox AC-F06/J-04, customer portal J-03, knowledge AC-F07, agent lifecycle F-08, governance T5.04/AC-F11-3, AC-F12-1, AC-F12-3; workflow .github/workflows/e2e.yml) |
 | Build | `npm run build` | Verified 2026-10-23: nest + next build green |
 | Run app | `PORT=3000 npm run dev:api` + `npm run dev:web` | Verified 2026-11-02: API on 3000 and web on 3001 answered HTTP 200, and landing-page registration returned 201 with a real workspace. The API loads `<repo>/.env` itself (`apps/api/src/env.ts`). Set `PORT` explicitly: an inherited `PORT=0` moves the API to a random port |
