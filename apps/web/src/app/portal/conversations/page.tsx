@@ -212,7 +212,7 @@ export default function PortalConversationsPage() {
                   <span className="text-sm font-medium">
                     {conversation.channel} conversation
                   </span>
-                  <span className="block text-xs text-slate-500">
+                  <span className="block text-xs text-slate-400">
                     {conversation.status} ·{" "}
                     {new Date(conversation.createdAt).toLocaleDateString()}
                   </span>
@@ -244,7 +244,7 @@ export default function PortalConversationsPage() {
                     key={message.id}
                     className="rounded border border-slate-800 p-2 text-sm"
                   >
-                    <span className="block text-xs text-slate-500">
+                    <span className="block text-xs text-slate-400">
                       {message.authorType}
                     </span>
                     {message.body}

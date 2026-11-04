@@ -147,6 +147,22 @@ jobs:
       - name: Fail on new npm audit vulnerabilities
         run: node scripts/check-audit-baseline.mjs
 
+  inventory:
+    name: Route inventory (authorization)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # NFR-02: every route must be authenticated and permission-scoped, or on
+      # the documented public list in the script. It reads source only, so the
+      # job needs no npm install and fails in seconds when a route is added
+      # without a guard.
+      - name: Check every route is guarded
+        run: node scripts/check-route-inventory.mjs
+
   schema:
     name: Prisma schema
     runs-on: ubuntu-latest

@@ -102,7 +102,7 @@ export default function PortalSignInPage() {
         >
           {submitting ? "Signing in…" : "Sign in"}
         </button>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-400">
           Conversations and tickets stay inside your tenant; internal notes
           never appear in the customer view.
         </p>

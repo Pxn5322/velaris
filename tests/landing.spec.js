@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from "@playwright/test";
+import { expectNoSeriousA11yViolations } from "./a11y.js";
 
 /**
  * E2E journey J-01: public landing page.
@@ -26,6 +27,49 @@ test.describe("landing page (AC-F01-1)", () => {
     // address the hero button by id to avoid a strict-mode violation.
     await expect(page.locator("#trigger-motion")).toBeVisible();
     await expect(page.getByRole("link", { name: /View Demo/i })).toBeVisible();
+
+    // NFR-08: the public landing page is the first critical journey.
+    await expectNoSeriousA11yViolations(page, "landing hero");
+  });
+
+  test("every keyboard stop shows a visible focus ring (NFR-08)", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    // The first stops are the logo link, the theme and menu buttons and the
+    // header calls to action. A ring that the stylesheet removed, without a
+    // replacement, leaves a keyboard user with no idea where they are.
+    const stops = [];
+    for (let index = 0; index < 6; index += 1) {
+      await page.keyboard.press("Tab");
+      stops.push(
+        await page.evaluate(() => {
+          const element = document.activeElement;
+          const style = element ? getComputedStyle(element) : null;
+          return {
+            label: `${element?.tagName ?? "none"} ${
+              (element?.textContent ?? "").trim().slice(0, 20) ||
+              element?.getAttribute("aria-label") ||
+              ""
+            }`.trim(),
+            outlineStyle: style?.outlineStyle ?? "none",
+            outlineWidth: style?.outlineWidth ?? "0px",
+          };
+        }),
+      );
+    }
+
+    for (const stop of stops) {
+      // Chrome reports its own ring as `auto`; the design system ring is
+      // `solid`. Either is visible, and `none` is the failure this test
+      // exists to catch.
+      expect(stop.outlineStyle, `${stop.label}: outline style`).not.toBe("none");
+      expect(
+        Number.parseFloat(stop.outlineWidth),
+        `${stop.label}: outline width`,
+      ).toBeGreaterThanOrEqual(1);
+    }
   });
 
   test("renders every required marketing section anchor", async ({ page }) => {

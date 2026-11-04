@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Visible keyboard focus (T6.02, NFR-08, WCAG 2.4.7).
+ *
+ * Many controls use `focus:outline-none` to remove the browser ring, and
+ * several of them replace it with nothing, so a keyboard user lost track of
+ * the focus position. This rule is outside the Tailwind layers, so it wins
+ * over a utility class without editing every component, and it applies only
+ * to `:focus-visible`, so a mouse click still shows no ring.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
 :root[data-theme="dark"],
 :root {
   --bg-color: #0b0f17;
