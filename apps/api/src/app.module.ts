@@ -9,6 +9,7 @@ import { AgentsModule } from './domains/agents/agents.module.js';
 import { AiAgentModule } from './domains/ai-agent/ai-agent.module.js';
 import { AnalyticsModule } from './domains/analytics/analytics.module.js';
 import { AuditQueryModule } from './domains/audit/audit-query.module.js';
+import { IntegrationsModule } from './domains/integrations/integrations.module.js';
 import { KnowledgeModule } from './domains/knowledge/knowledge.module.js';
 import { WorkflowsModule } from './domains/workflows/workflows.module.js';
 import { GuardrailsModule } from './domains/guardrails/guardrails.module.js';
@@ -44,6 +45,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     AiAgentModule,
     AnalyticsModule,
     AuditQueryModule,
+    IntegrationsModule,
     KnowledgeModule,
     WorkflowsModule,
     GuardrailsModule,

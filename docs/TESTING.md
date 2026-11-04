@@ -63,8 +63,8 @@ Use Jest for unit/domain tests, Supertest for NestJS API/integration tests, Cypr
 | AC-F12-2 | TST-AC-F12-2 | Empty/delayed telemetry is not misrepresented as zero success; `EMPTY` returns null values with zero samples, `STALE` reports the last event and the 60-minute window (`analytics.service.spec.ts`, `analytics.controller.integration.spec.ts`); `tests/governance.spec.js` asserts the EMPTY notice, the null value and the STALE age (T5.04) |
 | AC-F12-3 | TST-AC-F12-3 | Tenant analytics endpoint blocks cross-tenant access; 403 for a guessed tenant, 400 without a tenant scope, and no query runs in either case (`analytics.controller.integration.spec.ts`). The audit routes refuse a foreign tenant the same way, and `tests/governance.spec.js` asserts the analytics denial for a 403 answer (T5.04) |
 | AC-F13-1 | TST-AC-F13-1 | Versioned API matches OpenAPI and includes correlation ID; `x-request-id` is echoed and every error body carries `requestId` (`correlation.spec.ts`, D-26) |
-| AC-F13-2 | TST-AC-F13-2 | Invalid filters, idempotency mismatch and rate limit use standard errors |
-| AC-F13-3 | TST-AC-F13-3 | Invalid credentials/integration scopes cannot invoke protected operations |
+| AC-F13-2 | TST-AC-F13-2 | Invalid filters, idempotency mismatch and rate limit use standard errors; a reused webhook delivery id with a different body answers 409 and the idempotency pair is unique in the schema (`integrations.service.spec.ts`, `integrations.controller.integration.spec.ts`, migration `0008_webhook_integrations`, T5.05) |
+| AC-F13-3 | TST-AC-F13-3 | Invalid credentials/integration scopes cannot invoke protected operations; an unsigned, tampered, stale or wrong-secret webhook delivery answers 401 and writes no row, an endpoint of another provider answers 404, and registration without `integration.manage` answers 403 (`integrations.controller.integration.spec.ts`, `webhook-signature.spec.ts`, T5.05) |
 | AC-F14-1 | TST-AC-F14-1 | Expired/deleted knowledge and memory are no longer retrievable; the retrieval query, source list and detail route exclude them and the sweep removes derived chunks (`retention.spec.ts`, `knowledge.controller.integration.spec.ts`, T5.02) |
 | AC-F14-2 | TST-AC-F14-2 | Invalid retention configuration is rejected; the contract accepts only 1..3650 whole days for a known category and names the field, and migration 0007 repeats the bound as a CHECK (`retention.spec.ts`) |
 | AC-F14-3 | TST-AC-F14-3 | Restricted audit/lifecycle operation is denied without permission; covered by the existing permission-denial suites (T1.04, T3.02); no lifecycle HTTP route exists yet, so no new denial surface was added |
@@ -83,7 +83,7 @@ AC-F05-1 is covered by the create/read/update paths in `tickets.service.spec.ts`
 | TH-05 | TST-TH-05 | Customer API never returns internal notes; retrieval enforces source permissions |
 | TH-06 | TST-TH-06 | Invalid type/size and parser-failure uploads are rejected or quarantined safely |
 | TH-07 | TST-TH-07 | Logs/traces redact secrets and minimize personal content |
-| TH-08 | TST-TH-08 | Repeated webhook/job delivery produces one intended side effect |
+| TH-08 | TST-TH-08 | Repeated webhook/job delivery produces one intended side effect; a repeat with the same payload hash answers `duplicate: true` and writes neither a delivery row nor an audit row (`integrations.service.spec.ts`, `integrations.controller.integration.spec.ts`, T5.05) |
 | TH-09 | TST-TH-09 | Provider timeout/rate-limit/outage respects retry budget and escalates safely |
 | TH-10 | TST-TH-10 | Audit writes, access control, retention and append-oriented behavior reviewed/tested |
 | TH-11 | TST-TH-11 | Disabled tenant sessions and queued jobs cannot perform new business mutations |

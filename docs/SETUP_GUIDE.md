@@ -69,6 +69,7 @@ Names below are proposed categories for the initial implementation. Add or remov
 | `SUPABASE_JWT_ISSUER` | NestJS token verifier, if configured separately | no | server environment config |
 | `GROQ_API_KEY` | API `GroqLlmProvider` development adapter (D-18); when absent the factory keeps the offline deterministic adapter, so it is optional for CI and unit tests | yes | local ignored `.env`; CI/host secret store |
 | `GROQ_MODEL` | API Groq adapter model name (default `openai/gpt-oss-120b`) | no | runtime environment configuration |
+| `WEBHOOK_SECRET_<NAME>` | API webhook signature verification; the `secretRef` column of `integration_endpoints` names the variable (for example `WEBHOOK_SECRET_STRIPE`), so one name serves every tenant that registers it | yes | local ignored `.env`; host secret store |
 | `CORS_ORIGIN` | NestJS HTTP CORS allowlist (`src/app.setup.ts`); comma-separated origins | no, defaults to `http://localhost:3000,http://localhost:3001` | server environment config; set the real web origin in every deployment |
 | `SUPABASE_SERVICE_ROLE_KEY` | server-only administrative operations, only where justified; `POST /auth/signup` and member creation answer 503 "Account registration is not configured on this deployment" when this name or `SUPABASE_URL` is missing | yes | server secret store; never browser-exposed |
 | `LLM_PROVIDER` | API/worker | no | environment config |
