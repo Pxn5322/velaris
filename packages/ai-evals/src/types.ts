@@ -4,8 +4,9 @@
  *
  * A dataset is immutable: a change to a case produces a new version string,
  * so a stored run always names exactly the cases it scored. A case carries
- * a severity; a failed CRITICAL case is a regression that blocks
- * publication, a failed MEDIUM case only lowers the score.
+ * a severity. Every failed case fails the run, because AC-F08-1 requires a
+ * passing suite before publication; a failed CRITICAL case is also counted
+ * as a regression, so the publish gate can name it (AC-F11-2).
  */
 
 /** Severity of one evaluation case. Only CRITICAL blocks publication. */

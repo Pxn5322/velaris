@@ -189,6 +189,18 @@ type State = typeof AiState.State;
 type Update = typeof AiState.Update;
 
 /**
+ * Error detail safe to log (TH-07). An error message can quote the value that
+ * failed, so the log keeps the error name and its stack frames and drops the
+ * message itself: the correlation id in the same log line is how support
+ * finds the request.
+ */
+export function safeErrorDetail(error: unknown): string {
+  if (!(error instanceof Error)) return typeof error;
+  const frames = (error.stack ?? '').split('\n').slice(1).join('\n').trim();
+  return frames.length > 0 ? `${error.name}\n${frames}` : error.name;
+}
+
+/**
  * Map the final graph state onto the public result. Every terminal path
  * through the graph sets outcome and reason; the null fallbacks are the
  * defensive contract — a state that somehow ends without an outcome
@@ -277,7 +289,7 @@ export class AiRuntimeService {
     } catch (error) {
       this.logger.error(
         `AI trace write failed for correlationId=${trace.correlationId ?? 'none'}`,
-        error instanceof Error ? error.stack : String(error),
+        safeErrorDetail(error),
       );
       return null;
     }
