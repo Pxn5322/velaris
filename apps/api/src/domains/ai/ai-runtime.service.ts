@@ -35,6 +35,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   Optional,
 } from '@nestjs/common';
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
@@ -44,9 +45,12 @@ import {
 } from '../knowledge/knowledge-retrieval.service.js';
 import {
   LLM_PROVIDER,
+  LLM_PROVIDER_NAME,
+  resolveLlmProviderName,
   type LlmMessage,
   type LlmProvider,
 } from '../../infrastructure/llm/llm.provider.js';
+import { AiTraceService } from './ai-trace.service.js';
 import { currentCorrelationId } from '../../common/logging/correlation.js';
 import type { CanonicalRole } from '../permissions/permission.codes.js';
 
@@ -121,7 +125,11 @@ export interface AiRuntimeResult {
   trace: AiTraceMetadata;
 }
 
-/** Minimal trace metadata; persistence belongs to the trace pipeline. */
+/**
+ * Trace metadata for one run (T5.01 metadata, T5.06 persistence). The
+ * runtime writes it to `ai_traces` through AiTraceService, so the value
+ * carries the measured latency and the id of the row it created.
+ */
 export interface AiTraceMetadata {
   correlationId: string | null;
   tenantId: string;
@@ -129,6 +137,10 @@ export interface AiTraceMetadata {
   model: string | null;
   attempts: number;
   citationCount: number;
+  /** Wall-clock time of the whole graph, in milliseconds. */
+  latencyMs: number;
+  /** Row id, or null when the write failed and the reply continued. */
+  traceId: string | null;
 }
 
 /**
@@ -211,12 +223,18 @@ export class AiRuntimeService {
     >['compile']
   >;
 
+  private readonly logger = new Logger(AiRuntimeService.name);
+  private readonly providerName: string;
+
   constructor(
     private readonly retrieval: KnowledgeRetrievalService,
     @Inject(LLM_PROVIDER) private readonly llm: LlmProvider,
+    private readonly traces: AiTraceService,
     @Optional() @Inject(GROUNDING_THRESHOLD) threshold?: number,
+    @Optional() @Inject(LLM_PROVIDER_NAME) providerName?: string,
   ) {
     this.threshold = threshold ?? DEFAULT_GROUNDING_THRESHOLD;
+    this.providerName = providerName ?? resolveLlmProviderName();
     this.graph = this.buildGraph();
   }
 
@@ -228,19 +246,41 @@ export class AiRuntimeService {
     ) {
       throw new BadRequestException('tenantId is required');
     }
+    const startedAt = Date.now();
     const state = await this.graph.invoke({ request });
     const result = toResult(state);
+    const trace: AiTraceMetadata = {
+      correlationId: currentCorrelationId() ?? null,
+      tenantId: request.tenantId,
+      outcome: result.outcome,
+      model: result.model,
+      attempts: result.attempts,
+      citationCount: result.citations.length,
+      latencyMs: Math.max(0, Date.now() - startedAt),
+      traceId: null,
+    };
     return {
       ...result,
-      trace: {
-        correlationId: currentCorrelationId() ?? null,
-        tenantId: request.tenantId,
-        outcome: result.outcome,
-        model: result.model,
-        attempts: result.attempts,
-        citationCount: result.citations.length,
-      },
+      trace: { ...trace, traceId: await this.recordTrace(trace) },
     };
+  }
+
+  /**
+   * Persist the run. A trace is evidence about the run, not a condition of
+   * the reply: an escalation reaches the customer even when the write fails,
+   * and the failure is logged with the correlation id so it stays visible
+   * (T5.06, D-31).
+   */
+  private async recordTrace(trace: AiTraceMetadata): Promise<string | null> {
+    try {
+      return await this.traces.record({ trace, provider: this.providerName });
+    } catch (error) {
+      this.logger.error(
+        `AI trace write failed for correlationId=${trace.correlationId ?? 'none'}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      return null;
+    }
   }
 
   private buildGraph() {

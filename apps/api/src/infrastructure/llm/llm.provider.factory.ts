@@ -10,12 +10,15 @@
  * replaces this selection in one place.
  */
 
-import { LocalDeterministicLlmProvider } from './llm.provider.js';
+import {
+  LocalDeterministicLlmProvider,
+  resolveLlmProviderName,
+} from './llm.provider.js';
 import { GroqLlmProvider } from './groq.llm.provider.js';
 
 export function createLlmProvider():
   LocalDeterministicLlmProvider | GroqLlmProvider {
-  return process.env.GROQ_API_KEY?.trim()
+  return resolveLlmProviderName() === 'groq'
     ? new GroqLlmProvider()
     : new LocalDeterministicLlmProvider();
 }
