@@ -26,6 +26,12 @@ export const PERMISSIONS = {
   NOTE_INTERNAL_READ: 'note.internal.read',
   NOTE_INTERNAL_WRITE: 'note.internal.write',
   KNOWLEDGE_MANAGE: 'knowledge.manage',
+  /**
+   * Configure the tenant's retention windows (T6.06, F-14, AC-F14-2).
+   * R-tenant-admin only: retention shortens or lengthens how long tenant data
+   * stays available, so it is a governance capability, not a support one.
+   */
+  RETENTION_MANAGE: 'retention.manage',
   AI_AGENT_CONFIGURE: 'ai.agent.configure',
   AI_AGENT_PUBLISH: 'ai.agent.publish',
   /** Decide a consequential AI tool approval (T4.04, F-10; D-20). */

@@ -23,7 +23,8 @@
     "audit:check": "node scripts/check-audit-baseline.mjs",
     "inventory:check": "node scripts/check-route-inventory.mjs",
     "e2e": "npm run test:e2e --workspace apps/api",
-    "e2e:web": "playwright test"
+    "e2e:web": "playwright test",
+  "e2e:live": "playwright test tests/live"
   },
   "keywords": [],
   "type": "commonjs",

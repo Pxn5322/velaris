@@ -29,7 +29,9 @@ Last verified: **Not verified**. This guide was generated from the PRD; no appli
 | LLM/embedding | fake adapter or development key | separate staging credentials | approved provider/region/data terms not yet selected |
 | CI/CD | GitHub Actions | GitHub Actions + staging secrets | gated release workflow with human approval |
 
-Region and data-residency note: **Unknown** until provider/market decisions are approved. Use synthetic data locally and in tests. Keep separate projects, keys and secrets per environment.
+Region and data-residency note: **Unknown** until provider/market decisions are approved. Use synthetic data locally and in tests.
+
+**Single-environment decision (owner, 2026-11-05; D-37).** The project uses one Supabase project and one database for local development, CI live checks and the first hosted deployment. Current keys serve all three. A staging split is deliberately not created. Before production: clear all data in the current project, then provision the production environment with its own project, keys and secrets. The table above describes the target shape after that split, not the current state.
 
 ## 2. Accounts and access [Owner]
 | Account | Purpose | Owner | MFA |
@@ -83,6 +85,8 @@ Names below are proposed categories for the initial implementation. Add or remov
 | `OBJECT_STORAGE_SECRET_KEY` | API/worker | yes | secret store |
 | `APP_BASE_URL` | web/API | no | environment config |
 | `LOG_LEVEL` | API/worker | no | environment config |
+| `E2E_LIVE_API_URL` | Playwright live registration journey (`npm run e2e:live`); when absent the spec skips, so the default suite stays offline | no | shell environment for the check; the single environment's API origin |
+| `E2E_LIVE_PASSWORD` | Password for the synthetic account the live registration journey creates (defaults to a documented test value) | yes | shell environment only; never commit a real password |
 
 Public browser variables must never contain server secrets. Validate required variables at startup and mention the missing variable name only, never its value. Verify: remove a required local variable and confirm startup fails with a clear safe error; exact test is **Not run**.
 
@@ -136,7 +140,8 @@ N/A — no specific email, chat channel, CRM or external integration provider is
 - CI jobs (all verified): .github/workflows/ci.yml runs docs check, lint, type-check, unit tests, build and the npm audit gate on every push and PR; .github/workflows/e2e.yml runs the Playwright landing journeys; .github/workflows/merge-gate.yml blocks direct commits to master and pull requests without owner approval.
 - Hosting: Vercel/Render are candidates, not selected production commitments. Decide hosting, regions, TLS, domains, migration execution and secret management before deployment.
 - Migrations must be reviewed and run as a controlled deploy step with a rollback/forward-fix strategy; destructive migrations require owner review.
-- Verify: Not configured; staging health check returns 200, protected route returns 401 without credentials, and one authorized read succeeds.
+- Environment: one deployment only until production (D-37). No staging project exists, so a live check targets the current environment with the current keys.
+- Verify: Not configured; the deployed health check returns 200, a protected route returns 401 without credentials, and one authorized read succeeds. Until the owner supplies the hosting target, `npm run e2e:live` is the live registration check and it skips without `E2E_LIVE_API_URL`.
 
 ## 7. Operations
 - Monitoring: API error rate and p50/p95/p99 latency, queue depth/failures, provider availability, ingestion failures, AI evaluation/grounding/citation failures, cost, audit completeness and deployment health.

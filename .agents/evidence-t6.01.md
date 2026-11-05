@@ -150,11 +150,11 @@ condition.
 | ID | Gap | Severity | Owner / next step |
 | --- | --- | --- | --- |
 | O-1 | No customer conversation route (API-13). The AI producer is the configuration-time `POST /ai/runs`, so no real customer message reaches the runtime | blocks production AI, not this gate | T6.04 / backlog: build API-13 before a customer-facing agent ships |
-| O-2 | No memory read API; `ai_memories` rows are created by tests only | does not block | backlog (F-10 follow-up) |
+| O-2 | No memory read API; `ai_memories` rows are created by tests only | does not block | CLOSED 2026-11-05: D-36 records that memory stays disabled and out of MVP scope; no route is added until a producer and an opt-in consent flow exist |
 | O-3 | Automated accessibility scan (axe or equivalent) is not configured (NFR-08) | blocks nothing before T6.02 | T6.02 |
-| O-4 | J-01 and J-06 have no browser journey. J-01 registration is proven at API level by the T5.06 live probe (201 with a real workspace); a browser journey would need a live Supabase project and secrets in CI | recorded | T6.02/T6.03 with a staging project; J-06 has no UI to drive, and its contract is covered by the webhook integration specs |
+| O-4 | J-01 and J-06 have no browser journey. J-01 registration is proven at API level by the T5.06 live probe (201 with a real workspace); a browser journey would need a live Supabase project and secrets in CI | recorded | CLOSED 2026-11-05: `tests/live/registration.spec.js` is the opt-in J-01 journey against the single environment (`E2E_LIVE_API_URL`, `npm run e2e:live`), and D-37 records the one-environment decision with the production data clear. J-06 stays deferred because it has no UI; its contract is covered by the webhook integration specs |
 | O-5 | Coverage is measured for `apps/api` only. `packages/ai-evals` has a suite but no coverage gate | low | T6.02 may add the package to the gate |
-| O-6 | No tenant TRACES policy row exists in the development project, so every live probe used the 30-day default | low | proven by unit tests; add a policy row when a tenant is provisioned for staging |
+| O-6 | No tenant TRACES policy row exists in the development project, so every live probe used the 30-day default | low | CLOSED 2026-11-05 (T6.06): signup seeds one `TRACES` row, `0009_retention_policy_defaults` backfills existing tenants, a missing row now logs a warning, and `GET`/`PUT /settings/retention` expose the windows behind `retention.manage` (D-38) |
 
 ## 7. Score
 

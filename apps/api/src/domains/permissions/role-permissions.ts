@@ -41,6 +41,9 @@ const TENANT_ADMIN: readonly PermissionCode[] = [
   P.NOTE_INTERNAL_READ,
   P.NOTE_INTERNAL_WRITE,
   P.KNOWLEDGE_MANAGE,
+  // T6.06 (D-38): retention windows are tenant governance, so only the
+  // tenant administrator configures them.
+  P.RETENTION_MANAGE,
   P.AI_AGENT_CONFIGURE,
   P.AI_AGENT_PUBLISH,
   // T4.04 (D-20): the tenant owner approves consequential tool actions;

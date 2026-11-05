@@ -91,6 +91,13 @@ function fakePrisma(options?: {
     membershipRole: {
       create: vi.fn(async () => ({ id: 'mr-1' })),
     },
+    // T6.06 (D-38): provisioning seeds the TRACES retention row.
+    retentionPolicy: {
+      create: vi.fn(async ({ data }: { data: object }) => ({
+        id: 'policy-1',
+        ...data,
+      })),
+    },
     $transaction: vi.fn(async (fn: (tx: typeof store) => Promise<unknown>) =>
       fn(store),
     ),
