@@ -40,6 +40,7 @@ interface AuditEventRow {
   resourceType: string;
   resourceId: string | null;
   requestId: string | null;
+  metadata?: Record<string, unknown> | null;
   createdAt: string;
 }
 
@@ -69,6 +70,26 @@ function shortInstant(value: string): string {
   return `${new Date(value).toISOString().slice(0, 19).replace("T", " ")} UTC`;
 }
 
+/**
+ * Human-readable retention change (T6.06, D-38). The API returns the event
+ * metadata; the audit row renders the category, the new window and the actor
+ * so an administrator reads the decision without opening raw JSON.
+ */
+function retentionDetail(event: AuditEventRow): string | null {
+  if (event.action !== "retention.policy_changed") return null;
+  const metadata = event.metadata ?? {};
+  const category =
+    typeof metadata.category === "string"
+      ? metadata.category
+      : "unknown category";
+  const days =
+    typeof metadata.retentionDays === "number"
+      ? `${metadata.retentionDays} days`
+      : "unknown window";
+  const actor = event.actorId ? `actor ${event.actorId}` : "unknown actor";
+  return `${category} · ${days} · ${actor}`;
+}
+
 export function AuditView() {
   const [tab, setTab] = useState<Tab>("events");
   const [phase, setPhase] = useState<Phase>("loading");
@@ -76,8 +97,9 @@ export function AuditView() {
   const [failure, setFailure] = useState<string>("");
   const [events, setEvents] = useState<Page<AuditEventRow> | null>(null);
   const [traces, setTraces] = useState<Page<AiTraceRow> | null>(null);
+  const [onlyRetention, setOnlyRetention] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (retentionOnly = false) => {
     setPhase("loading");
     setFailure("");
     try {
@@ -89,9 +111,12 @@ export function AuditView() {
         return;
       }
       const tenant = encodeURIComponent(tenants[0].tenantId);
+      // The action filter runs on the server, so older retention changes are
+      // not lost when the newest page holds unrelated events.
+      const action = retentionOnly ? "&action=retention.policy_changed" : "";
       const [eventPage, tracePage] = await Promise.all([
         apiFetch<Page<AuditEventRow>>(
-          `/audit/events?tenantId=${tenant}&limit=${PAGE_SIZE}`,
+          `/audit/events?tenantId=${tenant}&limit=${PAGE_SIZE}${action}`,
         ),
         apiFetch<Page<AiTraceRow>>(
           `/audit/traces?tenantId=${tenant}&limit=${PAGE_SIZE}`,
@@ -129,10 +154,10 @@ export function AuditView() {
         setPhase("denied");
         return;
       }
-      void load();
+      void load(onlyRetention);
     }, 0);
     return () => clearTimeout(timer);
-  }, [load]);
+  }, [load, onlyRetention]);
 
   return (
     <div className="space-y-5">
@@ -152,7 +177,7 @@ export function AuditView() {
           </h1>
         </div>
         <button
-          onClick={() => void load()}
+          onClick={() => void load(onlyRetention)}
           className="px-3 py-1.5 rounded-xl glass-panel text-heading text-xs font-mono font-bold flex items-center gap-1.5"
         >
           <RefreshCw className="w-3.5 h-3.5" /> Refresh
@@ -250,13 +275,34 @@ export function AuditView() {
 
           {tab === "events" && (
             <div className="glass-panel p-5 rounded-2xl border border-slate-700/50 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span
+                  className="text-[10px] font-mono uppercase tracking-wider"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  {onlyRetention
+                    ? "Retention policy changes"
+                    : "Newest governance events"}
+                </span>
+                <button
+                  type="button"
+                  data-testid="audit-retention-filter"
+                  aria-pressed={onlyRetention}
+                  onClick={() => setOnlyRetention((value) => !value)}
+                  className="px-3 py-1.5 rounded-lg text-[10px] font-bold border border-cyan-500/40 text-cyan-300"
+                >
+                  {onlyRetention ? "Show all events" : "Retention changes only"}
+                </button>
+              </div>
               {!events || events.items.length === 0 ? (
                 <p
                   data-testid="audit-empty-events"
                   className="text-xs font-mono text-center py-6"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  No audit event exists for this tenant yet.
+                  {onlyRetention
+                    ? "No retention policy change is recorded for this tenant yet."
+                    : "No audit event exists for this tenant yet."}
                 </p>
               ) : (
                 <div data-testid="audit-events-list" className="space-y-2">
@@ -285,6 +331,14 @@ export function AuditView() {
                         {event.resourceId ? ` · ${event.resourceId}` : ""}
                         {event.actorId ? ` · actor ${event.actorId}` : ""}
                       </p>
+                      {retentionDetail(event) && (
+                        <p
+                          data-testid="audit-event-retention"
+                          className="text-[11px] text-heading"
+                        >
+                          Retention window: {retentionDetail(event)}
+                        </p>
+                      )}
                       <p
                         data-testid="audit-event-request"
                         className="text-[10px] font-mono"
