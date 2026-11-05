@@ -178,11 +178,18 @@ curl -s -H "Authorization: Bearer $TOKEN" "https://api.example.com/settings/rete
 # 4. Cross-tenant denial: expect 403
 curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" "https://api.example.com/settings/retention?tenantId=$OTHER_TENANT_ID"
 
-# 5. Registration in a real browser (J-01): expect the admin view
+# 5. Authenticated load: creates one synthetic tenant and fills {tenantId}
+#    SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be in the shell.
+node scripts/load-profile.mjs --url https://api.example.com \
+  --path "/settings/retention?tenantId={tenantId}" --auth-signup \
+  --concurrency 8 --duration 10 --out retention-load.json
+
+# 6. Registration in a real browser (J-01): expect the admin view
 E2E_LIVE_API_URL=https://api.example.com E2E_BASE_URL=https://app.example.com npm run e2e:live
 ```
 - [ ] A trace and an audit row exist for the smoke run: `GET /audit/traces` and `GET /audit/events` with the tenant scope.
-- [ ] The retention panel loads in the admin settings tab and saves one window, and the audit trail shows `retention.policy_changed`.
+- [ ] The retention panel loads in the admin settings tab, shows the newest change, opens the filtered audit trail and saves one window, and the audit trail shows `retention.policy_changed`.
+- [ ] `retention-load.json` records the authenticated p95 against the 200 ms budget. If it exceeds the budget, record the cause and do not report NFR-04 as met. The script prints the synthetic email and tenant id for cleanup.
 
 **Rollback rehearsal**
 - [ ] Redeploy the previous artifact pair and repeat smoke tests 1 and 2.

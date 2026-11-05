@@ -23,6 +23,7 @@ import {
   Waypoints,
 } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api/client";
+import { retentionDetail, shortInstant } from "@/lib/audit/describe";
 import { getSession } from "@/lib/auth/session";
 
 interface TenantEntry {
@@ -65,30 +66,6 @@ type Phase = "loading" | "denied" | "error" | "ready";
 type Tab = "events" | "traces";
 
 const PAGE_SIZE = 25;
-
-function shortInstant(value: string): string {
-  return `${new Date(value).toISOString().slice(0, 19).replace("T", " ")} UTC`;
-}
-
-/**
- * Human-readable retention change (T6.06, D-38). The API returns the event
- * metadata; the audit row renders the category, the new window and the actor
- * so an administrator reads the decision without opening raw JSON.
- */
-function retentionDetail(event: AuditEventRow): string | null {
-  if (event.action !== "retention.policy_changed") return null;
-  const metadata = event.metadata ?? {};
-  const category =
-    typeof metadata.category === "string"
-      ? metadata.category
-      : "unknown category";
-  const days =
-    typeof metadata.retentionDays === "number"
-      ? `${metadata.retentionDays} days`
-      : "unknown window";
-  const actor = event.actorId ? `actor ${event.actorId}` : "unknown actor";
-  return `${category} · ${days} · ${actor}`;
-}
 
 export function AuditView() {
   const [tab, setTab] = useState<Tab>("events");
@@ -154,10 +131,13 @@ export function AuditView() {
         setPhase("denied");
         return;
       }
-      void load(onlyRetention);
+      // A retention settings link opens /audit#retention already filtered.
+      const wantsRetention = window.location.hash === "#retention";
+      setOnlyRetention(wantsRetention);
+      void load(wantsRetention);
     }, 0);
     return () => clearTimeout(timer);
-  }, [load, onlyRetention]);
+  }, [load]);
 
   return (
     <div className="space-y-5">
@@ -235,7 +215,7 @@ export function AuditView() {
             {failure}
           </p>
           <button
-            onClick={() => void load()}
+            onClick={() => void load(onlyRetention)}
             className="px-3 py-1.5 rounded-xl glass-panel text-heading text-xs font-bold"
           >
             Retry
@@ -288,7 +268,11 @@ export function AuditView() {
                   type="button"
                   data-testid="audit-retention-filter"
                   aria-pressed={onlyRetention}
-                  onClick={() => setOnlyRetention((value) => !value)}
+                  onClick={() => {
+                    const next = !onlyRetention;
+                    setOnlyRetention(next);
+                    void load(next);
+                  }}
                   className="px-3 py-1.5 rounded-lg text-[10px] font-bold border border-cyan-500/40 text-cyan-300"
                 >
                   {onlyRetention ? "Show all events" : "Retention changes only"}

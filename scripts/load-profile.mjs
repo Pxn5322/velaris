@@ -22,12 +22,21 @@
  *
  *   --header "Authorization: Bearer $TOKEN"
  *
+ * For a deployment smoke (T6.03), `--auth-signup` creates one synthetic tenant
+ * administrator, exchanges the password for a token and fills `{tenantId}` in
+ * every path. SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be in the
+ * environment. The generated password and the token are never printed, and
+ * the JSON report records only the synthetic email and tenant id:
+ *
+ *   --path "/settings/retention?tenantId={tenantId}" --auth-signup
+ *
  * Exit codes: 0 when every path meets the budget, 1 when a budget or error
  * check fails, 2 when the arguments are wrong.
  */
 
 import http from "node:http";
 import https from "node:https";
+import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 
 const DEFAULT_CONCURRENCY = 8;
@@ -50,6 +59,7 @@ function parseArgs(argv) {
     budgetMs: DEFAULT_BUDGET_MS,
     out: null,
     headers: {},
+    authSignup: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
@@ -82,6 +92,9 @@ function parseArgs(argv) {
       case "--out":
         options.out = value;
         index += 1;
+        break;
+      case "--auth-signup":
+        options.authSignup = true;
         break;
       case "--header": {
         const separator = typeof value === "string" ? value.indexOf(":") : -1;
@@ -116,7 +129,93 @@ function parseArgs(argv) {
   if (!(options.duration > 0) || !(options.warmup >= 0)) {
     fail("--duration must be positive and --warmup must be zero or more");
   }
+  if (
+    !options.authSignup &&
+    options.paths.some((path) => path.includes("{tenantId}"))
+  ) {
+    fail("{tenantId} in a path requires --auth-signup");
+  }
+  if (
+    options.authSignup &&
+    Object.keys(options.headers).some(
+      (name) => name.toLowerCase() === "authorization",
+    )
+  ) {
+    fail(
+      "--auth-signup sets the Authorization header; do not pass another one",
+    );
+  }
   return options;
+}
+
+/**
+ * Create one synthetic tenant administrator and return its token. The password
+ * is generated and never printed, and no response body is echoed in an error.
+ */
+async function createSyntheticTenant(origin) {
+  const baseUrl = process.env.SUPABASE_URL?.replace(/\/+$/, "");
+  const apiKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+  if (!baseUrl) {
+    fail("--auth-signup needs SUPABASE_URL in the environment");
+  }
+  if (!apiKey) {
+    fail("--auth-signup needs SUPABASE_PUBLISHABLE_KEY in the environment");
+  }
+
+  const stamp = Date.now().toString(36);
+  const email = `loadcheck-${stamp}-${randomBytes(3).toString("hex")}@velaris.test`;
+  const password = `Lc!${randomBytes(16).toString("hex")}9a`;
+
+  let signupResponse;
+  try {
+    signupResponse = await fetch(`${origin}/auth/signup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email,
+        password,
+        tenantName: `Load check ${stamp}`,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    fail(`POST /auth/signup is unreachable at ${origin}`);
+  }
+  if (!signupResponse.ok) {
+    fail(
+      `POST /auth/signup answered HTTP ${signupResponse.status}; check the target and SUPABASE_SERVICE_ROLE_KEY`,
+    );
+  }
+  const signup = await signupResponse.json();
+  const tenantId = typeof signup.tenantId === "string" ? signup.tenantId : null;
+  if (!tenantId) {
+    fail("POST /auth/signup returned no tenantId");
+  }
+
+  let tokenResponse;
+  try {
+    tokenResponse = await fetch(
+      `${baseUrl}/auth/v1/token?grant_type=password`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", apikey: apiKey },
+        body: JSON.stringify({ email, password }),
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+  } catch {
+    fail("Supabase Auth is unreachable for the password grant");
+  }
+  if (!tokenResponse.ok) {
+    fail(`Supabase password grant answered HTTP ${tokenResponse.status}`);
+  }
+  const tokenBody = await tokenResponse.json();
+  const token =
+    typeof tokenBody.access_token === "string" ? tokenBody.access_token : null;
+  if (!token) {
+    fail("Supabase password grant returned no access_token");
+  }
+  return { email, tenantId, token };
 }
 
 /** One request; resolves with the status and the elapsed milliseconds. */
@@ -237,6 +336,18 @@ const agentOptions = {
 const agent = new transport.Agent(agentOptions);
 const base = new URL(options.url);
 
+const origin = `${base.protocol}//${base.host}`;
+const auth = options.authSignup ? await createSyntheticTenant(origin) : null;
+if (auth) {
+  options.headers.Authorization = `Bearer ${auth.token}`;
+  options.paths = options.paths.map((path) =>
+    path.split("{tenantId}").join(encodeURIComponent(auth.tenantId)),
+  );
+  process.stdout.write(
+    `Synthetic tenant ready: ${auth.email} (tenant ${auth.tenantId})\n`,
+  );
+}
+
 const results = [];
 let budgetFailed = false;
 
@@ -330,6 +441,9 @@ if (options.out) {
     warmupSeconds: options.warmup,
     budgetMs: options.budgetMs,
     node: process.version,
+    auth: auth
+      ? { mode: "signup", email: auth.email, tenantId: auth.tenantId }
+      : undefined,
     results,
   };
   writeFileSync(options.out, JSON.stringify(report, null, 2) + "\n", "utf8");

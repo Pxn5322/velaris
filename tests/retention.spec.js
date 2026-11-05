@@ -179,6 +179,65 @@ test.describe("retention settings (T6.06, AC-F14-2)", () => {
     );
   });
 
+  test("shows the newest retention change and links to the filtered audit trail", async ({
+    page,
+  }) => {
+    let auditQuery = null;
+    await seedSession(page);
+    await routeSession(page);
+    await page.route("**/settings/retention*", (route) =>
+      route.fulfill(json({ tenantId: "tenant-a", policies })),
+    );
+    await page.route("**/audit/events*", (route) => {
+      const url = new URL(route.request().url());
+      auditQuery = Object.fromEntries(url.searchParams.entries());
+      return route.fulfill(
+        json({
+          items: [
+            {
+              id: "event-retention",
+              actorId: "user-1",
+              action: "retention.policy_changed",
+              metadata: { category: "MEMORY", retentionDays: 7 },
+              createdAt: "2026-11-05T10:00:00.000Z",
+            },
+          ],
+          limit: 1,
+          hasMore: false,
+        }),
+      );
+    });
+
+    await openSettings(page);
+
+    const line = page.getByTestId("retention-last-change");
+    await expect(line).toContainText("MEMORY · 7 days · actor user-1");
+    await expect(line).toContainText("2026-11-05 10:00:00 UTC");
+    await expect(
+      line.getByRole("link", { name: "View in audit trail" }),
+    ).toHaveAttribute("href", "/audit#retention");
+    await expect
+      .poll(() => auditQuery?.action)
+      .toBe("retention.policy_changed");
+    expect(auditQuery?.limit).toBe("1");
+  });
+
+  test("hides the last change when audit.read is denied", async ({ page }) => {
+    await seedSession(page);
+    await routeSession(page);
+    await page.route("**/settings/retention*", (route) =>
+      route.fulfill(json({ tenantId: "tenant-a", policies })),
+    );
+    await page.route("**/audit/events*", (route) =>
+      route.fulfill(json({ message: "Forbidden" }, 403)),
+    );
+
+    await openSettings(page);
+
+    await expect(page.getByTestId("retention-last-change")).toHaveCount(0);
+    await expect(page.locator("#retention-traces")).toHaveValue("30");
+  });
+
   test("passes the automated WCAG scan", async ({ page }) => {
     await seedSession(page);
     await routeSession(page);

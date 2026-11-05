@@ -13,7 +13,9 @@
  * The panel validates the same 1..3650 whole-day contract before the call,
  * so a typo never reaches the API. A saved window shows the audit
  * confirmation, because every accepted write records one
- * `retention.policy_changed` event with the actor, category and window.
+ * `retention.policy_changed` event with the actor, category and window. The
+ * panel also reads the newest such event and links to /audit#retention, which
+ * opens the audit trail already filtered to retention changes.
  *
  * States: loading, signed-out or denied, failure with retry, and ready.
  * KNOWLEDGE and MEMORY report "Not set" until an administrator stores a
@@ -21,8 +23,10 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { RefreshCw, ShieldAlert } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api/client";
+import { retentionDetail, shortInstant } from "@/lib/audit/describe";
 import { getSession } from "@/lib/auth/session";
 
 type Category = "KNOWLEDGE" | "TRACES" | "MEMORY";
@@ -40,6 +44,18 @@ interface RetentionListResponse {
 
 interface SessionResponse {
   tenantContext: { tenants: Array<{ tenantId: string; name: string }> } | null;
+}
+
+interface AuditEventRow {
+  id: string;
+  actorId: string | null;
+  action: string;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+interface AuditPage {
+  items: AuditEventRow[];
 }
 
 const CATEGORY_COPY: Record<Category, { label: string; description: string }> =
@@ -84,6 +100,23 @@ export function RetentionSettings() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Category | null>(null);
   const [saved, setSaved] = useState<Category | null>(null);
+  const [lastChange, setLastChange] = useState<AuditEventRow | null>(null);
+
+  /**
+   * The newest retention change, if the caller may read the audit trail.
+   * `audit.read` is a separate permission from `retention.manage`; when it is
+   * denied or the read fails, the panel stays usable and hides the line.
+   */
+  const loadLastChange = useCallback(async (activeTenantId: string) => {
+    try {
+      const page = await apiFetch<AuditPage>(
+        `/audit/events?tenantId=${encodeURIComponent(activeTenantId)}&limit=1&action=retention.policy_changed`,
+      );
+      setLastChange(page.items[0] ?? null);
+    } catch {
+      setLastChange(null);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setPhase("loading");
@@ -113,6 +146,7 @@ export function RetentionSettings() {
       setErrors({});
       setSaved(null);
       setPhase("ready");
+      void loadLastChange(active);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setDenial("Your session has expired. Sign in again.");
@@ -129,7 +163,7 @@ export function RetentionSettings() {
         setPhase("error");
       }
     }
-  }, []);
+  }, [loadLastChange]);
 
   useEffect(() => {
     // Scheduled kick: a sync setState in the effect body would cascade a
@@ -175,6 +209,7 @@ export function RetentionSettings() {
           [category]: String(updated.retentionDays ?? days),
         }));
         setSaved(category);
+        void loadLastChange(tenantId);
       } catch (error) {
         if (
           error instanceof ApiError &&
@@ -197,7 +232,7 @@ export function RetentionSettings() {
         setSaving(null);
       }
     },
-    [drafts, tenantId],
+    [drafts, tenantId, loadLastChange],
   );
 
   return (
@@ -255,6 +290,24 @@ export function RetentionSettings() {
 
       {phase === "ready" && (
         <>
+          {lastChange && retentionDetail(lastChange) && (
+            <div
+              data-testid="retention-last-change"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-700/40 px-3 py-2 text-[11px]"
+            >
+              <span style={{ color: "var(--text-muted)" }}>
+                Last change: {retentionDetail(lastChange)} ·{" "}
+                {shortInstant(lastChange.createdAt)}
+              </span>
+              <Link
+                href="/audit#retention"
+                className="font-bold underline"
+                style={{ color: "var(--accent-cyan)" }}
+              >
+                View in audit trail
+              </Link>
+            </div>
+          )}
           <ul className="space-y-4">
             {policies.map((policy) => {
               const copy = CATEGORY_COPY[policy.category];

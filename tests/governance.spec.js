@@ -450,6 +450,34 @@ test.describe("analytics and governance views (T5.04, AC-F12 / AC-F11-3)", () =>
     );
   });
 
+  test("opens the audit trail already filtered from a retention link", async ({
+    page,
+  }) => {
+    let requestedAction = null;
+    await seedSession(page);
+    await routeSession(page);
+    await page.route("**/audit/events*", (route) => {
+      requestedAction = new URL(route.request().url()).searchParams.get(
+        "action",
+      );
+      return route.fulfill(
+        json({ items: [retentionEvent], limit: 25, hasMore: false }),
+      );
+    });
+    await page.route("**/audit/traces*", (route) =>
+      route.fulfill(json({ items: [], limit: 25, hasMore: false })),
+    );
+
+    await page.goto("/audit#retention");
+
+    await expect(page.getByTestId("audit-retention-filter")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect.poll(() => requestedAction).toBe("retention.policy_changed");
+    await expect(page.getByTestId("audit-event-retention")).toBeVisible();
+  });
+
   test("shows empty states when the tenant has no records", async ({
     page,
   }) => {
