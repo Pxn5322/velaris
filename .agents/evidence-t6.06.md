@@ -33,7 +33,7 @@ This change closes three T6.01 gaps and answers the owner decisions of
 | `npm run lint` | exit 0, 14 known warnings in two existing API spec files |
 | `npm run build` | exit 0 |
 | `python scripts/check_docs.py --draft` | 100/100 |
-| `npm run e2e:web` | 42/42 journeys; the live spec skips without `E2E_LIVE_API_URL` |
+| `npm run e2e:web` | exit 0, 42 passed and 2 skipped (the live registration spec) |
 
 ## RED → GREEN
 
