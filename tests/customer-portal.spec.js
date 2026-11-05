@@ -176,6 +176,147 @@ test.describe("customer portal (J-03)", () => {
     );
   });
 
+  test("the customer asks a question and the assistant answers (J-03, API-13)", async ({
+    page,
+  }) => {
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/conversations?*", (route) =>
+      route.fulfill(json(conversations)),
+    );
+    await page.route("**/conversations/conv-1/messages*", (route) =>
+      route.fulfill(
+        json(
+          {
+            id: "msg-3",
+            body: "Where is my refund?",
+            authorType: "CUSTOMER",
+            visibility: "CUSTOMER_VISIBLE",
+            createdAt: "2026-10-21T09:10:00Z",
+            ai: {
+              outcome: "respond",
+              reason: "grounded",
+              reply: {
+                id: "msg-4",
+                body: "Your refund reached your account on Monday.",
+                citationCount: 2,
+              },
+              handoff: null,
+            },
+          },
+          201,
+        ),
+      ),
+    );
+    await page.route("**/conversations/conv-1?*", (route) =>
+      route.fulfill(json(timeline)),
+    );
+
+    await page.goto("/portal/conversations");
+    await page.getByTestId("portal-conversation").click();
+    await expect(page.getByTestId("portal-timeline")).toBeVisible();
+
+    await page.getByTestId("portal-reply-body").fill("Where is my refund?");
+    await page.getByTestId("portal-reply-submit").click();
+
+    await expect(page.getByTestId("portal-timeline")).toContainText(
+      "Where is my refund?",
+    );
+    await expect(page.getByTestId("portal-timeline")).toContainText(
+      "Your refund reached your account on Monday.",
+    );
+    await expect(page.getByTestId("portal-ai-notice")).toHaveText(
+      "Answered from 2 knowledge sources.",
+    );
+    await expect(page.getByTestId("portal-reply-body")).toHaveValue("");
+    await expectNoSeriousA11yViolations(page, "portal reply answered");
+  });
+
+  test("an unanswered question asks for a human instead of inventing a reply", async ({
+    page,
+  }) => {
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/conversations?*", (route) =>
+      route.fulfill(json(conversations)),
+    );
+    await page.route("**/conversations/conv-1/messages*", (route) =>
+      route.fulfill(
+        json(
+          {
+            id: "msg-5",
+            body: "Do you support Martian deliveries?",
+            authorType: "CUSTOMER",
+            visibility: "CUSTOMER_VISIBLE",
+            createdAt: "2026-10-21T09:12:00Z",
+            ai: {
+              outcome: "abstain",
+              reason: "no_relevant_knowledge",
+              reply: null,
+              handoff: { reason: "no_relevant_knowledge", retrievedCount: 0 },
+            },
+          },
+          201,
+        ),
+      ),
+    );
+    await page.route("**/conversations/conv-1?*", (route) =>
+      route.fulfill(json(timeline)),
+    );
+
+    await page.goto("/portal/conversations");
+    await page.getByTestId("portal-conversation").click();
+    await expect(page.getByTestId("portal-timeline")).toBeVisible();
+
+    await page
+      .getByTestId("portal-reply-body")
+      .fill("Do you support Martian deliveries?");
+    await page.getByTestId("portal-reply-submit").click();
+
+    await expect(page.getByTestId("portal-ai-notice")).toHaveText(
+      "A teammate will follow up on this question.",
+    );
+    // No answer row was added: three items are the question plus the two
+    // seeded messages, so the assistant said nothing rather than guessing.
+    await expect(page.getByTestId("portal-timeline").locator("li")).toHaveCount(
+      3,
+    );
+  });
+
+  test("a denied reply shows an error and keeps the draft", async ({
+    page,
+  }) => {
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/conversations?*", (route) =>
+      route.fulfill(json(conversations)),
+    );
+    await page.route("**/conversations/conv-1/messages*", (route) =>
+      route.fulfill(json({ message: "Forbidden" }, 403)),
+    );
+    await page.route("**/conversations/conv-1?*", (route) =>
+      route.fulfill(json(timeline)),
+    );
+
+    await page.goto("/portal/conversations");
+    await page.getByTestId("portal-conversation").click();
+    await page.getByTestId("portal-reply-body").fill("Are you there?");
+    await page.getByTestId("portal-reply-submit").click();
+
+    await expect(page.getByTestId("portal-reply-error")).toHaveText(
+      "Your account cannot reply in this conversation.",
+    );
+    await expect(page.getByTestId("portal-reply-body")).toHaveValue(
+      "Are you there?",
+    );
+  });
+
   test("the conversations list shows the empty state", async ({ page }) => {
     await seedSession(page);
     await page.route("**/auth/session*", (route) =>

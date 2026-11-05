@@ -95,10 +95,20 @@ describe('AuthorizationService', () => {
       expect(agent).not.toContain(PERMISSIONS.AI_AGENT_PUBLISH);
     });
 
-    it('limits R-customer to customer-visible ticket reads', () => {
+    it('limits R-customer to its own records and a reply (T6.05)', () => {
+      // Reading its own tickets and replying in its own conversation are the
+      // whole customer surface. Ticket write, internal notes and governance
+      // stay denied, which is what AC-F05-3 and TH-05 pin.
       expect(service.permissionsFor('R-customer')).toEqual([
         PERMISSIONS.TICKET_READ,
+        PERMISSIONS.MESSAGE_CREATE,
       ]);
+      expect(service.permissionsFor('R-customer')).not.toContain(
+        PERMISSIONS.TICKET_WRITE,
+      );
+      expect(service.permissionsFor('R-customer')).not.toContain(
+        PERMISSIONS.NOTE_INTERNAL_WRITE,
+      );
     });
   });
 

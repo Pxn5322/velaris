@@ -16,6 +16,13 @@ export const PERMISSIONS = {
   ROLE_MANAGE: 'role.manage',
   TICKET_READ: 'ticket.read',
   TICKET_WRITE: 'ticket.write',
+  /**
+   * Post a message into a conversation the caller may see (API-13, T6.05).
+   * Agents hold it through their ticket permissions; R-customer holds it for
+   * its own customer-visible conversation only, and the ownership check in
+   * the controller enforces that boundary.
+   */
+  MESSAGE_CREATE: 'message.create',
   NOTE_INTERNAL_READ: 'note.internal.read',
   NOTE_INTERNAL_WRITE: 'note.internal.write',
   KNOWLEDGE_MANAGE: 'knowledge.manage',
