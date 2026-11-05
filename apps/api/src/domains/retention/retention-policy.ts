@@ -18,6 +18,24 @@ export type RetentionCategory = (typeof RETENTION_CATEGORIES)[number];
 export const RETENTION_DAYS_MIN = 1;
 export const RETENTION_DAYS_MAX = 3650;
 
+/**
+ * Window applied when a tenant has no TRACES policy row (D-38). Provisioning
+ * seeds this value (T6.06), and this constant stays as the fallback for a
+ * tenant that predates the seed, so both paths resolve the same number.
+ */
+export const DEFAULT_TRACE_RETENTION_DAYS = 30;
+
+/**
+ * Effective window for a category with no stored policy. Only TRACES has a
+ * product default. KNOWLEDGE and MEMORY records carry their own expiry, so
+ * an absent row means "not configured", never an invented window.
+ */
+export function defaultRetentionDays(
+  category: RetentionCategory,
+): number | null {
+  return category === 'TRACES' ? DEFAULT_TRACE_RETENTION_DAYS : null;
+}
+
 export interface RetentionPolicy {
   category: RetentionCategory;
   retentionDays: number;

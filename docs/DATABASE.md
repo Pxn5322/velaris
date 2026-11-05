@@ -42,6 +42,8 @@ Provider: Supabase-managed PostgreSQL + Prisma, with pgvector proposed for initi
 | E-kpi-snapshot | KpiSnapshot | Optional materialized KPI values with formula version | Tenant/platform | internal | analytics retention policy not yet selected | F-12 |
 | E-memory | AiMemory | Explicitly enabled scoped memory with provenance/confidence/expiry | Tenant/customer | personal/restricted | opt-in with explicit expiration | F-09,F-14 |
 
+Memory is disabled in the MVP (D-36). No producer and no read path exist, so `ai_memories` stays empty; only the retention sweep touches it. Do not add a memory view before a producer and an opt-in consent flow exist.
+
 ## 3. Schema
 Proposed baseline fields and constraints; exact Prisma schema and field types are implementation deliverables. IDs should use UUIDs unless a documented decision selects otherwise.
 
@@ -75,7 +77,7 @@ Proposed baseline fields and constraints; exact Prisma schema and field types ar
 - `outbox_events(id, tenant_id nullable, event_type, schema_version, payload_json, correlation_id, occurred_at, published_at nullable, attempts)`; indexed unpublished events.
 - `kpi_snapshots(id, tenant_id nullable, metric_code, formula_version, period_start, period_end, dimensions_json, value_numeric, calculated_at)`; unique metric/scope/period/dimension hash.
 - `ai_memories(id, tenant_id, customer_id nullable, scope, content, provenance_json, confidence, permission_scope_json, created_at, expires_at, deleted_at nullable)`; opt-in, tenant-filtered, expiring and source-deletion-aware.
-- `retention_policies(id, tenant_id, category, retention_days, updated_by nullable, created_at, updated_at)`; unique `(tenant_id, category)`; `retention_days` is 1..3650 by API validation and a CHECK (AC-F14-2, T5.02).
+- `retention_policies(id, tenant_id, category, retention_days, updated_by nullable, created_at, updated_at)`; unique `(tenant_id, category)`; `retention_days` is 1..3650 by API validation and a CHECK (AC-F14-2, T5.02). Provisioning seeds one `TRACES` row per tenant with the 30-day default, and migration `0009_retention_policy_defaults` backfills existing tenants (T6.06, D-38). No `KNOWLEDGE` or `MEMORY` row is seeded.
 
 ## 4. Relationships and delete behavior
 - EnterpriseOrganization has many Tenants; tenant deletion is a lifecycle workflow, not an uncontrolled cascade.

@@ -17,18 +17,26 @@
  * through this path.
  */
 
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import {
   PRISMA_SERVICE,
   type PrismaService,
 } from '../../infrastructure/prisma/prisma.service.js';
-import { validateRetentionPolicy } from '../retention/retention-policy.js';
+import {
+  DEFAULT_TRACE_RETENTION_DAYS,
+  validateRetentionPolicy,
+} from '../retention/retention-policy.js';
 import type { AiTraceMetadata } from './ai-runtime.service.js';
 
-/** Window used when the tenant has no TRACES policy (D-31). */
-export const DEFAULT_TRACE_RETENTION_DAYS = 30;
+/** Window used when the tenant has no TRACES policy (D-31, D-38). */
+export { DEFAULT_TRACE_RETENTION_DAYS };
 
 const DAY_MS = 86_400_000;
 
@@ -47,6 +55,8 @@ export interface AiTraceRecordInput {
 
 @Injectable()
 export class AiTraceService {
+  private readonly logger = new Logger(AiTraceService.name);
+
   constructor(@Inject(PRISMA_SERVICE) private readonly prisma: PrismaService) {}
 
   /** Persist one run and return the row id. */
@@ -80,6 +90,11 @@ export class AiTraceService {
       where: { tenantId_category: { tenantId, category: 'TRACES' } },
     });
     if (!policy) {
+      // T6.06 (D-38): provisioning seeds the row, so a missing one is visible
+      // instead of silent. The write still succeeds on the documented default.
+      this.logger.warn(
+        `No TRACES retention policy for tenant ${tenantId}; using the ${DEFAULT_TRACE_RETENTION_DAYS}-day default`,
+      );
       return DEFAULT_TRACE_RETENTION_DAYS;
     }
     try {

@@ -54,6 +54,7 @@ Canonical roles are defined in `docs/PRD.md` section 2. This table is a baseline
 | Reply in a conversation | deny | platform governance only unless explicit grant | own tenant with `message.create` | permitted conversations with `message.create` | own conversations with `message.create` | explicit API scope only |
 | Read audit logs | deny | platform-wide if explicitly permitted | own tenant if `audit.read` | deny by default | deny | explicit restricted API scope |
 | Read analytics | deny | platform scope | own tenant | limited operational view if defined | own interaction only | scoped API permission |
+| Configure retention windows | deny | deny; platform governance does not imply tenant settings | own tenant with `retention.manage` | deny | deny | deny |
 
 Role-to-permission mapping and per-resource policies must be tested. Enterprise role is not a universal bypass for application actions; elevated access must be explicit, audited and least-privilege.
 

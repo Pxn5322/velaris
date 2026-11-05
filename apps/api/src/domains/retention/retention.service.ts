@@ -21,6 +21,10 @@ import {
 import {
   activeKnowledgeSourceWhere,
   activeMemoryWhere,
+  defaultRetentionDays,
+  RETENTION_CATEGORIES,
+  type RetentionCategory,
+  validateRetentionPolicy,
 } from './retention-policy.js';
 
 export interface KnowledgeExpiryResult {
@@ -31,6 +35,23 @@ export interface KnowledgeExpiryResult {
 export interface AiRecordExpiryResult {
   traces: number;
   memories: number;
+}
+
+/** One category as an administrator sees it (T6.06, AC-F14-2). */
+export interface RetentionPolicyView {
+  category: RetentionCategory;
+  /** Effective window, or null when the category has no stored policy. */
+  retentionDays: number | null;
+  /** True when the window comes from a stored row, not a default. */
+  configured: boolean;
+}
+
+export interface SetRetentionPolicyInput {
+  tenantId: string;
+  category: unknown;
+  retentionDays: unknown;
+  /** Identity-provider subject of the acting administrator. */
+  updatedBy: string;
 }
 
 @Injectable()
@@ -79,5 +100,61 @@ export class RetentionService {
       data: { deletedAt: now },
     });
     return { traces: traces.count, memories: memories.count };
+  }
+
+  /**
+   * Every category with its effective window. A category without a row
+   * reports `configured: false`, and only TRACES then has a number, so a
+   * client can never mistake an unset KNOWLEDGE or MEMORY window for a value
+   * the product chose.
+   */
+  async listPolicies(tenantId: string): Promise<RetentionPolicyView[]> {
+    const rows = await this.prisma.retentionPolicy.findMany({
+      where: { tenantId },
+    });
+    const stored = new Map(
+      rows.map((row) => [row.category, row.retentionDays] as const),
+    );
+    return RETENTION_CATEGORIES.map((category) => {
+      const retentionDays = stored.get(category);
+      return {
+        category,
+        retentionDays: retentionDays ?? defaultRetentionDays(category),
+        configured: retentionDays !== undefined,
+      };
+    });
+  }
+
+  /** Validate and store one window, replacing the row when it exists. */
+  async setPolicy(
+    input: SetRetentionPolicyInput,
+  ): Promise<RetentionPolicyView> {
+    const policy = validateRetentionPolicy({
+      category: input.category,
+      retentionDays: input.retentionDays,
+    });
+    const row = await this.prisma.retentionPolicy.upsert({
+      where: {
+        tenantId_category: {
+          tenantId: input.tenantId,
+          category: policy.category,
+        },
+      },
+      create: {
+        tenantId: input.tenantId,
+        category: policy.category,
+        retentionDays: policy.retentionDays,
+        updatedBy: input.updatedBy,
+      },
+      update: {
+        retentionDays: policy.retentionDays,
+        updatedBy: input.updatedBy,
+      },
+    });
+    return {
+      category: row.category,
+      retentionDays: row.retentionDays,
+      configured: true,
+    };
   }
 }

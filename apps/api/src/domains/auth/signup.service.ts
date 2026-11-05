@@ -28,6 +28,7 @@ import {
 import type { Prisma } from '@prisma/client';
 import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
+import { DEFAULT_TRACE_RETENTION_DAYS } from '../retention/retention-policy.js';
 import type { SignupDto } from './dto/signup.dto.js';
 import { SupabaseAdminService } from './supabase-admin.service.js';
 
@@ -100,6 +101,17 @@ export class SignupService {
         }
         await tx.membershipRole.create({
           data: { membershipId: membership.id, roleId: role.id },
+        });
+        // T6.06 (D-38): the workspace starts with the TRACES window the trace
+        // writer already applied as its fallback. No KNOWLEDGE or MEMORY
+        // window is invented, because those numbers are a commercial decision.
+        await tx.retentionPolicy.create({
+          data: {
+            tenantId: tenant.id,
+            category: 'TRACES',
+            retentionDays: DEFAULT_TRACE_RETENTION_DAYS,
+            updatedBy: user.id,
+          },
         });
         return {
           tenantId: tenant.id,
