@@ -29,6 +29,7 @@ This change closes three T6.01 gaps and answers the owner decisions of
 | `npm run typecheck` | exit 0 |
 | `npm run inventory:check` | exit 0, 41 routes: 38 protected, 3 documented public |
 | `npx prisma validate` | valid |
+| `npx prisma migrate deploy` (local `DATABASE_URL`) | exit 0, `0009_retention_policy_defaults` applied to the development database |
 | `npm run format:check` | exit 0 |
 | `npm run lint` | exit 0, 14 known warnings in two existing API spec files |
 | `npm run build` | exit 0 |
