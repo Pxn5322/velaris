@@ -17,6 +17,11 @@
  *   node scripts/load-profile.mjs --url http://127.0.0.1:3100 \
  *     --path / --path "/tickets?tenantId=<uuid>" --concurrency 8 --duration 10
  *
+ * An authenticated route takes the credential through `--header`, so a token
+ * stays in the shell and never appears in the printed table:
+ *
+ *   --header "Authorization: Bearer $TOKEN"
+ *
  * Exit codes: 0 when every path meets the budget, 1 when a budget or error
  * check fails, 2 when the arguments are wrong.
  */
@@ -44,6 +49,7 @@ function parseArgs(argv) {
     warmup: DEFAULT_WARMUP_SECONDS,
     budgetMs: DEFAULT_BUDGET_MS,
     out: null,
+    headers: {},
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
@@ -77,6 +83,23 @@ function parseArgs(argv) {
         options.out = value;
         index += 1;
         break;
+      case "--header": {
+        const separator = typeof value === "string" ? value.indexOf(":") : -1;
+        if (separator < 1) {
+          fail('--header must use the form "Name: value"');
+        }
+        const name = value.slice(0, separator).trim();
+        const headerValue = value.slice(separator + 1).trim();
+        if (!/^[A-Za-z0-9-]+$/.test(name) || !headerValue) {
+          fail('--header must use the form "Name: value"');
+        }
+        if (/[\r\n]/.test(headerValue)) {
+          fail("--header value must not contain a line break");
+        }
+        options.headers[name] = headerValue;
+        index += 1;
+        break;
+      }
       default:
         fail(`Unknown argument: ${flag}`);
     }
@@ -228,7 +251,7 @@ for (const path of options.paths) {
           path,
           method: "GET",
           agent,
-          headers: { accept: "application/json" },
+          headers: { accept: "application/json", ...options.headers },
         },
         callback,
       ),

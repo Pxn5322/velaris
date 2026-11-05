@@ -187,6 +187,15 @@ const auditEvent = {
   createdAt: "2026-11-03T08:00:00.000Z",
 };
 
+const retentionEvent = {
+  ...auditEvent,
+  id: "event-retention",
+  action: "retention.policy_changed",
+  resourceType: "retention_policy",
+  resourceId: "MEMORY",
+  metadata: { category: "MEMORY", retentionDays: 7 },
+};
+
 const aiTrace = {
   id: "trace-1",
   tenantId: "tenant-a",
@@ -401,6 +410,44 @@ test.describe("analytics and governance views (T5.04, AC-F12 / AC-F11-3)", () =>
       "gpt-4.1-mini",
     );
     await expect(page.getByTestId("audit-traces-list")).toContainText("820 ms");
+  });
+
+  test("shows a retention change with its actor, category and window", async ({
+    page,
+  }) => {
+    let requestedAction = null;
+    await seedSession(page);
+    await routeSession(page);
+    await page.route("**/audit/events*", (route) => {
+      const url = new URL(route.request().url());
+      requestedAction = url.searchParams.get("action");
+      return route.fulfill(
+        json({
+          items: [retentionEvent],
+          limit: 25,
+          hasMore: false,
+        }),
+      );
+    });
+    await page.route("**/audit/traces*", (route) =>
+      route.fulfill(json({ items: [], limit: 25, hasMore: false })),
+    );
+
+    await page.goto("/audit");
+
+    await expect(page.getByTestId("audit-event-retention")).toContainText(
+      "MEMORY · 7 days · actor user-1",
+    );
+
+    await page.getByTestId("audit-retention-filter").click();
+    await expect(page.getByTestId("audit-retention-filter")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect.poll(() => requestedAction).toBe("retention.policy_changed");
+    await expect(page.getByTestId("audit-event-retention")).toContainText(
+      "MEMORY",
+    );
   });
 
   test("shows empty states when the tenant has no records", async ({

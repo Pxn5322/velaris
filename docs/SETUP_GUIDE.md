@@ -194,6 +194,50 @@ E2E_LIVE_API_URL=https://api.example.com E2E_BASE_URL=https://app.example.com np
 - [ ] Record the evidence in `docs/TESTING.md` section 9 and a `.agents/evidence-*.md` file.
 - [ ] Ask the owner for release approval. No automated production deployment exists.
 
+### 6.2 Production cutover checklist (D-37, T6.04)
+The single development environment becomes production only through this controlled cutover. Do not copy development data into production.
+
+**Preconditions**
+- [ ] T6.03 smoke tests and the rollback rehearsal passed on the deployed single environment.
+- [ ] `docs/TESTING.md` section 9 records the results, and the owner approves the cutover.
+- [ ] The production Supabase project exists in the approved region and plan, with backups or PITR confirmed and one restore drill recorded.
+- [ ] The hosting provider, domains and TLS are approved, and the spend is authorised.
+
+**Clear development data**
+- [ ] Export nothing that contains real or customer data. Development holds synthetic data only.
+- [ ] Delete the synthetic Supabase auth accounts created by checks and journeys.
+- [ ] Delete the tenant rows and their children through the controlled SQL path, in foreign-key order, or recreate the project if the owner prefers a clean start.
+- [ ] Verify every application table returns zero rows: tenants, users, memberships, customers, conversations, messages, tickets, knowledge, agents, audit, traces, memory, retention and integrations.
+- [ ] Keep the migration history (`_prisma_migrations`) and the seeded system roles; they are schema, not data.
+
+**Provision production**
+- [ ] Run `npx prisma migrate deploy` against the production connection string as a controlled step. Confirm the same migration names as the verified commit.
+- [ ] Confirm the system roles and permission codes from migration `0002` exist.
+- [ ] Confirm the `vector` extension, indexes, CHECK constraints and row-level security policies exist.
+- [ ] Set the production Auth redirect URLs and the allowed origins. Remove every development URL.
+- [ ] Provision Redis and object storage if the release uses them; otherwise confirm the app starts without them.
+
+**Rotate keys**
+- [ ] Create the production publishable key, service-role key and JWT secret. Do not reuse a development key.
+- [ ] Put the values only in the host secret store. Never in a repository file or a browser bundle.
+- [ ] Update `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CORS_ORIGIN`, `APP_BASE_URL`, `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+- [ ] Rebuild the web app with the production public values, because `NEXT_PUBLIC_*` is baked into the bundle.
+- [ ] Search the built web assets for the old project host and confirm no match.
+- [ ] Revoke the development service-role key after the cutover, so an old copy cannot reach production.
+
+**Verify isolation before release**
+- [ ] Register one synthetic production workspace and confirm it sees only its own tenant.
+- [ ] Confirm a cross-tenant read returns 403 and a missing credential returns 401.
+- [ ] Confirm the retention panel shows the seeded TRACES window and one save writes `retention.policy_changed`.
+- [ ] Confirm no development row, account or trace is visible.
+- [ ] Run `npm run e2e:live` against the production origin and record the result.
+
+**Release and observation**
+- [ ] Run the smoke tests in section 6.1 against the production origin.
+- [ ] Record the deployment id, commit SHA, migration names, key rotation time and smoke results.
+- [ ] Watch error rate, p95 latency, queue depth and audit/trace presence for the agreed observation window.
+- [ ] Keep the previous artifacts until the owner signs the release. Roll back by redeploying them; migrations are additive.
+
 ## 7. Operations
 - T6.03 smoke and rollback steps live in section 6.1. Run them against the single environment; do not create a staging project (D-37).
 - Monitoring: API error rate and p50/p95/p99 latency, queue depth/failures, provider availability, ingestion failures, AI evaluation/grounding/citation failures, cost, audit completeness and deployment health.
