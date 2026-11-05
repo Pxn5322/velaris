@@ -48,7 +48,7 @@ test.describe("live registration (single environment)", () => {
     await expect(page.getByTestId("sign-in-error")).toHaveCount(0);
     await expect(page).toHaveURL(/\/admin/, { timeout: 30_000 });
     await expect(
-      page.getByText(/WORKSPACE ADMINISTRATION|Tenant Control Center/),
+      page.getByRole("heading", { name: "Tenant Control Center" }),
     ).toBeVisible();
   });
 

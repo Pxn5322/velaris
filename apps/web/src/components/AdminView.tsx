@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Shield, Users, Lock, Cpu, Settings, Activity } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import { adminScopeForRole } from "@/lib/auth/uiRole";
+import { RetentionSettings } from "@/components/RetentionSettings";
 
 export function AdminView() {
   const [activeTab, setActiveTab] = useState<
@@ -343,24 +344,28 @@ export function AdminView() {
         </div>
       )}
 
-      {activeTab !== "analytics" && activeTab !== "users" && (
-        <div className="glass-panel p-8 rounded-2xl text-center space-y-3 border border-slate-700/50">
-          <Shield
-            className="w-10 h-10 mx-auto"
-            style={{ color: "var(--accent-cyan)" }}
-          />
-          <h3 className="text-base font-bold text-heading uppercase tracking-wider">
-            {activeTab} Module
-          </h3>
-          <p
-            className="text-xs max-w-md mx-auto"
-            style={{ color: "var(--text-muted)" }}
-          >
-            Configuration and policy definitions active under enterprise
-            isolation rules.
-          </p>
-        </div>
-      )}
+      {activeTab === "settings" && <RetentionSettings />}
+
+      {activeTab !== "analytics" &&
+        activeTab !== "users" &&
+        activeTab !== "settings" && (
+          <div className="glass-panel p-8 rounded-2xl text-center space-y-3 border border-slate-700/50">
+            <Shield
+              className="w-10 h-10 mx-auto"
+              style={{ color: "var(--accent-cyan)" }}
+            />
+            <h3 className="text-base font-bold text-heading uppercase tracking-wider">
+              {activeTab} Module
+            </h3>
+            <p
+              className="text-xs max-w-md mx-auto"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Configuration and policy definitions active under enterprise
+              isolation rules.
+            </p>
+          </div>
+        )}
     </div>
   );
 }
