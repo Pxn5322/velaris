@@ -31,6 +31,7 @@ import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from '../auth/supabase-token-verifier.service.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import { CustomerScopeService } from '../customers/customer-scope.service.js';
+import { AiRuntimeService } from '../ai/ai-runtime.service.js';
 import { ConversationsController } from './conversations.controller.js';
 import { ConversationsService } from './conversations.service.js';
 
@@ -212,6 +213,7 @@ describe('Conversations routes (integration)', () => {
   let role: CanonicalRole | null;
   let auditRecord: ReturnType<typeof vi.fn>;
   let prismaFake: ReturnType<typeof fakePrisma>;
+  let aiRuntime: { handle: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     vi.stubEnv('SUPABASE_URL', 'https://project.supabase.co');
@@ -227,6 +229,18 @@ describe('Conversations routes (integration)', () => {
 
     seedCustomerRows();
     role = null;
+    aiRuntime = {
+      handle: vi.fn().mockResolvedValue({
+        outcome: 'respond',
+        reason: 'grounded',
+        text: 'Your refund was sent on Monday.',
+        model: 'local-deterministic',
+        citations: [{ chunkId: 'c1' }, { chunkId: 'c2' }],
+        attempts: 1,
+        escalation: null,
+        trace: {},
+      }),
+    };
     auditRecord = vi.fn().mockResolvedValue(undefined);
     prismaFake = fakePrisma(
       [
@@ -291,6 +305,7 @@ describe('Conversations routes (integration)', () => {
             user: { findUnique },
           } as unknown as PrismaService),
         },
+        { provide: AiRuntimeService, useValue: aiRuntime },
       ],
     }).compile();
 
@@ -415,15 +430,85 @@ describe('Conversations routes (integration)', () => {
     expect(res.body.messages[1]).toMatchObject({ visibility: 'INTERNAL' });
   });
 
-  it('R-customer cannot post a message (AC-F05-3)', async () => {
+  it('R-customer posts in its own conversation and the AI answers (API-13)', async () => {
     role = 'R-customer';
     const res = await request(app.getHttpServer())
       .post(
         '/conversations/cccccccc-0000-4000-8000-000000000001/messages?tenantId=tenant-a',
       )
       .set('Authorization', 'Bearer valid-token')
-      .send({ body: 'I want to reply' });
+      .send({ body: 'Where is my refund?' });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      authorType: 'CUSTOMER',
+      visibility: 'CUSTOMER_VISIBLE',
+      body: 'Where is my refund?',
+      ai: {
+        outcome: 'respond',
+        reason: 'grounded',
+        reply: { body: 'Your refund was sent on Monday.', citationCount: 2 },
+      },
+    });
+    expect(aiRuntime.handle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-a',
+        role: 'R-customer',
+        message: 'Where is my refund?',
+      }),
+    );
+    // The answer is a stored SYSTEM message, so the timeline shows it.
+    const stored = prismaFake._msgStore as {
+      authorType: string;
+      body: string;
+    }[];
+    expect(
+      stored.some(
+        (row) =>
+          row.authorType === 'SYSTEM' &&
+          row.body === 'Your refund was sent on Monday.',
+      ),
+    ).toBe(true);
+  });
+
+  it('R-customer cannot post into another customer conversation (API-13)', async () => {
+    role = 'R-customer';
+    const res = await request(app.getHttpServer())
+      .post(
+        '/conversations/cccccccc-0000-4000-8000-000000000002/messages?tenantId=tenant-a',
+      )
+      .set('Authorization', 'Bearer valid-token')
+      .send({ body: 'Read this' });
+
+    expect(res.status).toBe(404);
+    expect(aiRuntime.handle).not.toHaveBeenCalled();
+  });
+
+  it('denies a role without message.create before any write', async () => {
+    role = 'R-developer';
+    const res = await request(app.getHttpServer())
+      .post(
+        '/conversations/cccccccc-0000-4000-8000-000000000001/messages?tenantId=tenant-a',
+      )
+      .set('Authorization', 'Bearer valid-token')
+      .send({ body: 'I should not be able to reply' });
+
     expect(res.status).toBe(403);
+    expect(aiRuntime.handle).not.toHaveBeenCalled();
+  });
+
+  it('an agent reply is stored but never answers through the runtime', async () => {
+    role = 'R-agent';
+    const res = await request(app.getHttpServer())
+      .post(
+        '/conversations/cccccccc-0000-4000-8000-000000000001/messages?tenantId=tenant-a',
+      )
+      .set('Authorization', 'Bearer valid-token')
+      .send({ body: 'A human takes this one' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.ai).toBeUndefined();
+    expect(aiRuntime.handle).not.toHaveBeenCalled();
   });
 
   it('R-agent posts a customer-visible message and it is audited', async () => {

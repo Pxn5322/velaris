@@ -22,8 +22,21 @@ import type { PrismaService } from '../../infrastructure/prisma/prisma.service.j
 import type { AuditService } from '../audit/audit.service.js';
 import type { TenantsService } from '../tenants/tenants.service.js';
 import { CustomerScopeService } from '../customers/customer-scope.service.js';
+import type { AiRuntimeService } from '../ai/ai-runtime.service.js';
 import { ConversationsController } from './conversations.controller.js';
 import { ConversationsService } from './conversations.service.js';
+
+/** The runtime answers nothing here; the AI contract has its own spec. */
+const NO_ANSWER = {
+  outcome: 'abstain',
+  reason: 'no_relevant_knowledge',
+  text: null,
+  model: null,
+  citations: [],
+  attempts: 0,
+  escalation: null,
+  trace: {},
+} as never;
 
 function buildController(authorization: AuthorizationService) {
   const prisma = {
@@ -69,6 +82,10 @@ function buildController(authorization: AuthorizationService) {
   const audit = {
     record: vi.fn().mockResolvedValue(undefined),
   } as unknown as AuditService;
+  // A standalone mock, so the assertion can reference it without an unbound
+  // method reference.
+  const aiHandle = vi.fn().mockResolvedValue(NO_ANSWER);
+  const ai = { handle: aiHandle } as unknown as AiRuntimeService;
   return {
     controller: new ConversationsController(
       service,
@@ -76,9 +93,11 @@ function buildController(authorization: AuthorizationService) {
       audit,
       authorization,
       new CustomerScopeService(prisma as unknown as PrismaService),
+      ai,
     ),
     service,
     audit,
+    aiHandle,
   };
 }
 
@@ -109,6 +128,33 @@ describe('ConversationsController visibility decisions (TH-05)', () => {
         visibility: 'INTERNAL',
       } as never),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('answers a customer message through the runtime (API-13)', async () => {
+    const { controller, aiHandle } = buildController(authorization);
+    const result = await controller.sendMessage(
+      'conv-1',
+      'tenant-a',
+      requestWith('R-customer'),
+      { body: 'Where is my refund?' } as never,
+    );
+    expect(aiHandle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-a',
+        role: 'R-customer',
+        message: 'Where is my refund?',
+      }),
+    );
+    expect(result).toMatchObject({ authorType: 'CUSTOMER' });
+    expect((result as { ai: { outcome: string } }).ai.outcome).toBe('abstain');
+  });
+
+  it('does not run the runtime for an agent reply', async () => {
+    const { controller, aiHandle } = buildController(authorization);
+    await controller.sendMessage('conv-1', 'tenant-a', requestWith('R-agent'), {
+      body: 'We are on it',
+    } as never);
+    expect(aiHandle).not.toHaveBeenCalled();
   });
 
   it('lets a role with both permissions post an INTERNAL note', async () => {

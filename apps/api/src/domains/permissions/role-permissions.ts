@@ -35,6 +35,9 @@ const TENANT_ADMIN: readonly PermissionCode[] = [
   P.ROLE_MANAGE,
   P.TICKET_READ,
   P.TICKET_WRITE,
+  // T6.05 (API-13): replying in a conversation is its own capability, so a
+  // customer can be granted a reply without ticket write access.
+  P.MESSAGE_CREATE,
   P.NOTE_INTERNAL_READ,
   P.NOTE_INTERNAL_WRITE,
   P.KNOWLEDGE_MANAGE,
@@ -53,12 +56,18 @@ const TENANT_ADMIN: readonly PermissionCode[] = [
 const AGENT: readonly PermissionCode[] = [
   P.TICKET_READ,
   P.TICKET_WRITE,
+  P.MESSAGE_CREATE,
   P.NOTE_INTERNAL_READ,
   P.NOTE_INTERNAL_WRITE,
 ];
 
-/** Customer-visible ticket reads only (TH-05 keeps internal notes out). */
-const CUSTOMER: readonly PermissionCode[] = [P.TICKET_READ];
+/**
+ * Customer-visible reads of its own records, plus the reply capability
+ * (T6.05, API-13). TH-05 still keeps internal notes out: a customer never
+ * holds note.internal.read or note.internal.write, and the controller denies
+ * an INTERNAL note from a customer author.
+ */
+const CUSTOMER: readonly PermissionCode[] = [P.TICKET_READ, P.MESSAGE_CREATE];
 
 export const ROLE_PERMISSIONS: Record<
   CanonicalRole,

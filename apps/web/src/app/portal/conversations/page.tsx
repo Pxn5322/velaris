@@ -8,6 +8,12 @@
  * own customer row, and the timeline endpoint strips internal notes for
  * every role without note.internal.read (TH-05). States: signed out
  * (link to sign-in), loading, empty, failure, and ready.
+ *
+ * T6.05 (API-13, F-09): the composer posts a question to
+ * `POST /conversations/{id}/messages`. The API answers customer messages
+ * through the AI runtime and returns the outcome with the stored reply, so
+ * this page shows either the grounded answer with its citation count or the
+ * handoff notice. It never invents an answer itself.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -42,6 +48,16 @@ interface Message {
   createdAt: string;
 }
 
+/** API-13 response: the stored message plus what the runtime decided. */
+interface MessageReply extends Message {
+  ai?: {
+    outcome: string;
+    reason: string;
+    reply: { id: string; body: string; citationCount: number } | null;
+    handoff: { reason: string; retrievedCount: number } | null;
+  };
+}
+
 type Phase = "signedout" | "loading" | "empty" | "error" | "ready";
 
 export default function PortalConversationsPage() {
@@ -53,6 +69,10 @@ export default function PortalConversationsPage() {
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState(false);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [aiNotice, setAiNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -119,6 +139,57 @@ export default function PortalConversationsPage() {
     },
     [tenantId],
   );
+
+  const sendReply = useCallback(async () => {
+    if (!selected || !tenantId) return;
+    const body = draft.trim();
+    if (body.length === 0) return;
+    setSending(true);
+    setSendError(null);
+    setAiNotice(null);
+    try {
+      const result = await apiFetch<MessageReply>(
+        `/conversations/${selected.id}/messages?tenantId=${encodeURIComponent(tenantId)}`,
+        { method: "POST", body: JSON.stringify({ body }) },
+      );
+      setDraft("");
+      setMessages((current) => [
+        ...current,
+        result,
+        // The AI answer is a stored SYSTEM message; show it as it will
+        // appear on the next load instead of a client-side guess.
+        ...(result.ai?.reply
+          ? [
+              {
+                id: result.ai.reply.id,
+                body: result.ai.reply.body,
+                authorType: "SYSTEM",
+                visibility: "CUSTOMER_VISIBLE",
+                createdAt: new Date().toISOString(),
+              },
+            ]
+          : []),
+      ]);
+      if (result.ai?.reply) {
+        const count = result.ai.reply.citationCount;
+        setAiNotice(
+          count > 0
+            ? `Answered from ${count} knowledge source${count === 1 ? "" : "s"}.`
+            : "Answered by the assistant.",
+        );
+      } else if (result.ai) {
+        setAiNotice("A teammate will follow up on this question.");
+      }
+    } catch (error) {
+      setSendError(
+        error instanceof ApiError && error.status === 403
+          ? "Your account cannot reply in this conversation."
+          : "Your message could not be sent. Try again.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }, [draft, selected, tenantId]);
 
   return (
     <section
@@ -252,6 +323,61 @@ export default function PortalConversationsPage() {
                 ))}
               </ul>
             )}
+
+            <form
+              className="mt-3 border-t border-slate-800 pt-3"
+              data-testid="portal-reply-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void sendReply();
+              }}
+            >
+              <label
+                htmlFor="portal-reply-body"
+                className="block text-xs text-slate-400"
+              >
+                Reply to this conversation
+              </label>
+              <textarea
+                id="portal-reply-body"
+                data-testid="portal-reply-body"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                rows={3}
+                required
+                maxLength={4000}
+                placeholder="Describe what you need help with."
+                className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2 text-sm"
+              />
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={sending || draft.trim().length === 0}
+                  data-testid="portal-reply-submit"
+                  className="rounded bg-slate-700 px-3 py-1.5 text-sm hover:bg-slate-600 disabled:opacity-50"
+                >
+                  {sending ? "Sending…" : "Send"}
+                </button>
+                {aiNotice && (
+                  <p
+                    className="text-xs text-slate-300"
+                    role="status"
+                    data-testid="portal-ai-notice"
+                  >
+                    {aiNotice}
+                  </p>
+                )}
+                {sendError && (
+                  <p
+                    className="text-xs text-red-300"
+                    role="alert"
+                    data-testid="portal-reply-error"
+                  >
+                    {sendError}
+                  </p>
+                )}
+              </div>
+            </form>
           </div>
         </div>
       )}

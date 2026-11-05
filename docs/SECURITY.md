@@ -51,10 +51,13 @@ Canonical roles are defined in `docs/PRD.md` section 2. This table is a baseline
 | Manage knowledge | deny | platform metadata only unless explicitly granted | own tenant with knowledge permission | read only if granted | no direct source access | explicit API scope only |
 | Configure/publish agents | deny | platform governance only unless explicit grant | own tenant with `ai.agent.*` permissions | deny by default | deny | explicit API scope only |
 | Execute AI tools | deny | never bypass action policy | policy and permission bound | policy and permission bound | only approved user-facing actions | tool-specific scoped grants |
+| Reply in a conversation | deny | platform governance only unless explicit grant | own tenant with `message.create` | permitted conversations with `message.create` | own conversations with `message.create` | explicit API scope only |
 | Read audit logs | deny | platform-wide if explicitly permitted | own tenant if `audit.read` | deny by default | deny | explicit restricted API scope |
 | Read analytics | deny | platform scope | own tenant | limited operational view if defined | own interaction only | scoped API permission |
 
 Role-to-permission mapping and per-resource policies must be tested. Enterprise role is not a universal bypass for application actions; elevated access must be explicit, audited and least-privilege.
+
+A customer reply also runs the F-09 runtime (T6.05, D-35). The runtime reads knowledge under the replying principal's own scope. The stored answer is a SYSTEM message with `CUSTOMER_VISIBLE` visibility. The response carries the citation count and the handoff reason only; retrieved excerpts stay on the server and outside the audit row.
 
 ## 4. Authentication and sessions
 - Identity provider selected: Supabase Auth. NestJS must validate access tokens server-side using the supported Supabase/JWT verification approach and enforce authorization independently of identity claims. Use trusted subject identity to look up active application user, tenant membership and permissions; do not trust user-editable metadata or client-supplied tenant IDs as authorization grants.

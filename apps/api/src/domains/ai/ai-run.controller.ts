@@ -16,8 +16,10 @@
  *
  * `ai.agent.configure` is deliberate: this route is the configuration-time
  * preview of an agent, which is also how it earns a grounded answer from real
- * knowledge. The customer-facing conversation route (API-13) arrives with the
- * conversation work; it needs its own scope decision (D-31).
+ * knowledge. The customer-facing path is API-13 (T6.05, D-35):
+ * `POST /conversations/{id}/messages` answers a customer message through the
+ * same runtime under the customer's own scope, so this route stays the
+ * preview and never becomes the production reply path.
  */
 
 import {
