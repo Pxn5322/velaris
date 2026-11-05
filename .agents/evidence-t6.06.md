@@ -34,7 +34,7 @@ This change closes three T6.01 gaps and answers the owner decisions of
 | `npm run lint` | exit 0, 14 known warnings in two existing API spec files |
 | `npm run build` | exit 0 |
 | `python scripts/check_docs.py --draft` | 100/100 |
-| `npm run e2e:web` | exit 0, 42 passed and 2 skipped (the live registration spec) |
+| `npm run e2e:web` | exit 0, 47 passed and 2 skipped (the live registration spec) |
 
 ## RED → GREEN
 
@@ -53,13 +53,29 @@ without an active membership in the named tenant both fail before any policy
 row is read or written. A write outside the caller's tenant answers 403 and
 creates neither a row nor an audit event.
 
+## Live check (2026-11-05)
+
+The opt-in registration journey ran against the single environment with the
+current Supabase keys:
+
+- API on `http://localhost:3000` (local `DATABASE_URL`, current project keys)
+  and the production web build on `http://localhost:3001`.
+- API root returned 200 and the web root returned 200.
+- `E2E_LIVE_API_URL=http://localhost:3000 E2E_BASE_URL=http://localhost:3001
+  npx playwright test tests/live` → 2 passed in 6.6 s.
+- The journey created a synthetic workspace (`live-check+<timestamp>@velaris.test`),
+  signed the new owner in and landed on the admin view (J-01). The protected
+  route returned 401 without a credential.
+- The run created one synthetic Supabase auth account and one tenant with its
+  seeded TRACES row in the development project. The owner clears that data
+  before production (D-37). No secret entered the transcript or the log.
+
 ## Limits
 
-- The live registration journey was not executed in this environment: it
-  needs a running API with the current Supabase keys and a built web app. The
-  spec is written and skips by default. Its first real run is the T6.03
-  smoke check.
-- No web screen calls the retention route yet. The recommendation scoped the
-  route as the API surface; a settings page is a separate UI task.
+- The live registration journey is verified locally. Against a hosted
+  deployment it still runs once in the T6.03 smoke check, which covers TLS,
+  CORS and the deployed origins that a local run cannot prove.
+- The retention panel lives in the admin "System Settings" tab and is
+  covered by `tests/retention.spec.js` (five journeys).
 - `updated_by` stores the actor's identity-provider subject. The column has no
   foreign key and the route has no application user row at hand.

@@ -143,7 +143,59 @@ N/A — no specific email, chat channel, CRM or external integration provider is
 - Environment: one deployment only until production (D-37). No staging project exists, so a live check targets the current environment with the current keys.
 - Verify: Not configured; the deployed health check returns 200, a protected route returns 401 without credentials, and one authorized read succeeds. Until the owner supplies the hosting target, `npm run e2e:live` is the live registration check and it skips without `E2E_LIVE_API_URL`.
 
+### 6.1 Single-environment deployment checklist (T6.03, D-37)
+This checklist is ready. No deployment has run. The owner supplies the hosting target before the first line below can execute.
+
+**Owner inputs before deployment**
+- [ ] Hosting target for `apps/web` and `apps/api`, with TLS and a public origin per app.
+- [ ] The public web origin in `CORS_ORIGIN` and `APP_BASE_URL`.
+- [ ] `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SERVICE_ROLE_KEY` for the single environment.
+- [ ] `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for the web build.
+- [ ] Approval to spend on the hosting plan.
+
+**Before the deploy**
+- [ ] `npm run test`, `npm run build`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run inventory:check` and `python scripts/check_docs.py --draft` pass on the commit to deploy.
+- [ ] `npx prisma migrate status` reports no pending migration against the deployment database.
+- [ ] A database backup or snapshot exists, because migrations are forward-only.
+- [ ] The previous web and API artifacts are kept for rollback.
+
+**Deploy**
+- [ ] Apply migrations as a controlled step: `npx prisma migrate deploy`.
+- [ ] Deploy the API, then the web app.
+- [ ] Record the deployment id, commit SHA and the migration names applied.
+
+**Smoke tests against the deployed origin**
+```bash
+# 1. Liveness: the API root answers 200 (no separate /health route exists)
+curl -fsS -o /dev/null -w "%{http_code}\n" https://api.example.com/
+
+# 2. Protected route without a credential: expect 401
+curl -s -o /dev/null -w "%{http_code}\n" "https://api.example.com/settings/retention?tenantId=00000000-0000-0000-0000-000000000000"
+
+# 3. Authorized tenant read: expect 200 and three categories
+curl -s -H "Authorization: Bearer $TOKEN" "https://api.example.com/settings/retention?tenantId=$TENANT_ID"
+
+# 4. Cross-tenant denial: expect 403
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" "https://api.example.com/settings/retention?tenantId=$OTHER_TENANT_ID"
+
+# 5. Registration in a real browser (J-01): expect the admin view
+E2E_LIVE_API_URL=https://api.example.com E2E_BASE_URL=https://app.example.com npm run e2e:live
+```
+- [ ] A trace and an audit row exist for the smoke run: `GET /audit/traces` and `GET /audit/events` with the tenant scope.
+- [ ] The retention panel loads in the admin settings tab and saves one window, and the audit trail shows `retention.policy_changed`.
+
+**Rollback rehearsal**
+- [ ] Redeploy the previous artifact pair and repeat smoke tests 1 and 2.
+- [ ] Confirm migration `0009_retention_policy_defaults` is additive: the previous API still reads the table, and no data is lost.
+- [ ] Record the rehearsal result, the artifact ids and the time to restore.
+- [ ] Stop after three failed attempts and report the failure with logs; do not improvise a database restore on production data.
+
+**After the smoke**
+- [ ] Record the evidence in `docs/TESTING.md` section 9 and a `.agents/evidence-*.md` file.
+- [ ] Ask the owner for release approval. No automated production deployment exists.
+
 ## 7. Operations
+- T6.03 smoke and rollback steps live in section 6.1. Run them against the single environment; do not create a staging project (D-37).
 - Monitoring: API error rate and p50/p95/p99 latency, queue depth/failures, provider availability, ingestion failures, AI evaluation/grounding/citation failures, cost, audit completeness and deployment health.
 - Release: run all gates, deploy to staging, smoke test, review telemetry, obtain human production approval, then deploy using the chosen provider's verified process.
 - Rollback: restore previous app artifact/config where safe; use forward fixes or tested restore for incompatible migrations. Agent rollback selects a prior immutable published version and preserves history.
