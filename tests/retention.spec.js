@@ -179,7 +179,7 @@ test.describe("retention settings (T6.06, AC-F14-2)", () => {
     );
   });
 
-  test("shows the newest retention change and links to the filtered audit trail", async ({
+  test("shows recent retention changes and links to the filtered audit trail", async ({
     page,
   }) => {
     let auditQuery = null;
@@ -195,14 +195,21 @@ test.describe("retention settings (T6.06, AC-F14-2)", () => {
         json({
           items: [
             {
-              id: "event-retention",
+              id: "event-retention-2",
               actorId: "user-1",
               action: "retention.policy_changed",
               metadata: { category: "MEMORY", retentionDays: 7 },
               createdAt: "2026-11-05T10:00:00.000Z",
             },
+            {
+              id: "event-retention-1",
+              actorId: "user-1",
+              action: "retention.policy_changed",
+              metadata: { category: "KNOWLEDGE", retentionDays: 30 },
+              createdAt: "2026-11-04T09:00:00.000Z",
+            },
           ],
-          limit: 1,
+          limit: 10,
           hasMore: false,
         }),
       );
@@ -210,19 +217,26 @@ test.describe("retention settings (T6.06, AC-F14-2)", () => {
 
     await openSettings(page);
 
-    const line = page.getByTestId("retention-last-change");
-    await expect(line).toContainText("MEMORY · 7 days · actor user-1");
-    await expect(line).toContainText("2026-11-05 10:00:00 UTC");
+    const history = page.getByTestId("retention-history");
+    const changes = history.getByTestId("retention-change");
+    await expect(changes).toHaveCount(2);
+    await expect(changes.first()).toContainText(
+      "MEMORY · 7 days · actor user-1",
+    );
+    await expect(changes.first()).toContainText("2026-11-05 10:00:00 UTC");
+    await expect(changes.nth(1)).toContainText(
+      "KNOWLEDGE · 30 days · actor user-1",
+    );
     await expect(
-      line.getByRole("link", { name: "View in audit trail" }),
+      history.getByRole("link", { name: "View full audit trail" }),
     ).toHaveAttribute("href", "/audit#retention");
     await expect
       .poll(() => auditQuery?.action)
       .toBe("retention.policy_changed");
-    expect(auditQuery?.limit).toBe("1");
+    expect(auditQuery?.limit).toBe("10");
   });
 
-  test("hides the last change when audit.read is denied", async ({ page }) => {
+  test("hides the change history when audit.read is denied", async ({ page }) => {
     await seedSession(page);
     await routeSession(page);
     await page.route("**/settings/retention*", (route) =>
@@ -234,7 +248,7 @@ test.describe("retention settings (T6.06, AC-F14-2)", () => {
 
     await openSettings(page);
 
-    await expect(page.getByTestId("retention-last-change")).toHaveCount(0);
+    await expect(page.getByTestId("retention-history")).toHaveCount(0);
     await expect(page.locator("#retention-traces")).toHaveValue("30");
   });
 

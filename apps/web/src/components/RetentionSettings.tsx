@@ -14,8 +14,8 @@
  * so a typo never reaches the API. A saved window shows the audit
  * confirmation, because every accepted write records one
  * `retention.policy_changed` event with the actor, category and window. The
- * panel also reads the newest such event and links to /audit#retention, which
- * opens the audit trail already filtered to retention changes.
+ * panel also reads the ten newest such events and links to /audit#retention,
+ * which opens the audit trail already filtered to retention changes.
  *
  * States: loading, signed-out or denied, failure with retry, and ready.
  * KNOWLEDGE and MEMORY report "Not set" until an administrator stores a
@@ -100,21 +100,21 @@ export function RetentionSettings() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Category | null>(null);
   const [saved, setSaved] = useState<Category | null>(null);
-  const [lastChange, setLastChange] = useState<AuditEventRow | null>(null);
+  const [recentChanges, setRecentChanges] = useState<AuditEventRow[]>([]);
 
   /**
-   * The newest retention change, if the caller may read the audit trail.
+   * The ten newest retention changes, if the caller may read the audit trail.
    * `audit.read` is a separate permission from `retention.manage`; when it is
-   * denied or the read fails, the panel stays usable and hides the line.
+   * denied or the read fails, the panel stays usable and hides the history.
    */
-  const loadLastChange = useCallback(async (activeTenantId: string) => {
+  const loadRecentChanges = useCallback(async (activeTenantId: string) => {
     try {
       const page = await apiFetch<AuditPage>(
-        `/audit/events?tenantId=${encodeURIComponent(activeTenantId)}&limit=1&action=retention.policy_changed`,
+        `/audit/events?tenantId=${encodeURIComponent(activeTenantId)}&limit=10&action=retention.policy_changed`,
       );
-      setLastChange(page.items[0] ?? null);
+      setRecentChanges(page.items);
     } catch {
-      setLastChange(null);
+      setRecentChanges([]);
     }
   }, []);
 
@@ -146,7 +146,7 @@ export function RetentionSettings() {
       setErrors({});
       setSaved(null);
       setPhase("ready");
-      void loadLastChange(active);
+      void loadRecentChanges(active);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setDenial("Your session has expired. Sign in again.");
@@ -163,7 +163,7 @@ export function RetentionSettings() {
         setPhase("error");
       }
     }
-  }, [loadLastChange]);
+  }, [loadRecentChanges]);
 
   useEffect(() => {
     // Scheduled kick: a sync setState in the effect body would cascade a
@@ -209,7 +209,7 @@ export function RetentionSettings() {
           [category]: String(updated.retentionDays ?? days),
         }));
         setSaved(category);
-        void loadLastChange(tenantId);
+        void loadRecentChanges(tenantId);
       } catch (error) {
         if (
           error instanceof ApiError &&
@@ -232,7 +232,7 @@ export function RetentionSettings() {
         setSaving(null);
       }
     },
-    [drafts, tenantId, loadLastChange],
+    [drafts, tenantId, loadRecentChanges],
   );
 
   return (
@@ -290,22 +290,54 @@ export function RetentionSettings() {
 
       {phase === "ready" && (
         <>
-          {lastChange && retentionDetail(lastChange) && (
+          {recentChanges.length > 0 && (
             <div
-              data-testid="retention-last-change"
-              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-700/40 px-3 py-2 text-[11px]"
+              data-testid="retention-history"
+              className="space-y-2 rounded-xl border border-slate-700/40 px-3 py-2"
             >
-              <span style={{ color: "var(--text-muted)" }}>
-                Last change: {retentionDetail(lastChange)} ·{" "}
-                {shortInstant(lastChange.createdAt)}
-              </span>
-              <Link
-                href="/audit#retention"
-                className="font-bold underline"
-                style={{ color: "var(--accent-cyan)" }}
-              >
-                View in audit trail
-              </Link>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span
+                  className="text-[10px] font-mono uppercase tracking-wider"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Recent changes
+                </span>
+                <Link
+                  href="/audit#retention"
+                  className="text-[11px] font-bold underline"
+                  style={{ color: "var(--accent-cyan)" }}
+                >
+                  View full audit trail
+                </Link>
+              </div>
+              <ul className="space-y-1">
+                {recentChanges.map((change) => (
+                  <li
+                    key={change.id}
+                    data-testid="retention-change"
+                    className="flex flex-wrap items-center justify-between gap-2 text-[11px]"
+                  >
+                    <span className="text-heading">
+                      {retentionDetail(change)}
+                    </span>
+                    <span
+                      className="font-mono"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      {shortInstant(change.createdAt)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {recentChanges.length === 10 && (
+                <p
+                  className="text-[10px]"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Showing the newest 10 changes. The audit trail has the full
+                  history.
+                </p>
+              )}
             </div>
           )}
           <ul className="space-y-4">

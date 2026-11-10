@@ -33,6 +33,7 @@ This document describes intended controls; it does not establish regulatory comp
 
 ## 2A. Security verification workflow
 - Security-agent review is mandatory for authentication, RBAC, tenant context, database/RLS policies, migrations, file ingestion, AI tools, secrets, audit/retention, webhooks and external integrations.
+- Bearer-token verification calls Supabase Auth and caches successful answers for at most 60 seconds (D-39). The cache is bounded, stores token digests only and does not cache invalid answers. A revoked token can remain accepted for that window; a restart clears the cache.
 - Required checks include cross-tenant IDOR tests, role/permission denial matrices, RLS tests if RLS is enabled, prompt-injection/tool authorization regression tests, dependency and secret scans, unsafe upload tests, rate-limit/abuse checks and audit redaction review.
 - Active penetration testing must be explicitly scoped and authorized, use synthetic data, and target local/test/staging environments only unless the owner separately approves a production test plan.
 - A security agent reports findings and evidence; it does not independently waive findings or approve production. Critical/high findings block integration until fixed or explicitly risk-accepted by the human owner with documented compensating controls.

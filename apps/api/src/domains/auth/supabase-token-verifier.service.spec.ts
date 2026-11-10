@@ -21,6 +21,14 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+/** A syntactically valid JWT whose payload carries only an expiry claim. */
+function tokenWithExp(expSeconds: number): string {
+  const payload = Buffer.from(JSON.stringify({ exp: expSeconds })).toString(
+    'base64url',
+  );
+  return `header.${payload}.signature`;
+}
+
 describe('SupabaseTokenVerifier', () => {
   let fetchMock: FetchMock;
   let verifier: SupabaseTokenVerifier;
@@ -34,6 +42,7 @@ describe('SupabaseTokenVerifier', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -145,5 +154,92 @@ describe('SupabaseTokenVerifier', () => {
       'SUPABASE_PUBLISHABLE_KEY',
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('reuses a successful verification for the same token', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { sub: 'sub-123' }));
+
+    await verifier.verify('same-token');
+    await verifier.verify('same-token');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache an invalid token', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(401, { message: 'invalid JWT' }));
+
+    await verifier.verify('bad-token');
+    await verifier.verify('bad-token');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes a cached identity after the bounded TTL', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-10T00:00:00.000Z'));
+    const shortLived = new SupabaseTokenVerifier(1_000);
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(jsonResponse(200, { sub: 'sub-ttl' })),
+    );
+
+    await shortLived.verify('ttl-token');
+    await shortLived.verify('ttl-token');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(1_001);
+    await shortLived.verify('ttl-token');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not cache beyond the token expiry claim', async () => {
+    vi.useFakeTimers();
+    const now = new Date('2026-11-10T00:00:00.000Z');
+    vi.setSystemTime(now);
+    const expiring = new SupabaseTokenVerifier(60_000);
+    const token = tokenWithExp(Math.floor(now.getTime() / 1_000) + 2);
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(jsonResponse(200, { sub: 'sub-exp' })),
+    );
+
+    await expiring.verify(token);
+    await expiring.verify(token);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(2_001);
+    await expiring.verify(token);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('evicts the oldest entry when the cache reaches its bound', async () => {
+    const bounded = new SupabaseTokenVerifier(60_000, 2);
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(jsonResponse(200, { sub: 'sub-bound' })),
+    );
+
+    await bounded.verify('token-a');
+    await bounded.verify('token-b');
+    await bounded.verify('token-c');
+    await bounded.verify('token-a');
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('coalesces concurrent verifications of the same token', async () => {
+    let resolveFetch: ((response: Response) => void) | undefined;
+    fetchMock.mockReturnValue(
+      new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+
+    const first = verifier.verify('concurrent-token');
+    const second = verifier.verify('concurrent-token');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resolveFetch?.(jsonResponse(200, { sub: 'sub-concurrent' }));
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { provider: 'supabase', subject: 'sub-concurrent', email: undefined },
+      { provider: 'supabase', subject: 'sub-concurrent', email: undefined },
+    ]);
   });
 });
