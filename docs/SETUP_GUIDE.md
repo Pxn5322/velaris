@@ -7,7 +7,7 @@ depends_on: [ARCHITECTURE, SECURITY, DATABASE]
 ---
 # Setup Guide — VELARIS
 
-Last verified: **Not verified**. This guide was generated from the PRD; no application repository was installed or run. Replace this status only after running each step on a clean machine and recording the date, machine and operator. Every command below is a proposed example unless marked otherwise.
+Last verified: **2026-11-10** for the hosted deployment in sections 4, 6, 6.1 and 6.3. Other sections remain proposed examples until they are rerun on a clean machine. Record the operator and date when a step is rerun.
 
 ## Supabase setup decisions (required before database foundation)
 - Create separate Supabase projects/environments for development, staging and production as appropriate to budget and risk.
@@ -32,6 +32,8 @@ Last verified: **Not verified**. This guide was generated from the PRD; no appli
 Region and data-residency note: **Unknown** until provider/market decisions are approved. Use synthetic data locally and in tests.
 
 **Single-environment decision (owner, 2026-11-05; D-37).** The project uses one Supabase project and one database for local development, CI live checks and the first hosted deployment. Current keys serve all three. A staging split is deliberately not created. Before production: clear all data in the current project, then provision the production environment with its own project, keys and secrets. The table above describes the target shape after that split, not the current state.
+
+**Current hosted deployment (2026-11-10).** `apps/web` runs on Vercel at `https://velaris-web-bice.vercel.app`. `apps/api` runs on Render at `https://velaris-api-aral.onrender.com`. Both use the current Supabase project and keys (D-37). Section 6.3 lists the exact settings and the manual steps.
 
 ## 2. Accounts and access [Owner]
 | Account | Purpose | Owner | MFA |
@@ -67,6 +69,7 @@ Names below are proposed categories for the initial implementation. Add or remov
 | `REDIS_URL` | API/worker BullMQ ingestion queue (D-17); when absent the API keeps the in-process adapter, so it is optional for CI and unit tests | yes | local ignored `.env`; CI/host secret store |
 | `NEXT_PUBLIC_SUPABASE_URL` | Next.js browser client and server config | no, public project URL | public app config |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Next.js browser client (portal sign-in); `NEXT_PUBLIC_SUPABASE_ANON_KEY` is accepted as the same setting (T2.04) | no, publishable key; RLS is still required for any direct database exposure | public app config |
+| `NEXT_PUBLIC_API_URL` | Next.js browser client (`apps/web/src/lib/api/client.ts`); build-time value | no, public API origin | public app config; set it before the web build because Next.js bakes it into the bundle |
 | `SUPABASE_URL` | NestJS API/worker | no, project URL | server environment config (local: `<repo>/.env`) |
 | `SUPABASE_PUBLISHABLE_KEY` | NestJS API token verifier (apikey header on `GET /auth/v1/user`) | no, public project key | server environment config |
 | `SUPABASE_JWT_ISSUER` | NestJS token verifier, if configured separately | no | server environment config |
@@ -87,6 +90,8 @@ Names below are proposed categories for the initial implementation. Add or remov
 | `LOG_LEVEL` | API/worker | no | environment config |
 | `E2E_LIVE_API_URL` | Playwright live registration journey (`npm run e2e:live`); when absent the spec skips, so the default suite stays offline | no | shell environment for the check; the single environment's API origin |
 | `E2E_LIVE_PASSWORD` | Password for the synthetic account the live registration journey creates (defaults to a documented test value) | yes | shell environment only; never commit a real password |
+
+The deployed API uses the Supabase IPv4 session pooler because the direct database host has no IPv4 route. Use port 5432, username `postgres.<project-ref>` and `sslmode=no-verify`. `no-verify` encrypts the connection but does not verify the pooler certificate. This is a temporary development setting. Before production, install the Supabase CA and use `sslmode=verify-full`, or enable the Supabase IPv4 add-on and use the direct host.
 
 Public browser variables must never contain server secrets. Validate required variables at startup and mention the missing variable name only, never its value. Verify: remove a required local variable and confirm startup fails with a clear safe error; exact test is **Not run**.
 
@@ -138,62 +143,64 @@ N/A — no specific email, chat channel, CRM or external integration provider is
 
 ## 6. CI, hosting, domains
 - CI jobs (all verified): .github/workflows/ci.yml runs docs check, lint, type-check, unit tests, build and the npm audit gate on every push and PR; .github/workflows/e2e.yml runs the Playwright landing journeys; .github/workflows/merge-gate.yml blocks direct commits to master and pull requests without owner approval.
-- Hosting: Vercel/Render are candidates, not selected production commitments. Decide hosting, regions, TLS, domains, migration execution and secret management before deployment.
+- Hosting: Vercel hosts `apps/web` and Render hosts `apps/api` in Singapore. The Supabase project is in `ap-northeast-1` (Tokyo), so the API crosses regions. The current deployment is the single environment (D-37). Section 6.3 records the origins, settings and manual steps. Vercel Hobby and the Render free instance are development plans, not production commitments.
 - Migrations must be reviewed and run as a controlled deploy step with a rollback/forward-fix strategy; destructive migrations require owner review.
 - Environment: one deployment only until production (D-37). No staging project exists, so a live check targets the current environment with the current keys.
-- Verify: Not configured; the deployed health check returns 200, a protected route returns 401 without credentials, and one authorized read succeeds. Until the owner supplies the hosting target, `npm run e2e:live` is the live registration check and it skips without `E2E_LIVE_API_URL`.
+- Verify: 2026-11-10, the deployed API root returned 200, the protected retention route returned 401 without a token, the deployed web root returned 200, and an authorized tenant read returned 200 with zero errors. Cross-tenant denial, rollback rehearsal and a warm-instance p95 remain open for T6.03. `npm run e2e:live` is the live registration check; it skips without `E2E_LIVE_API_URL`.
 
 ### 6.1 Single-environment deployment checklist (T6.03, D-37)
-This checklist is ready. No deployment has run. The owner supplies the hosting target before the first line below can execute.
+The first deployment ran on 2026-11-10. The deployment row, the public smoke checks and one authorized tenant read are recorded. Unchecked items remain open for T6.03.
 
 **Owner inputs before deployment**
-- [ ] Hosting target for `apps/web` and `apps/api`, with TLS and a public origin per app.
-- [ ] The public web origin in `CORS_ORIGIN` and `APP_BASE_URL`.
-- [ ] `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SERVICE_ROLE_KEY` for the single environment.
-- [ ] `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for the web build.
-- [ ] Approval to spend on the hosting plan.
+- [x] Hosting target: Vercel for `apps/web` and Render for `apps/api`, both with TLS.
+- [x] Public web origin in `CORS_ORIGIN` and `APP_BASE_URL`; see section 6.3. The CORS preflight from the short alias returned 204.
+- [x] `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SERVICE_ROLE_KEY` entered in the Render dashboard for the single environment. Values are not in this repository.
+- [x] `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `NEXT_PUBLIC_API_URL` entered in the Vercel project for the web build.
+- [ ] Approval to spend on a paid hosting plan. The current deployment uses Vercel Hobby and a Render free instance.
 
 **Before the deploy**
-- [ ] `npm run test`, `npm run build`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run inventory:check` and `python scripts/check_docs.py --draft` pass on the commit to deploy.
-- [ ] `npx prisma migrate status` reports no pending migration against the deployment database.
-- [ ] A database backup or snapshot exists, because migrations are forward-only.
-- [ ] The previous web and API artifacts are kept for rollback.
+- [ ] `npm run test`, `npm run build`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run inventory:check` and `python scripts/check_docs.py --draft` pass on the commit to deploy. CI passed on `78e4327`; the full suite was not rerun for this deployment.
+- [ ] `npx prisma migrate status` reports no pending migration against the deployment database. Not run: the repository has no `prisma/migrations` directory. Reconcile the schema history before production.
+- [ ] A database backup or snapshot exists, because migrations are forward-only. Not taken for this development deployment.
+- [x] N/A: this is the first deployment, so no previous web or API artifact exists for rollback.
 
 **Deploy**
-- [ ] Apply migrations as a controlled step: `npx prisma migrate deploy`.
-- [ ] Deploy the API, then the web app.
-- [ ] Record the deployment id, commit SHA and the migration names applied.
+- [x] N/A: the repository has no `prisma/migrations` directory and no schema change was applied. Reconcile the schema history before production.
+- [x] Deploy the API to Render, then the web app to Vercel.
+- [x] Record the deployment ids and commit SHA: Render `dep-dbpedj942hec73cdnl6g` (first deploy `dep-dbpe5bbrjlhs73fm2qa0`), Vercel `dpl_3HqWrmxcy11cQyZnFhnhZK1YFxeK`, commit `78e4327`.
 
 **Smoke tests against the deployed origin**
 ```bash
 # 1. Liveness: the API root answers 200 (no separate /health route exists)
-curl -fsS -o /dev/null -w "%{http_code}\n" https://api.example.com/
+curl -fsS -o /dev/null -w "%{http_code}\n" https://velaris-api-aral.onrender.com/
 
 # 2. Protected route without a credential: expect 401
-curl -s -o /dev/null -w "%{http_code}\n" "https://api.example.com/settings/retention?tenantId=00000000-0000-0000-0000-000000000000"
+curl -s -o /dev/null -w "%{http_code}\n" "https://velaris-api-aral.onrender.com/settings/retention?tenantId=00000000-0000-0000-0000-000000000000"
 
 # 3. Authorized tenant read: expect 200 and three categories
-curl -s -H "Authorization: Bearer $TOKEN" "https://api.example.com/settings/retention?tenantId=$TENANT_ID"
+curl -s -H "Authorization: Bearer $TOKEN" "https://velaris-api-aral.onrender.com/settings/retention?tenantId=$TENANT_ID"
 
 # 4. Cross-tenant denial: expect 403
-curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" "https://api.example.com/settings/retention?tenantId=$OTHER_TENANT_ID"
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" "https://velaris-api-aral.onrender.com/settings/retention?tenantId=$OTHER_TENANT_ID"
 
 # 5. Authenticated load: creates one synthetic tenant and fills {tenantId}
 #    SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be in the shell.
-node scripts/load-profile.mjs --url https://api.example.com \
+node scripts/load-profile.mjs --url https://velaris-api-aral.onrender.com \
   --path "/settings/retention?tenantId={tenantId}" --auth-signup \
   --concurrency 8 --duration 10 --out retention-load.json
 
 # 6. Registration in a real browser (J-01): expect the admin view
-E2E_LIVE_API_URL=https://api.example.com E2E_BASE_URL=https://app.example.com npm run e2e:live
+E2E_LIVE_API_URL=https://velaris-api-aral.onrender.com E2E_BASE_URL=https://velaris-web-bice.vercel.app npm run e2e:live
 ```
+- [x] Liveness returned 200 and the protected route returned 401 on 2026-11-10.
+- [x] The authorized retention read returned 200 for the synthetic tenant: 2/2 requests, zero errors, p95 1125.84 ms at concurrency 1. The free cross-region instance is over the 200 ms budget, so NFR-04 is not met.
 - [ ] A trace and an audit row exist for the smoke run: `GET /audit/traces` and `GET /audit/events` with the tenant scope.
 - [ ] The retention panel loads in the admin settings tab, shows the newest change, opens the filtered audit trail and saves one window, and the audit trail shows `retention.policy_changed`.
-- [ ] `retention-load.json` records the authenticated p95 against the 200 ms budget. If it exceeds the budget, record the cause and do not report NFR-04 as met. The script prints the synthetic email and tenant id for cleanup.
+- [ ] `retention-load.json` records a warm-instance p95 at concurrency 8 against the 200 ms budget. The 2026-11-10 smoke measured p95 1125.84 ms at concurrency 1 on the free cross-region instance, so NFR-04 is not met. The script prints the synthetic email and tenant id for cleanup.
 
 **Rollback rehearsal**
 - [ ] Redeploy the previous artifact pair and repeat smoke tests 1 and 2.
-- [ ] Confirm migration `0009_retention_policy_defaults` is additive: the previous API still reads the table, and no data is lost.
+- [ ] Confirm the deployment needs no schema migration. The repository has no `prisma/migrations` directory, so this rehearsal must use an artifact rollback only. Reconcile the schema history before production.
 - [ ] Record the rehearsal result, the artifact ids and the time to restore.
 - [ ] Stop after three failed attempts and report the failure with logs; do not improvise a database restore on production data.
 
@@ -245,10 +252,68 @@ The single development environment becomes production only through this controll
 - [ ] Watch error rate, p95 latency, queue depth and audit/trace presence for the agreed observation window.
 - [ ] Keep the previous artifacts until the owner signs the release. Roll back by redeploying them; migrations are additive.
 
+### 6.3 Current hosted deployment (2026-11-10)
+The single environment runs on two providers. Section 6.1 records the smoke checks, including the authorized tenant read, and the checks that remain open.
+
+| Component | Provider | Public origin | Identifier |
+| --- | --- | --- | --- |
+| Next.js web | Vercel | `https://velaris-web-bice.vercel.app` | project `velaris-web`, `prj_ap7V5JjX0ux88ZNwloN4uVdnuPI8` |
+| NestJS API | Render | `https://velaris-api-aral.onrender.com` | service `velaris-api`, `srv-dbpe5arrjlhs73fm2or0`, Singapore, free plan |
+| Auth and PostgreSQL | Supabase | current project | project `lygekvhwmhbonsdeiaot`, region `ap-northeast-1` (Tokyo), D-37 single environment |
+
+**Vercel settings**
+- Repository `Pxn5322/velaris`, production branch `master`, root directory `apps/web`.
+- Framework `nextjs`. Vercel selected Node `26.x`; CI uses Node 24. The build passed on Node 26.
+- Install command `cd ../.. && npm ci`; build command `cd ../.. && npm run build:web`.
+- Build variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `NEXT_PUBLIC_API_URL=https://velaris-api-aral.onrender.com`.
+- Aliases: `velaris-web-bice.vercel.app`, `velaris-web-pxn5322s-projects.vercel.app` and `velaris-web-git-master-pxn5322s-projects.vercel.app`.
+- Git auto-deploy is disabled on this project. Deploy manually from the Vercel dashboard.
+
+**Render settings**
+- Repository `Pxn5322/velaris`, branch `master`, root directory empty.
+- Runtime Node, region Singapore, one instance, free plan.
+- The API reaches PostgreSQL through the Supabase session pooler at `aws-0-ap-northeast-1.pooler.supabase.com:5432`. The direct `db.<ref>.supabase.co` host is IPv6-only and fails on Render with `ENETUNREACH`.
+- The pooler chain fails Node certificate verification with `self-signed certificate in certificate chain`. The API therefore uses `sslmode=no-verify`: the traffic is encrypted, but the server certificate is not verified.
+- Build command `npm ci --include=dev && npx prisma generate && npm run build:api`; start command `npm run start:prod --workspace apps/api`. The `--include=dev` flag is required because `NODE_ENV=production` makes `npm ci` omit `nest` and `prisma`, and the build then fails with `sh: 1: nest: not found`.
+- Health check path `/`; the API has no separate `/health` route.
+- Environment names: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NODE_ENV=production`, `CORS_ORIGIN` and `APP_BASE_URL`.
+- `CORS_ORIGIN` lists the three Vercel aliases. `APP_BASE_URL` is the short alias.
+- Auto-deploy is off. Use Manual Deploy in the Render dashboard.
+
+**Manual recreation or change**
+1. Vercel: import `Pxn5322/velaris`, set root `apps/web`, set the install and build commands above, add the three public variables, then deploy `master`.
+2. Render: create a Web Service from `Pxn5322/velaris` on branch `master`, then set the runtime, region, plan, build, start and health values above.
+3. Enter the secret values in the provider dashboards. Never add them to this repository.
+4. In Supabase Auth, set the Site URL and redirect allowlist to the web origin. This step is not done yet. Password recovery and confirmation links need it.
+5. Redeploy the API after a `CORS_ORIGIN` change. Redeploy the web app after a `NEXT_PUBLIC_*` change, because Next.js bakes public values into the build.
+6. For a custom domain, add it in Vercel, then replace the aliases in `CORS_ORIGIN` and `APP_BASE_URL`, and add it to the Supabase Auth allowlist.
+
+**Known limits**
+- The Vercel account is on the Hobby plan. Vercel does not allow commercial use on Hobby; upgrade to Pro before production.
+- The Render service uses a free instance. It sleeps after idle, so the first request is slow. Use a paid always-on instance for the T6.03 p95 run and production.
+- No custom domain exists yet.
+- The repository has no `prisma/migrations` directory. No migration ran during this deployment, and the current database schema already exists. Do not treat this as a migration history; reconcile it before production (T6.04).
+- `DATABASE_URL` uses the Supabase session pooler `aws-0-ap-northeast-1.pooler.supabase.com:5432`, username `postgres.lygekvhwmhbonsdeiaot` and `?sslmode=no-verify`. The direct host is IPv6-only.
+- `sslmode=no-verify` does not verify the pooler certificate. This is a development-only setting. Before production, use the Supabase CA with `verify-full`, or enable the IPv4 add-on and use the direct host. Do not claim production readiness with this setting.
+- Render Singapore and Supabase Tokyo are different regions. The 2026-11-10 authenticated read measured p95 1125.84 ms at concurrency 1, over the 200 ms budget. A host in the database region is required to test NFR-04; do not claim it is met.
+
+**Deployment evidence**
+| Check | Result |
+| --- | --- |
+| API root | 200 |
+| Protected retention route without a token | 401 |
+| Web root | 200 |
+| Vercel deployment | `dpl_3HqWrmxcy11cQyZnFhnhZK1YFxeK` READY; aliases assigned |
+| Render deployment | `dep-dbpedj942hec73cdnl6g` live (first deploy `dep-dbpe5bbrjlhs73fm2qa0`) |
+| CORS allowlist | Preflight from `https://velaris-web-bice.vercel.app` returned 204 with `access-control-allow-origin` |
+| Authorized retention read | 200 for 2/2 requests, zero errors, p95 1125.84 ms at concurrency 1; over the 200 ms budget |
+
+Open: cross-tenant 403, retention save and audit row, warm-instance p95, rollback rehearsal, Supabase Auth redirect settings and TLS certificate verification.
+
 ## 7. Operations
 - T6.03 smoke and rollback steps live in section 6.1. Run them against the single environment; do not create a staging project (D-37).
 - Monitoring: API error rate and p50/p95/p99 latency, queue depth/failures, provider availability, ingestion failures, AI evaluation/grounding/citation failures, cost, audit completeness and deployment health.
-- Release: run all gates, deploy to staging, smoke test, review telemetry, obtain human production approval, then deploy using the chosen provider's verified process.
+- Release: run all gates, deploy to the single environment, smoke test, review telemetry, obtain human production approval, then use the provider's verified process.
 - Rollback: restore previous app artifact/config where safe; use forward fixes or tested restore for incompatible migrations. Agent rollback selects a prior immutable published version and preserves history.
 - Smoke tests: health endpoint; protected endpoint returns 401 without credentials; one allowed tenant-scoped read; cross-tenant read denied; AI provider/queue health; audit/trace sample present.
 - Verify: Not configured; record deployment ID, test outputs, owner approval and rollback rehearsal result.
