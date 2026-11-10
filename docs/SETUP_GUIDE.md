@@ -130,6 +130,7 @@ Each section remains a setup plan, not a verified instruction, until the provide
 4. After authentication, NestJS resolves the application user, active status, tenant membership and permission set from trusted application data. Do not grant roles from user-editable metadata or a client-supplied tenant ID.
 5. **Verify:** Not configured; valid login/token succeeds; missing/invalid/expired token returns 401; authenticated user without permission returns 403; disabled user and cross-tenant access are denied; recovery/verification redirects are constrained to approved URLs.
 6. Recovery and confirmation links return to `/auth/callback`. The page reads the fragment, stores the session, removes the fragment from the address bar, and offers a new-password form for `type=recovery`. Product signup creates a confirmed account through the server admin API, so `/auth/signup` does not send a confirmation email; the confirmation page handles links created by Supabase Auth directly.
+7. Hosted verification on 2026-11-10: real recovery and confirmation emails arrived at a disposable inbox. Both links carried the approved `/auth/callback` redirect. Recovery removed the fragment, updated the password, and a new-password login returned 200; confirmation showed `Email confirmed` and its login returned 200. A signed-in synthetic tenant saved `KNOWLEDGE 365` and `MEMORY 30`, and the History panel showed two `retention.policy_changed` rows. Cleanup left zero synthetic tenants and Auth accounts. See `.agents/evidence-t6.07.md`.
 
 ### 5.6 AI provider and embeddings
 1. Select provider/model, data processing terms, region and cost limits before production data use.
@@ -168,7 +169,7 @@ The first deployment ran on 2026-11-10. The deployment rows, the hosted smoke, c
 **Deploy**
 - [x] N/A: the repository has no `prisma/migrations` directory and no schema change was applied. Reconcile the schema history before production.
 - [x] Deploy the API to Render, then the web app to Vercel.
-- [x] Record the deployment ids and commit SHA. First deploy: Render `dep-dbpedj942hec73cdnl6g` (first deploy `dep-dbpe5bbrjlhs73fm2qa0`), Vercel `dpl_3HqWrmxcy11cQyZnFhnhZK1YFxeK`, commit `78e4327`. Follow-up deploy: Render `dep-dbpepu3bc2fs73a0i8a0` then `dep-dbpert2jnfac73985n0g`, Vercel `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq`, commit `a725bdd`.
+- [x] Record the deployment ids and commit SHA. First deploy: Render `dep-dbpedj942hec73cdnl6g` (first deploy `dep-dbpe5bbrjlhs73fm2qa0`), Vercel `dpl_3HqWrmxcy11cQyZnFhnhZK1YFxeK`, commit `78e4327`. Follow-up deploy: Render `dep-dbpepu3bc2fs73a0i8a0` then `dep-dbpert2jnfac73985n0g`, Vercel `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq`, commit `a725bdd`. T6.07 deploy: Vercel `dpl_DgWjALjWD12Y6aasX8moiRJK31U2` for commit `ea086f3`; `/auth/callback` returned 200 on the production alias.
 
 **Smoke tests against the deployed origin**
 ```bash
@@ -203,7 +204,7 @@ E2E_LIVE_API_URL=https://velaris-api-aral.onrender.com E2E_BASE_URL=https://vela
 ```
 - [x] Liveness returned 200 and the protected route returned 401 on 2026-11-10.
 - [x] Hosted smoke passed on `a725bdd`: signup 201, login 200, own read 200, cross-tenant 403, retention save 200 and audit read 200. The audit row matched category `TRACES` and 45 days.
-- [x] The retention panel has a ten-change recent history and links to the full filtered audit trail. Seven local retention journeys pass; the hosted panel was not manually inspected.
+- [x] The retention panel has a ten-change recent history and links to the full filtered audit trail. Seven local retention journeys pass; the hosted panel was inspected on 2026-11-10 with a signed-in synthetic tenant, and `KNOWLEDGE 365` and `MEMORY 30` produced two history rows.
 - [x] `node scripts/load-profile.mjs --auth-signup` recorded a warm p95 of 1350.52 ms at concurrency 8 with 90/90 responses, zero errors and 9 req/s. The budget is 200 ms, so NFR-04 is not met. Report: `.agents/evidence-t6.03-load-hosted.json`.
 - [x] Cleanup removed seven synthetic tenants and seven Auth accounts across the initial and final runs; the final dry run reported zero.
 
@@ -222,7 +223,8 @@ The single development environment becomes production only through this controll
 
 **Preconditions**
 - [x] T6.03 smoke tests and the rollback rehearsal passed on the deployed single environment.
-- [ ] `docs/TESTING.md` section 9 records the results, and the owner approves the cutover.
+- [x] `docs/TESTING.md` section 9 records the hosted Auth and retention results (2026-11-10).
+- [ ] The owner approves the cutover.
 - [ ] The production Supabase project exists in the approved region and plan, with backups or PITR confirmed and one restore drill recorded.
 - [ ] The hosting provider, domains and TLS are approved, and the spend is authorised.
 
@@ -293,7 +295,7 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 1. Vercel: import `Pxn5322/velaris`, set root `apps/web`, set the install and build commands above, add the three public variables, then deploy `master`.
 2. Render: create a Web Service from `Pxn5322/velaris` on branch `master`, then set the runtime, region, plan, build, start and health values above.
 3. Enter the secret values in the provider dashboards. Never add them to this repository.
-4. Supabase Auth is configured: Site URL `https://velaris-web-bice.vercel.app`; allowlist `https://velaris-web-bice.vercel.app`, `https://velaris-web-bice.vercel.app/**`, both other Vercel aliases with `/**`, and `http://localhost:3000` / `http://localhost:3001` with `/**`. A configuration read verified these values. Email delivery of recovery and confirmation links was not exercised.
+4. Supabase Auth is configured: Site URL `https://velaris-web-bice.vercel.app`; allowlist `https://velaris-web-bice.vercel.app`, `https://velaris-web-bice.vercel.app/**`, both other Vercel aliases with `/**`, and `http://localhost:3000` / `http://localhost:3001` with `/**`. A configuration read verified these values. Real recovery and confirmation emails were delivered on 2026-11-10; both links used the approved callback, and the password update and confirmed login passed.
 5. Redeploy the API after a `CORS_ORIGIN` change. Redeploy the web app after a `NEXT_PUBLIC_*` change, because Next.js bakes public values into the build.
 6. For a custom domain, add it in Vercel, then replace the aliases in `CORS_ORIGIN` and `APP_BASE_URL`, and add it to the Supabase Auth allowlist.
 
@@ -311,16 +313,20 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 | --- | --- |
 | API root | 200 on `dep-dbpetitbedkc738i7plg` |
 | Protected retention route without a token | 401 |
-| Web root | 200 on `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq` |
+| Web root | 200 on `dpl_DgWjALjWD12Y6aasX8moiRJK31U2` (commit `ea086f3`) |
+| `/auth/callback` | 200 on the production alias; recovery and confirmation links accepted |
+| Hosted Auth email | Real recovery and confirmation delivered; callback redirect; password update and confirmed login returned 200 |
+| Hosted retention history | Two `retention.policy_changed` rows from `KNOWLEDGE 365` and `MEMORY 30`; cleanup zero |
 | Hosted smoke | signup 201, login 200, own read 200, cross-tenant 403, save 200, audit 200 |
 | Vercel deployment | `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq` READY; aliases assigned; rollback to `dpl_CbaTyj8hZZ5mxP3ri3y152TrRFGD` and forward passed |
+| Vercel T6.07 deployment | `dpl_DgWjALjWD12Y6aasX8moiRJK31U2` READY for `ea086f3`; aliases assigned |
 | Render deployment | `dep-dbpetitbedkc738i7plg` live; rollback to `dep-dbpet2s9v7es73bn764g` and forward passed |
 | CORS allowlist | Preflight from `https://velaris-web-bice.vercel.app` returned 204 with `access-control-allow-origin` |
 | Authorized retention read | 90/90 200, zero errors, p95 1350.52 ms at concurrency 8; over the 200 ms budget |
 | Database TLS | `verify-full` with Supabase Root 2021 CA; hosted smoke passed |
-| Supabase Auth | Site URL and redirect allowlist set and read back; email delivery not exercised |
+| Supabase Auth | Site URL and redirect allowlist set and read back; real recovery and confirmation delivery verified |
 
-Open: NFR-04 remains unmet on the cross-region free instance; the hosted retention panel was not visually inspected; owner approval and production cutover remain (T6.04 and GATE-6).
+Open: NFR-04 remains unmet on the cross-region free instance; owner approval and production cutover remain (T6.04 and GATE-6).
 
 ## 7. Operations
 - T6.03 smoke and rollback steps live in section 6.1. Run them against the single environment; do not create a staging project (D-37).

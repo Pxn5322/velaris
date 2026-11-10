@@ -1,36 +1,34 @@
 # Evidence — production cutover checklist
 
-Date: 2026-11-05. Preparation only; no production action ran.
+Date: 2026-11-10. Preparation only; no production action ran. Owner approval is still required.
 
-## What exists now
+## Verified now
 
-`docs/SETUP_GUIDE.md` section 6.2 holds the controlled cutover from the single
-development environment to production (D-37):
+- T6.03 deployment, hosted smoke, cleanup, TLS verification and rollback rehearsal passed on the single environment.
+- T6.07 hosted Auth verification passed:
+  - a real Supabase recovery email was delivered to a disposable inbox;
+  - the link used `redirect_to=https://velaris-web-bice.vercel.app/auth/callback`;
+  - the recovery page removed the fragment, updated the password and a new-password login returned 200;
+  - a real confirmation email was delivered, the page showed `Email confirmed`, and the confirmed login returned 200.
+- The hosted retention History panel was inspected with a signed-in synthetic tenant. `KNOWLEDGE 365` and `MEMORY 30` produced two `retention.policy_changed` rows, and the filtered audit link was present.
+- The final cleanup dry run reported zero synthetic tenants and zero synthetic Auth accounts.
+- The same-region p95 is not measured. Render Singapore and Supabase Tokyo remain in different regions; the cross-region warm p95 is 1350.52 ms at concurrency 8, over the 200 ms budget.
 
-- preconditions: T6.03 smoke and rollback rehearsal, owner approval, a
-  production project with backups and a restore drill, approved hosting and
-  spend;
-- data clearing: delete synthetic auth accounts and tenant rows, keep the
-  migration history and seeded roles, verify every application table is empty;
-- production provisioning: migrations, roles, vector extension, indexes,
-  CHECK constraints, row-level security, Auth redirect URLs and origins;
-- key rotation: new publishable key, service-role key and JWT secret, production
-  values only in the host secret store, a web rebuild because `NEXT_PUBLIC_*`
-  is baked in, a scan of built assets for the old host and revocation of the
-  development service-role key;
-- isolation checks before release: one synthetic workspace, own-tenant reads,
-  cross-tenant 403, missing credential 401, seeded retention window and one
-  `retention.policy_changed` event, no development rows, and a live J-01 run;
-- release observation and rollback by redeploying the previous artifacts.
+`docs/SETUP_GUIDE.md` section 6.2 holds the controlled cutover (D-37).
 
-## Why no cutover ran
+## Owner decisions still required
 
-The cutover needs a production Supabase project, approved hosting, domains,
-TLS and spend approval. None exists yet. It also depends on T6.03, which is
-open until the owner supplies the hosting target.
+1. **Same-region performance.** Choose either a Tokyo host for the NestJS API or a Singapore Supabase project. Neither exists. A new service or project needs explicit approval and credentials; an existing provider region cannot be changed.
+2. **Production cutover.** Approve the production project and region, plan and spend, backups or PITR plus one restore drill, paid hosting, a domain, key rotation, clearing development data and reconciliation of the missing Prisma migration history.
+3. **Release approval.** Review the evidence and approve T6.04/GATE-6. This agent cannot self-approve production.
+
+## What was not done
+
+- No production Supabase project, backup, restore drill, migration deploy or key rotation ran.
+- No production hosting upgrade, custom domain or DNS change ran.
+- No development data was deleted outside the disposable checks described above.
+- No production deployment or release approval ran.
 
 ## Next step
 
-T6.03 completes. The owner then runs section 6.2 in order, records each result
-in `docs/TESTING.md` section 9 and asks for release approval. No automated
-production deployment exists.
+The owner answers decisions 1 and 2. Then execute section 6.2 in order, record each result in `docs/TESTING.md` section 9, and request release approval. No automated production deployment exists.
