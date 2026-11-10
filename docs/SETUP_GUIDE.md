@@ -91,7 +91,7 @@ Names below are proposed categories for the initial implementation. Add or remov
 | `E2E_LIVE_API_URL` | Playwright live registration journey (`npm run e2e:live`); when absent the spec skips, so the default suite stays offline | no | shell environment for the check; the single environment's API origin |
 | `E2E_LIVE_PASSWORD` | Password for the synthetic account the live registration journey creates (defaults to a documented test value) | yes | shell environment only; never commit a real password |
 
-The deployed API uses the Supabase IPv4 session pooler because the direct database host has no IPv4 route. Use port 5432, username `postgres.<project-ref>`, `sslmode=verify-full` and `sslrootcert=certs/supabase-root-2021.crt`. The committed certificate is the public Supabase Root 2021 CA. It is not a secret and expires on 2031-04-26. The pooler chain verifies fully with this root.
+The deployed API uses the Supabase IPv4 session pooler because the direct database host has no IPv4 route. Use port 5432, username `postgres.<project-ref>` and `sslmode=verify-full`. Render runs `npm run start:prod --workspace apps/api` with `apps/api` as the working directory, so the deployed value is `sslrootcert=../../certs/supabase-root-2021.crt`. A command started at the repository root uses `sslrootcert=certs/supabase-root-2021.crt`. The committed certificate is the public Supabase Root 2021 CA. It is not a secret and expires on 2031-04-26. The pooler chain verifies fully with this root.
 
 Public browser variables must never contain server secrets. Validate required variables at startup and mention the missing variable name only, never its value. Verify: remove a required local variable and confirm startup fails with a clear safe error; exact test is **Not run**.
 
@@ -146,10 +146,10 @@ N/A — no specific email, chat channel, CRM or external integration provider is
 - Hosting: Vercel hosts `apps/web` and Render hosts `apps/api` in Singapore. The Supabase project is in `ap-northeast-1` (Tokyo), so the API crosses regions. The current deployment is the single environment (D-37). Section 6.3 records the origins, settings and manual steps. Vercel Hobby and the Render free instance are development plans, not production commitments.
 - Migrations must be reviewed and run as a controlled deploy step with a rollback/forward-fix strategy; destructive migrations require owner review.
 - Environment: one deployment only until production (D-37). No staging project exists, so a live check targets the current environment with the current keys.
-- Verify: 2026-11-10, the deployed API root returned 200, the protected retention route returned 401 without a token, the deployed web root returned 200, and an authorized tenant read returned 200 with zero errors. Cross-tenant denial, rollback rehearsal and a warm-instance p95 remain open for T6.03. `npm run e2e:live` is the live registration check; it skips without `E2E_LIVE_API_URL`.
+- Verify: 2026-11-10, the deployed API root returned 200, the protected retention route returned 401 without a token, the deployed web root returned 200, and the hosted smoke passed signup 201, login 200, own read 200, cross-tenant 403, retention save 200 and audit read 200. The authenticated retention p95 was 1350.52 ms at concurrency 8 with zero errors, over the 200 ms budget. The synthetic data cleanup returned zero remaining rows. The web and API rollback rehearsals passed. `npm run e2e:live` is the live registration check; it skips without `E2E_LIVE_API_URL`.
 
 ### 6.1 Single-environment deployment checklist (T6.03, D-37)
-The first deployment ran on 2026-11-10. The deployment row, the public smoke checks and one authorized tenant read are recorded. Unchecked items remain open for T6.03.
+The first deployment ran on 2026-11-10. The deployment rows, the hosted smoke, cleanup, p95 measurement and rollback rehearsal are recorded. Unchecked items remain open.
 
 **Owner inputs before deployment**
 - [x] Hosting target: Vercel for `apps/web` and Render for `apps/api`, both with TLS.
@@ -167,7 +167,7 @@ The first deployment ran on 2026-11-10. The deployment row, the public smoke che
 **Deploy**
 - [x] N/A: the repository has no `prisma/migrations` directory and no schema change was applied. Reconcile the schema history before production.
 - [x] Deploy the API to Render, then the web app to Vercel.
-- [x] Record the deployment ids and commit SHA: Render `dep-dbpedj942hec73cdnl6g` (first deploy `dep-dbpe5bbrjlhs73fm2qa0`), Vercel `dpl_3HqWrmxcy11cQyZnFhnhZK1YFxeK`, commit `78e4327`.
+- [x] Record the deployment ids and commit SHA. First deploy: Render `dep-dbpedj942hec73cdnl6g` (first deploy `dep-dbpe5bbrjlhs73fm2qa0`), Vercel `dpl_3HqWrmxcy11cQyZnFhnhZK1YFxeK`, commit `78e4327`. Follow-up deploy: Render `dep-dbpepu3bc2fs73a0i8a0` then `dep-dbpert2jnfac73985n0g`, Vercel `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq`, commit `a725bdd`.
 
 **Smoke tests against the deployed origin**
 ```bash
@@ -201,26 +201,26 @@ node --env-file=.env scripts/cleanup-load-tenants.mjs --delete
 E2E_LIVE_API_URL=https://velaris-api-aral.onrender.com E2E_BASE_URL=https://velaris-web-bice.vercel.app npm run e2e:live
 ```
 - [x] Liveness returned 200 and the protected route returned 401 on 2026-11-10.
-- [x] The authorized retention read returned 200 for the synthetic tenant: 2/2 requests, zero errors, p95 1125.84 ms at concurrency 1. The free cross-region instance is over the 200 ms budget, so NFR-04 is not met.
-- [ ] A trace and an audit row exist for the smoke run: `GET /audit/traces` and `GET /audit/events` with the tenant scope.
-- [ ] The retention panel loads in the admin settings tab, shows the newest change, opens the filtered audit trail and saves one window, and the audit trail shows `retention.policy_changed`.
-- [ ] `retention-load.json` records a warm-instance p95 at concurrency 8 against the 200 ms budget. The 2026-11-10 smoke measured p95 1125.84 ms at concurrency 1 on the free cross-region instance, so NFR-04 is not met. The script prints the synthetic email and tenant id for cleanup.
+- [x] Hosted smoke passed on `a725bdd`: signup 201, login 200, own read 200, cross-tenant 403, retention save 200 and audit read 200. The audit row matched category `TRACES` and 45 days.
+- [x] The retention panel has a ten-change recent history and links to the full filtered audit trail. Seven local retention journeys pass; the hosted panel was not manually inspected.
+- [x] `node scripts/load-profile.mjs --auth-signup` recorded a warm p95 of 1350.52 ms at concurrency 8 with 90/90 responses, zero errors and 9 req/s. The budget is 200 ms, so NFR-04 is not met. Report: `.agents/evidence-t6.03-load-hosted.json`.
+- [x] Cleanup removed six synthetic tenants and six Auth accounts; the next dry run reported zero.
 
 **Rollback rehearsal**
-- [ ] Redeploy the previous artifact pair and repeat smoke tests 1 and 2.
-- [ ] Confirm the deployment needs no schema migration. The repository has no `prisma/migrations` directory, so this rehearsal must use an artifact rollback only. Reconcile the schema history before production.
-- [ ] Record the rehearsal result, the artifact ids and the time to restore.
-- [ ] Stop after three failed attempts and report the failure with logs; do not improvise a database restore on production data.
+- [x] Vercel rollback to immediate predecessor `dpl_CbaTyj8hZZ5mxP3ri3y152TrRFGD` answered 200 in about 20 s and was restored to `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq`. Hobby rejected a rollback to older `dpl_3HqWrmxcy11cQyZnFhnhZK1YFxeK` with HTTP 402, so only one step back was exercised.
+- [x] Render rollback from `dep-dbpert2jnfac73985n0g` to `dep-dbpepu3bc2fs73a0i8a0` created `dep-dbpet2s9v7es73bn764g` live in 53 s; `/` answered 200 and the protected route 401. Roll-forward to `dep-dbpetitbedkc738i7plg` went live in 34 s and passed the full smoke.
+- [x] No schema migration was needed. The repository has no `prisma/migrations` directory. Reconcile the schema history before production.
+- [x] No rollback attempt failed three times and no database restore ran. A rollback target must contain `certs/supabase-root-2021.crt`; both tested API builds did.
 
 **After the smoke**
-- [ ] Record the evidence in `docs/TESTING.md` section 9 and a `.agents/evidence-*.md` file.
+- [x] Recorded the evidence in `docs/TESTING.md` section 9 and `.agents/evidence-t6.03-hosted.md`.
 - [ ] Ask the owner for release approval. No automated production deployment exists.
 
 ### 6.2 Production cutover checklist (D-37, T6.04)
 The single development environment becomes production only through this controlled cutover. Do not copy development data into production.
 
 **Preconditions**
-- [ ] T6.03 smoke tests and the rollback rehearsal passed on the deployed single environment.
+- [x] T6.03 smoke tests and the rollback rehearsal passed on the deployed single environment.
 - [ ] `docs/TESTING.md` section 9 records the results, and the owner approves the cutover.
 - [ ] The production Supabase project exists in the approved region and plan, with backups or PITR confirmed and one restore drill recorded.
 - [ ] The hosting provider, domains and TLS are approved, and the spend is authorised.
@@ -292,31 +292,34 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 1. Vercel: import `Pxn5322/velaris`, set root `apps/web`, set the install and build commands above, add the three public variables, then deploy `master`.
 2. Render: create a Web Service from `Pxn5322/velaris` on branch `master`, then set the runtime, region, plan, build, start and health values above.
 3. Enter the secret values in the provider dashboards. Never add them to this repository.
-4. In Supabase Auth, set the Site URL and redirect allowlist to the web origin. This step is not done yet. Password recovery and confirmation links need it.
+4. Supabase Auth is configured: Site URL `https://velaris-web-bice.vercel.app`; allowlist `https://velaris-web-bice.vercel.app`, `https://velaris-web-bice.vercel.app/**`, both other Vercel aliases with `/**`, and `http://localhost:3000` / `http://localhost:3001` with `/**`. A configuration read verified these values. Email delivery of recovery and confirmation links was not exercised.
 5. Redeploy the API after a `CORS_ORIGIN` change. Redeploy the web app after a `NEXT_PUBLIC_*` change, because Next.js bakes public values into the build.
 6. For a custom domain, add it in Vercel, then replace the aliases in `CORS_ORIGIN` and `APP_BASE_URL`, and add it to the Supabase Auth allowlist.
 
 **Known limits**
-- The Vercel account is on the Hobby plan. Vercel does not allow commercial use on Hobby; upgrade to Pro before production.
+- The Vercel account is on the Hobby plan. Vercel does not allow commercial use on Hobby; upgrade to Pro before production. Hobby rolls back only one production deployment and rejects older targets with HTTP 402.
 - The Render service uses a free instance. It sleeps after idle, so the first request is slow. Use a paid always-on instance for the T6.03 p95 run and production.
 - No custom domain exists yet.
 - The repository has no `prisma/migrations` directory. No migration ran during this deployment, and the current database schema already exists. Do not treat this as a migration history; reconcile it before production (T6.04).
-- `DATABASE_URL` uses the Supabase session pooler `aws-0-ap-northeast-1.pooler.supabase.com:5432`, username `postgres.lygekvhwmhbonsdeiaot`, `?sslmode=verify-full` and `sslrootcert=certs/supabase-root-2021.crt`. The direct host is IPv6-only.
+- `DATABASE_URL` uses the Supabase session pooler `aws-0-ap-northeast-1.pooler.supabase.com:5432`, username `postgres.lygekvhwmhbonsdeiaot`, `?sslmode=verify-full` and `sslrootcert=../../certs/supabase-root-2021.crt` on Render. The Render start command runs in `apps/api`, so the path goes up two levels to the repository root. The direct host is IPv6-only.
 - The committed CA expires on 2031-04-26. Replace it before then, or enable the Supabase IPv4 add-on and use the direct host.
-- Render Singapore and Supabase Tokyo are different regions. The 2026-11-10 authenticated read measured p95 1125.84 ms at concurrency 1, over the 200 ms budget. A host in the database region is required to test NFR-04; do not claim it is met.
+- Render Singapore and Supabase Tokyo are different regions. On 2026-11-10 the warm authenticated read measured p95 1350.52 ms at concurrency 8 (90 requests, 9 req/s, zero errors), over the 200 ms budget. The token cache removes repeated Supabase Auth calls but cannot remove the cross-region database round trips. A host in the database region is required to test NFR-04; do not claim it is met.
 
 **Deployment evidence**
 | Check | Result |
 | --- | --- |
-| API root | 200 |
+| API root | 200 on `dep-dbpetitbedkc738i7plg` |
 | Protected retention route without a token | 401 |
-| Web root | 200 |
-| Vercel deployment | `dpl_3HqWrmxcy11cQyZnFhnhZK1YFxeK` READY; aliases assigned |
-| Render deployment | `dep-dbpedj942hec73cdnl6g` live (first deploy `dep-dbpe5bbrjlhs73fm2qa0`) |
+| Web root | 200 on `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq` |
+| Hosted smoke | signup 201, login 200, own read 200, cross-tenant 403, save 200, audit 200 |
+| Vercel deployment | `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq` READY; aliases assigned; rollback to `dpl_CbaTyj8hZZ5mxP3ri3y152TrRFGD` and forward passed |
+| Render deployment | `dep-dbpetitbedkc738i7plg` live; rollback to `dep-dbpet2s9v7es73bn764g` and forward passed |
 | CORS allowlist | Preflight from `https://velaris-web-bice.vercel.app` returned 204 with `access-control-allow-origin` |
-| Authorized retention read | 200 for 2/2 requests, zero errors, p95 1125.84 ms at concurrency 1; over the 200 ms budget |
+| Authorized retention read | 90/90 200, zero errors, p95 1350.52 ms at concurrency 8; over the 200 ms budget |
+| Database TLS | `verify-full` with Supabase Root 2021 CA; hosted smoke passed |
+| Supabase Auth | Site URL and redirect allowlist set and read back; email delivery not exercised |
 
-Open: cross-tenant 403, retention save and audit row, warm-instance p95, rollback rehearsal, Supabase Auth redirect settings and TLS certificate verification.
+Open: NFR-04 remains unmet on the cross-region free instance; the hosted retention panel was not visually inspected; owner approval and production cutover remain (T6.04 and GATE-6).
 
 ## 7. Operations
 - T6.03 smoke and rollback steps live in section 6.1. Run them against the single environment; do not create a staging project (D-37).
@@ -324,7 +327,7 @@ Open: cross-tenant 403, retention save and audit row, warm-instance p95, rollbac
 - Release: run all gates, deploy to the single environment, smoke test, review telemetry, obtain human production approval, then use the provider's verified process.
 - Rollback: restore previous app artifact/config where safe; use forward fixes or tested restore for incompatible migrations. Agent rollback selects a prior immutable published version and preserves history.
 - Smoke tests: health endpoint; protected endpoint returns 401 without credentials; one allowed tenant-scoped read; cross-tenant read denied; AI provider/queue health; audit/trace sample present.
-- Verify: Not configured; record deployment ID, test outputs, owner approval and rollback rehearsal result.
+- Verify: T6.03 evidence is in `.agents/evidence-t6.03-hosted.md` and `docs/TESTING.md`; record the deployment ID, test outputs, owner approval and rollback rehearsal result.
 
 ## 8. Checklists and troubleshooting
 - [ ] Local: services healthy, migrations apply, app runs, tests pass, tenant isolation tests pass.
