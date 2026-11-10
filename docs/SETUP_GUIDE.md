@@ -129,6 +129,7 @@ Each section remains a setup plan, not a verified instruction, until the provide
 3. Configure NestJS access-token verification using a maintained supported Supabase/JWT verification approach. Validate issuer, signature, expiry and expected claims; handle key rotation and verifier outages safely.
 4. After authentication, NestJS resolves the application user, active status, tenant membership and permission set from trusted application data. Do not grant roles from user-editable metadata or a client-supplied tenant ID.
 5. **Verify:** Not configured; valid login/token succeeds; missing/invalid/expired token returns 401; authenticated user without permission returns 403; disabled user and cross-tenant access are denied; recovery/verification redirects are constrained to approved URLs.
+6. Recovery and confirmation links return to `/auth/callback`. The page reads the fragment, stores the session, removes the fragment from the address bar, and offers a new-password form for `type=recovery`. Product signup creates a confirmed account through the server admin API, so `/auth/signup` does not send a confirmation email; the confirmation page handles links created by Supabase Auth directly.
 
 ### 5.6 AI provider and embeddings
 1. Select provider/model, data processing terms, region and cost limits before production data use.

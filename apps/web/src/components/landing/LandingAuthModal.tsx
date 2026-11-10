@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import { apiFetch } from "@/lib/api/client";
-import { isAuthConfigured, signIn, signOut } from "@/lib/auth/session";
+import {
+  isAuthConfigured,
+  requestPasswordReset,
+  signIn,
+  signOut,
+} from "@/lib/auth/session";
 import { fetchSessionRole, routeForRole } from "@/lib/auth/uiRole";
 
 interface LandingAuthModalProps {
@@ -25,6 +30,7 @@ export function LandingAuthModal({
   const [password, setPassword] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -34,6 +40,7 @@ export function LandingAuthModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     if (!isAuthConfigured()) {
       setError("Sign-in is not configured.");
       return;
@@ -82,6 +89,30 @@ export function LandingAuthModal({
       router.push(routeForRole(uiRole));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed.");
+      setSubmitting(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setError(null);
+    setNotice(null);
+    if (!email.trim()) {
+      setError("Enter your email first, then request the reset link.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await requestPasswordReset(email.trim());
+      setNotice(
+        "If an account exists for that address, a reset link is on its way. Check the inbox and spam folder.",
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The reset email could not be sent.",
+      );
+    } finally {
       setSubmitting(false);
     }
   };
@@ -155,6 +186,22 @@ export function LandingAuthModal({
               data-testid="sign-in-password"
             />
           </div>
+          {!isSignup && (
+            <button
+              type="button"
+              onClick={() => void handleForgotPassword()}
+              disabled={submitting}
+              className="text-[11px] font-bold underline text-muted-custom hover:text-heading disabled:opacity-60"
+              data-testid="forgot-password"
+            >
+              Forgot password?
+            </button>
+          )}
+          {notice && (
+            <p role="status" className="text-xs text-emerald-300">
+              {notice}
+            </p>
+          )}
           {error && (
             <p
               role="alert"

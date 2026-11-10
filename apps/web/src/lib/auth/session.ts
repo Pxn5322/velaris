@@ -59,6 +59,13 @@ export function getAccessToken(): string | null {
   return getSession()?.accessToken ?? null;
 }
 
+/** Persist a session received from a Supabase email link or password sign-in. */
+export function storeSession(session: AuthSession): void {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  }
+}
+
 export function signOut(): void {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(STORAGE_KEY);
@@ -110,8 +117,63 @@ export async function signIn(
     expiresAt: data.expires_at ?? 0,
     email: data.user?.email ?? email,
   };
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-  }
+  storeSession(session);
   return session;
+}
+
+/**
+ * Ask Supabase Auth to send a recovery link. The response is deliberately
+ * identical for existing and unknown addresses, so the caller never learns
+ * whether an account exists.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  if (!isAuthConfigured()) {
+    throw new Error("Password recovery is not configured on this deployment.");
+  }
+  const redirectTo =
+    typeof window === "undefined"
+      ? "/auth/callback"
+      : `${window.location.origin}/auth/callback`;
+  const response = await fetch(
+    `${SUPABASE_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_PUBLISHABLE_KEY as string,
+      },
+      body: JSON.stringify({ email }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      response.status === 429
+        ? "Too many reset emails. Wait a few minutes and try again."
+        : "The reset email could not be sent. Try again shortly.",
+    );
+  }
+}
+
+/** Set a new password for the session delivered by a recovery link. */
+export async function updatePassword(password: string): Promise<void> {
+  const session = getSession();
+  if (!session || !isAuthConfigured()) {
+    throw new Error("The recovery link is missing or has expired.");
+  }
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_PUBLISHABLE_KEY as string,
+      Authorization: `Bearer ${session.accessToken}`,
+    },
+    body: JSON.stringify({ password }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      response.status === 401 || response.status === 403
+        ? "The recovery link has expired. Request a new one."
+        : "The password could not be updated. Try again.",
+    );
+  }
 }
