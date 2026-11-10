@@ -275,7 +275,7 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 - Install command `cd ../.. && npm ci`; build command `cd ../.. && npm run build:web`.
 - Build variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `NEXT_PUBLIC_API_URL=https://velaris-api-aral.onrender.com`.
 - Aliases: `velaris-web-bice.vercel.app`, `velaris-web-pxn5322s-projects.vercel.app` and `velaris-web-git-master-pxn5322s-projects.vercel.app`.
-- Git auto-deploy is disabled on this project. Deploy manually from the Vercel dashboard.
+- Git auto-deploy is enabled. A push to `master` creates a production deployment. Vercel can stage a deployment without assigning the short alias, so check `aliasAssigned` and the production alias after each push.
 
 **Render settings**
 - Repository `Pxn5322/velaris`, branch `master`, root directory empty.
