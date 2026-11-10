@@ -204,7 +204,7 @@ E2E_LIVE_API_URL=https://velaris-api-aral.onrender.com E2E_BASE_URL=https://vela
 - [x] Hosted smoke passed on `a725bdd`: signup 201, login 200, own read 200, cross-tenant 403, retention save 200 and audit read 200. The audit row matched category `TRACES` and 45 days.
 - [x] The retention panel has a ten-change recent history and links to the full filtered audit trail. Seven local retention journeys pass; the hosted panel was not manually inspected.
 - [x] `node scripts/load-profile.mjs --auth-signup` recorded a warm p95 of 1350.52 ms at concurrency 8 with 90/90 responses, zero errors and 9 req/s. The budget is 200 ms, so NFR-04 is not met. Report: `.agents/evidence-t6.03-load-hosted.json`.
-- [x] Cleanup removed six synthetic tenants and six Auth accounts; the next dry run reported zero.
+- [x] Cleanup removed seven synthetic tenants and seven Auth accounts across the initial and final runs; the final dry run reported zero.
 
 **Rollback rehearsal**
 - [x] Vercel rollback to immediate predecessor `dpl_CbaTyj8hZZ5mxP3ri3y152TrRFGD` answered 200 in about 20 s and was restored to `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq`. Hobby rejected a rollback to older `dpl_3HqWrmxcy11cQyZnFhnhZK1YFxeK` with HTTP 402, so only one step back was exercised.
