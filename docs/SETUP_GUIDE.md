@@ -91,7 +91,7 @@ Names below are proposed categories for the initial implementation. Add or remov
 | `E2E_LIVE_API_URL` | Playwright live registration journey (`npm run e2e:live`); when absent the spec skips, so the default suite stays offline | no | shell environment for the check; the single environment's API origin |
 | `E2E_LIVE_PASSWORD` | Password for the synthetic account the live registration journey creates (defaults to a documented test value) | yes | shell environment only; never commit a real password |
 
-The deployed API uses the Supabase IPv4 session pooler because the direct database host has no IPv4 route. Use port 5432, username `postgres.<project-ref>` and `sslmode=no-verify`. `no-verify` encrypts the connection but does not verify the pooler certificate. This is a temporary development setting. Before production, install the Supabase CA and use `sslmode=verify-full`, or enable the Supabase IPv4 add-on and use the direct host.
+The deployed API uses the Supabase IPv4 session pooler because the direct database host has no IPv4 route. Use port 5432, username `postgres.<project-ref>`, `sslmode=verify-full` and `sslrootcert=certs/supabase-root-2021.crt`. The committed certificate is the public Supabase Root 2021 CA. It is not a secret and expires on 2031-04-26. The pooler chain verifies fully with this root.
 
 Public browser variables must never contain server secrets. Validate required variables at startup and mention the missing variable name only, never its value. Verify: remove a required local variable and confirm startup fails with a clear safe error; exact test is **Not run**.
 
@@ -183,13 +183,21 @@ curl -s -H "Authorization: Bearer $TOKEN" "https://velaris-api-aral.onrender.com
 # 4. Cross-tenant denial: expect 403
 curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" "https://velaris-api-aral.onrender.com/settings/retention?tenantId=$OTHER_TENANT_ID"
 
-# 5. Authenticated load: creates one synthetic tenant and fills {tenantId}
+# 5. Hosted smoke: cross-tenant 403, retention save and audit read-back
+node --env-file=.env scripts/deployment-smoke.mjs \
+  --url https://velaris-api-aral.onrender.com
+
+# 6. Authenticated load: creates one synthetic tenant and fills {tenantId}
 #    SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be in the shell.
 node scripts/load-profile.mjs --url https://velaris-api-aral.onrender.com \
   --path "/settings/retention?tenantId={tenantId}" --auth-signup \
   --concurrency 8 --duration 10 --out retention-load.json
 
-# 6. Registration in a real browser (J-01): expect the admin view
+# 7. Remove synthetic load and smoke accounts. The first command is a dry run.
+node --env-file=.env scripts/cleanup-load-tenants.mjs
+node --env-file=.env scripts/cleanup-load-tenants.mjs --delete
+
+# 8. Registration in a real browser (J-01): expect the admin view
 E2E_LIVE_API_URL=https://velaris-api-aral.onrender.com E2E_BASE_URL=https://velaris-web-bice.vercel.app npm run e2e:live
 ```
 - [x] Liveness returned 200 and the protected route returned 401 on 2026-11-10.
@@ -273,7 +281,7 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 - Repository `Pxn5322/velaris`, branch `master`, root directory empty.
 - Runtime Node, region Singapore, one instance, free plan.
 - The API reaches PostgreSQL through the Supabase session pooler at `aws-0-ap-northeast-1.pooler.supabase.com:5432`. The direct `db.<ref>.supabase.co` host is IPv6-only and fails on Render with `ENETUNREACH`.
-- The pooler chain fails Node certificate verification with `self-signed certificate in certificate chain`. The API therefore uses `sslmode=no-verify`: the traffic is encrypted, but the server certificate is not verified.
+- The API verifies the pooler chain with the committed Supabase Root 2021 CA and `sslmode=verify-full`. The certificate is public, not a secret.
 - Build command `npm ci --include=dev && npx prisma generate && npm run build:api`; start command `npm run start:prod --workspace apps/api`. The `--include=dev` flag is required because `NODE_ENV=production` makes `npm ci` omit `nest` and `prisma`, and the build then fails with `sh: 1: nest: not found`.
 - Health check path `/`; the API has no separate `/health` route.
 - Environment names: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NODE_ENV=production`, `CORS_ORIGIN` and `APP_BASE_URL`.
@@ -293,8 +301,8 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 - The Render service uses a free instance. It sleeps after idle, so the first request is slow. Use a paid always-on instance for the T6.03 p95 run and production.
 - No custom domain exists yet.
 - The repository has no `prisma/migrations` directory. No migration ran during this deployment, and the current database schema already exists. Do not treat this as a migration history; reconcile it before production (T6.04).
-- `DATABASE_URL` uses the Supabase session pooler `aws-0-ap-northeast-1.pooler.supabase.com:5432`, username `postgres.lygekvhwmhbonsdeiaot` and `?sslmode=no-verify`. The direct host is IPv6-only.
-- `sslmode=no-verify` does not verify the pooler certificate. This is a development-only setting. Before production, use the Supabase CA with `verify-full`, or enable the IPv4 add-on and use the direct host. Do not claim production readiness with this setting.
+- `DATABASE_URL` uses the Supabase session pooler `aws-0-ap-northeast-1.pooler.supabase.com:5432`, username `postgres.lygekvhwmhbonsdeiaot`, `?sslmode=verify-full` and `sslrootcert=certs/supabase-root-2021.crt`. The direct host is IPv6-only.
+- The committed CA expires on 2031-04-26. Replace it before then, or enable the Supabase IPv4 add-on and use the direct host.
 - Render Singapore and Supabase Tokyo are different regions. The 2026-11-10 authenticated read measured p95 1125.84 ms at concurrency 1, over the 200 ms budget. A host in the database region is required to test NFR-04; do not claim it is met.
 
 **Deployment evidence**
