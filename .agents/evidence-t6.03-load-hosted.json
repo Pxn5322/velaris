@@ -1,0 +1,32 @@
+{
+  "generatedAt": "2026-11-10T10:11:25.318Z",
+  "target": "https://velaris-api-aral.onrender.com",
+  "concurrency": 8,
+  "durationSecondsPerPath": 10,
+  "warmupSeconds": 3,
+  "budgetMs": 200,
+  "node": "v24.19.0",
+  "auth": {
+    "mode": "signup",
+    "email": "loadcheck-mwaj5bf6-b90967@velaris.test",
+    "tenantId": "dcf29fa5-5b97-4c68-9de4-58e810ca924e"
+  },
+  "results": [
+    {
+      "path": "/settings/retention?tenantId=dcf29fa5-5b97-4c68-9de4-58e810ca924e",
+      "requests": 90,
+      "requestsPerSecond": 9,
+      "meanMs": 915.32,
+      "p50Ms": 825.31,
+      "p90Ms": 1293.12,
+      "p95Ms": 1350.52,
+      "p99Ms": 1391.14,
+      "maxMs": 1391.14,
+      "errorCount": 0,
+      "errorSamples": [],
+      "statusCounts": {
+        "200": 90
+      }
+    }
+  ]
+}
