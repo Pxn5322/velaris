@@ -357,7 +357,7 @@ The owner approved this preparation on 2026-11-10. The test used a separate free
 | First | 2 s | 165 (16.5 req/s) | 165 | 1094.14 ms | 200 ms | 0 |
 | Warm | 5 s | 195 (19.5 req/s) | 195 | 994.47 ms | 200 ms | 0 |
 
-Both runs exceed the 200 ms budget. The API and database were in the same region, so cross-region database distance is not the only constraint. The free Render instance remains a likely limit; its single shared CPU and cold-start behaviour were not isolated by this test. The candidate is a free-plan test project with no backups or PITR. Do not treat it as production or claim NFR-04 is met. Reports: `.agents/evidence-t6.04-load-singapore.json` and `.agents/evidence-t6.04-load-singapore-warm.json`; `.agents/evidence-t6.04-inregion.md` holds the full sequence.
+Both runs exceed the 200 ms budget. The API and database were in the same region, so cross-region database distance is not the only constraint. The free Render instance remains a likely limit; its CPU, memory and cold-start behaviour were not isolated by this test. The candidate is a free-plan test project with no backups or PITR. Do not treat it as production or claim NFR-04 is met. Reports: `.agents/evidence-t6.04-load-singapore.json` and `.agents/evidence-t6.04-load-singapore-warm.json`; `.agents/evidence-t6.04-inregion.md` holds the full sequence.
 
 ## 7. Operations
 - T6.03 smoke and rollback steps live in section 6.1. Run them against the single environment; do not create a staging project (D-37).
