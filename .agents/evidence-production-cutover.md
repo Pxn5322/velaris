@@ -1,6 +1,6 @@
 # Evidence — production cutover checklist
 
-Date: 2026-11-10. Preparation only; no production action ran. Owner approval is still required.
+Date: 2026-11-10; decision recorded 2026-11-11. Preparation only; no production action ran. The owner held the release.
 
 ## Verified now
 
@@ -32,11 +32,23 @@ Date: 2026-11-10. Preparation only; no production action ran. Owner approval is 
 
 `docs/SETUP_GUIDE.md` section 6.2 holds the controlled cutover (D-37). Section 6.4 holds the candidate settings and results.
 
-## Owner decisions still required
+## Recorded decision (2026-11-11)
 
-1. **Production performance plan.** Choose paid always-on hosting and a same-region production database. Then repeat the NFR-04 profile. The current free instance is not a production commitment.
-2. **Production cutover.** Approve the production project and region, plan and spend, backups or PITR plus one restore drill, paid hosting, a domain, key rotation and clearing development data.
-3. **Release approval.** Review the evidence and approve T6.04/GATE-6. This agent cannot self-approve production.
+The owner reviewed this package and decided to hold the MVP release. T6.04 is not approved and GATE-6 stays open (D-41). The hold stays until these conditions close:
+- paid always-on hosting and a same-region production database, with the authenticated retention p95 under 200 ms;
+- production backups or PITR and one recorded restore drill;
+- custom domain and production Auth redirect URLs and keys;
+- key rotation and a development data clear;
+- reconciliation of the development database migration history;
+- a new owner decision that approves T6.04 and GATE-6.
+
+No production action ran.
+
+## Conditions for the next review
+
+1. **Production performance plan.** Choose paid always-on hosting and a same-region production database. Then repeat the NFR-04 profile and show p95 under 200 ms.
+2. **Production cutover.** Provision the production project and region, plan and spend, backups or PITR plus one restore drill, paid hosting, a domain, key rotation and clearing development data.
+3. **Release approval.** Record a new owner decision on T6.04/GATE-6 after conditions 1 and 2 close. This agent cannot self-approve production.
 
 ## What was not done
 
@@ -44,8 +56,8 @@ Date: 2026-11-10. Preparation only; no production action ran. Owner approval is 
 - No production hosting upgrade, custom domain or DNS change ran.
 - No development data was deleted outside the disposable checks described above.
 - No candidate Auth redirect URLs or keys were configured, because the candidate is not a production target.
-- No production deployment or release approval ran.
+- No production deployment or release approval ran. The owner decided to hold the release on 2026-11-11.
 
 ## Next step
 
-The owner answers decisions 1 and 2. Then execute section 6.2 in order, record each result in `docs/TESTING.md` section 9, and request release approval. No automated production deployment exists.
+Close the conditions in section 6.2 in order and record each result in `docs/TESTING.md` section 9. Then request a new release decision. No automated production deployment exists.

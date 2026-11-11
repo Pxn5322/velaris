@@ -225,7 +225,7 @@ The single development environment becomes production only through this controll
 **Preconditions**
 - [x] T6.03 smoke tests and the rollback rehearsal passed on the deployed single environment.
 - [x] `docs/TESTING.md` section 9 records the hosted Auth and retention results (2026-11-10).
-- [ ] The owner approves the cutover.
+- [ ] The owner approves the cutover. On 2026-11-11 the owner held the release: T6.04 is not approved and GATE-6 stays open (D-41). The conditions below remain open.
 - [ ] The production Supabase project exists in the approved region and plan, with backups or PITR confirmed and one restore drill recorded.
 - [ ] The hosting provider, domains and TLS are approved, and the spend is authorised.
 
@@ -327,7 +327,7 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 | Database TLS | `verify-full` with Supabase Root 2021 CA; hosted smoke passed |
 | Supabase Auth | Site URL and redirect allowlist set and read back; real recovery and confirmation delivery verified |
 
-Open: NFR-04 remains unmet on the free instance even with both services in Singapore; owner approval and production cutover remain (T6.04 and GATE-6).
+Open: NFR-04 remains unmet on the free instance even with both services in Singapore. The owner held the release on 2026-11-11: T6.04 is not approved and GATE-6 stays open (D-41). Production cutover remains.
 
 ### 6.4 Same-region performance candidate (T6.04 preparation)
 The owner approved this preparation on 2026-11-10. The test used a separate free-plan Supabase project and did not change the production target.
