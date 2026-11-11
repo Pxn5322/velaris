@@ -7,7 +7,7 @@ depends_on: [ARCHITECTURE, SECURITY, DATABASE]
 ---
 # Setup Guide — VELARIS
 
-Last verified: **2026-11-10** for the hosted deployment in sections 4, 6, 6.1 and 6.3. Other sections remain proposed examples until they are rerun on a clean machine. Record the operator and date when a step is rerun.
+Last verified: **2026-11-10** for the hosted deployment in sections 4, 6, 6.1, 6.3 and 6.4. Other sections remain proposed examples until they are rerun on a clean machine. Record the operator and date when a step is rerun.
 
 ## Supabase setup decisions (required before database foundation)
 - Create separate Supabase projects/environments for development, staging and production as appropriate to budget and risk.
@@ -145,7 +145,7 @@ N/A — no specific email, chat channel, CRM or external integration provider is
 
 ## 6. CI, hosting, domains
 - CI jobs (all verified): .github/workflows/ci.yml runs docs check, lint, type-check, unit tests, build and the npm audit gate on every push and PR; .github/workflows/e2e.yml runs the Playwright landing journeys; .github/workflows/merge-gate.yml blocks direct commits to master and pull requests without owner approval.
-- Hosting: Vercel hosts `apps/web` and Render hosts `apps/api` in Singapore. The Supabase project is in `ap-northeast-1` (Tokyo), so the API crosses regions. The current deployment is the single environment (D-37). Section 6.3 records the origins, settings and manual steps. Vercel Hobby and the Render free instance are development plans, not production commitments.
+- Hosting: Vercel hosts `apps/web` and Render hosts `apps/api` in Singapore. The current Supabase project is in `ap-northeast-1` (Tokyo), so the API crosses regions. A free-plan candidate project in `ap-southeast-1` (Singapore) was built from the nine tracked migrations on 2026-11-10 and measured over the 200 ms budget (section 6.4); the previous `DATABASE_URL` was restored. The current deployment is the single environment (D-37). Section 6.3 records the origins, settings and manual steps. Vercel Hobby and the Render free instance are development plans, not production commitments.
 - Migrations must be reviewed and run as a controlled deploy step with a rollback/forward-fix strategy; destructive migrations require owner review.
 - Environment: one deployment only until production (D-37). No staging project exists, so a live check targets the current environment with the current keys.
 - Verify: 2026-11-10, the deployed API root returned 200, the protected retention route returned 401 without a token, the deployed web root returned 200, and the hosted smoke passed signup 201, login 200, own read 200, cross-tenant 403, retention save 200 and audit read 200. The authenticated retention p95 was 1350.52 ms at concurrency 8 with zero errors, over the 200 ms budget. The synthetic data cleanup returned zero remaining rows. The web and API rollback rehearsals passed. `npm run e2e:live` is the live registration check; it skips without `E2E_LIVE_API_URL`.
@@ -162,12 +162,12 @@ The first deployment ran on 2026-11-10. The deployment rows, the hosted smoke, c
 
 **Before the deploy**
 - [ ] `npm run test`, `npm run build`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run inventory:check` and `python scripts/check_docs.py --draft` pass on the commit to deploy. CI passed on `78e4327`; the full suite was not rerun for this deployment.
-- [ ] `npx prisma migrate status` reports no pending migration against the deployment database. Not run: the repository has no `prisma/migrations` directory. Reconcile the schema history before production.
+- [ ] `npx prisma migrate status` reports no pending migration against the deployment database. Not run against the development database. The repository now holds nine tracked migrations (`0001` to `0009`), and all nine applied cleanly to an empty candidate project on 2026-11-10 (section 6.4). Reconcile the development database before production.
 - [ ] A database backup or snapshot exists, because migrations are forward-only. Not taken for this development deployment.
 - [x] N/A: this is the first deployment, so no previous web or API artifact exists for rollback.
 
 **Deploy**
-- [x] N/A: the repository has no `prisma/migrations` directory and no schema change was applied. Reconcile the schema history before production.
+- [x] N/A for this deployment: no schema change was applied. The repository now holds nine tracked migrations, and all nine applied cleanly to an empty candidate project on 2026-11-10 (section 6.4). Reconcile the development database before production.
 - [x] Deploy the API to Render, then the web app to Vercel.
 - [x] Record the deployment ids and commit SHA. First deploy: Render `dep-dbpedj942hec73cdnl6g` (first deploy `dep-dbpe5bbrjlhs73fm2qa0`), Vercel `dpl_3HqWrmxcy11cQyZnFhnhZK1YFxeK`, commit `78e4327`. Follow-up deploy: Render `dep-dbpepu3bc2fs73a0i8a0` then `dep-dbpert2jnfac73985n0g`, Vercel `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq`, commit `a725bdd`. T6.07 deploy: Vercel `dpl_DgWjALjWD12Y6aasX8moiRJK31U2` for commit `ea086f3`; `/auth/callback` returned 200 on the production alias.
 
@@ -206,12 +206,13 @@ E2E_LIVE_API_URL=https://velaris-api-aral.onrender.com E2E_BASE_URL=https://vela
 - [x] Hosted smoke passed on `a725bdd`: signup 201, login 200, own read 200, cross-tenant 403, retention save 200 and audit read 200. The audit row matched category `TRACES` and 45 days.
 - [x] The retention panel has a ten-change recent history and links to the full filtered audit trail. Seven local retention journeys pass; the hosted panel was inspected on 2026-11-10 with a signed-in synthetic tenant, and `KNOWLEDGE 365` and `MEMORY 30` produced two history rows.
 - [x] `node scripts/load-profile.mjs --auth-signup` recorded a warm p95 of 1350.52 ms at concurrency 8 with 90/90 responses, zero errors and 9 req/s. The budget is 200 ms, so NFR-04 is not met. Report: `.agents/evidence-t6.03-load-hosted.json`.
+- [x] The same-region candidate run on 2026-11-10 measured p95 1094.14 ms and 994.47 ms at concurrency 8 with zero errors. Both are over the budget, so NFR-04 is still not met (section 6.4).
 - [x] Cleanup removed seven synthetic tenants and seven Auth accounts across the initial and final runs; the final dry run reported zero.
 
 **Rollback rehearsal**
 - [x] Vercel rollback to immediate predecessor `dpl_CbaTyj8hZZ5mxP3ri3y152TrRFGD` answered 200 in about 20 s and was restored to `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq`. Hobby rejected a rollback to older `dpl_3HqWrmxcy11cQyZnFhnhZK1YFxeK` with HTTP 402, so only one step back was exercised.
 - [x] Render rollback from `dep-dbpert2jnfac73985n0g` to `dep-dbpepu3bc2fs73a0i8a0` created `dep-dbpet2s9v7es73bn764g` live in 53 s; `/` answered 200 and the protected route 401. Roll-forward to `dep-dbpetitbedkc738i7plg` went live in 34 s and passed the full smoke.
-- [x] No schema migration was needed. The repository has no `prisma/migrations` directory. Reconcile the schema history before production.
+- [x] No schema migration was needed for the rollback. The repository now holds nine tracked migrations, and all nine applied cleanly to an empty candidate project on 2026-11-10 (section 6.4).
 - [x] No rollback attempt failed three times and no database restore ran. A rollback target must contain `certs/supabase-root-2021.crt`; both tested API builds did.
 
 **After the smoke**
@@ -236,7 +237,7 @@ The single development environment becomes production only through this controll
 - [ ] Keep the migration history (`_prisma_migrations`) and the seeded system roles; they are schema, not data.
 
 **Provision production**
-- [ ] Run `npx prisma migrate deploy` against the production connection string as a controlled step. Confirm the same migration names as the verified commit.
+- [ ] Run `npx prisma migrate deploy` against the production connection string as a controlled step. Confirm the same migration names as the verified commit. Rehearsed on the Singapore candidate on 2026-11-10: all nine tracked migrations applied to an empty project (section 6.4).
 - [ ] Confirm the system roles and permission codes from migration `0002` exist.
 - [ ] Confirm the `vector` extension, indexes, CHECK constraints and row-level security policies exist.
 - [ ] Set the production Auth redirect URLs and the allowed origins. Remove every development URL.
@@ -303,10 +304,10 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 - The Vercel account is on the Hobby plan. Vercel does not allow commercial use on Hobby; upgrade to Pro before production. Hobby rolls back only one production deployment and rejects older targets with HTTP 402.
 - The Render service uses a free instance. It sleeps after idle, so the first request is slow. Use a paid always-on instance for the T6.03 p95 run and production.
 - No custom domain exists yet.
-- The repository has no `prisma/migrations` directory. No migration ran during this deployment, and the current database schema already exists. Do not treat this as a migration history; reconcile it before production (T6.04).
+- The development database still has no recorded application of the tracked migrations. The repository holds nine migrations (`0001` to `0009`), and all nine applied cleanly to an empty candidate project on 2026-11-10. Reconcile the development database or create production from the migration chain (T6.04).
 - `DATABASE_URL` uses the Supabase session pooler `aws-0-ap-northeast-1.pooler.supabase.com:5432`, username `postgres.lygekvhwmhbonsdeiaot`, `?sslmode=verify-full` and `sslrootcert=../../certs/supabase-root-2021.crt` on Render. The Render start command runs in `apps/api`, so the path goes up two levels to the repository root. The direct host is IPv6-only.
 - The committed CA expires on 2031-04-26. Replace it before then, or enable the Supabase IPv4 add-on and use the direct host.
-- Render Singapore and Supabase Tokyo are different regions. On 2026-11-10 the warm authenticated read measured p95 1350.52 ms at concurrency 8 (90 requests, 9 req/s, zero errors), over the 200 ms budget. The token cache removes repeated Supabase Auth calls but cannot remove the cross-region database round trips. A host in the database region is required to test NFR-04; do not claim it is met.
+- Render Singapore and Supabase Tokyo are different regions. On 2026-11-10 the warm authenticated read measured p95 1350.52 ms at concurrency 8 (90 requests, 9 req/s, zero errors), over the 200 ms budget. A same-region candidate then measured p95 994.47 ms, also over the budget (section 6.4), so the free instance remains a likely constraint. NFR-04 is not met.
 
 **Deployment evidence**
 | Check | Result |
@@ -326,7 +327,37 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 | Database TLS | `verify-full` with Supabase Root 2021 CA; hosted smoke passed |
 | Supabase Auth | Site URL and redirect allowlist set and read back; real recovery and confirmation delivery verified |
 
-Open: NFR-04 remains unmet on the cross-region free instance; owner approval and production cutover remain (T6.04 and GATE-6).
+Open: NFR-04 remains unmet on the free instance even with both services in Singapore; owner approval and production cutover remain (T6.04 and GATE-6).
+
+### 6.4 Same-region performance candidate (T6.04 preparation)
+The owner approved this preparation on 2026-11-10. The test used a separate free-plan Supabase project and did not change the production target.
+
+| Item | Value |
+| --- | --- |
+| Candidate project | `velaris-singapore-candidate`, ref `wibajihrywsdxgcxikfl` |
+| Region and engine | `ap-southeast-1` (Singapore), PostgreSQL 15.19, free plan |
+| Schema | Nine tracked migrations, `0001_init` through `0009_retention_policy_defaults`, applied to an empty database |
+| Seed | Six system roles and the `vector` extension verified |
+| Connection | Session pooler `aws-1-ap-southeast-1.pooler.supabase.com:5432` |
+| API | Render Singapore `srv-dbpe5arrjlhs73fm2or0`, free instance |
+
+**Run**
+1. Save the current Render `DATABASE_URL` outside the repository.
+2. Set `DATABASE_URL` to the candidate pooler and deploy. Deploy `dep-dbpfs33bc2fs73a33f7g` was live at `2026-11-10T11:22:39Z`.
+3. Confirm the candidate holds the schema and the seeded roles. A direct query reported zero tenants before the run.
+4. Run the profile:
+   `node --env-file=.env scripts/load-profile.mjs --url https://velaris-api-aral.onrender.com --path "/settings/retention?tenantId={tenantId}" --auth-signup --concurrency 8 --duration 10 --warmup 2 --budget-ms 200`
+5. Repeat with `--warmup 5` for a warm run.
+6. Delete the two synthetic tenants and two Auth accounts. The candidate tenant count returned to 0.
+7. Restore the previous `DATABASE_URL` and deploy. Deploy `dep-dbpfudegekts739rjpt0` finished live at `2026-11-10T11:27:42Z`; API `/` returned 200 and the protected retention route returned 401.
+
+**Results**
+| Run | Warmup | Requests | HTTP 200 | p95 | Budget | Errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| First | 2 s | 165 (16.5 req/s) | 165 | 1094.14 ms | 200 ms | 0 |
+| Warm | 5 s | 195 (19.5 req/s) | 195 | 994.47 ms | 200 ms | 0 |
+
+Both runs exceed the 200 ms budget. The API and database were in the same region, so cross-region database distance is not the only constraint. The free Render instance remains a likely limit; its single shared CPU and cold-start behaviour were not isolated by this test. The candidate is a free-plan test project with no backups or PITR. Do not treat it as production or claim NFR-04 is met. Reports: `.agents/evidence-t6.04-load-singapore.json` and `.agents/evidence-t6.04-load-singapore-warm.json`; `.agents/evidence-t6.04-inregion.md` holds the full sequence.
 
 ## 7. Operations
 - T6.03 smoke and rollback steps live in section 6.1. Run them against the single environment; do not create a staging project (D-37).
@@ -334,7 +365,7 @@ Open: NFR-04 remains unmet on the cross-region free instance; owner approval and
 - Release: run all gates, deploy to the single environment, smoke test, review telemetry, obtain human production approval, then use the provider's verified process.
 - Rollback: restore previous app artifact/config where safe; use forward fixes or tested restore for incompatible migrations. Agent rollback selects a prior immutable published version and preserves history.
 - Smoke tests: health endpoint; protected endpoint returns 401 without credentials; one allowed tenant-scoped read; cross-tenant read denied; AI provider/queue health; audit/trace sample present.
-- Verify: T6.03 evidence is in `.agents/evidence-t6.03-hosted.md` and `docs/TESTING.md`; record the deployment ID, test outputs, owner approval and rollback rehearsal result.
+- Verify: T6.03 evidence is in `.agents/evidence-t6.03-hosted.md` and `docs/TESTING.md`; record the deployment ID, test outputs, owner approval and rollback rehearsal result. The same-region candidate evidence is in section 6.4 and `.agents/evidence-t6.04-inregion.md`.
 
 ## 8. Checklists and troubleshooting
 - [ ] Local: services healthy, migrations apply, app runs, tests pass, tenant isolation tests pass.
