@@ -100,17 +100,21 @@ export class SupabaseAdminService {
   async inviteUser(email: string): Promise<CreatedUser> {
     this.requireConfigured();
     const baseUrl = process.env.APP_BASE_URL?.replace(/\/$/, '');
-    const response = await fetch(`${process.env.SUPABASE_URL}/auth/v1/invite`, {
+    // GoTrue reads redirect_to from the query string for /invite (the same
+    // contract as /recover). A body field is ignored, which silently sends
+    // the email link to the Site URL root instead of /auth/callback.
+    const inviteUrl = new URL(`${process.env.SUPABASE_URL}/auth/v1/invite`);
+    if (baseUrl) {
+      inviteUrl.searchParams.set('redirect_to', `${baseUrl}/auth/callback`);
+    }
+    const response = await fetch(inviteUrl.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         apikey: process.env.SUPABASE_SERVICE_ROLE_KEY as string,
         Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
       },
-      body: JSON.stringify({
-        email,
-        ...(baseUrl ? { redirect_to: `${baseUrl}/auth/callback` } : {}),
-      }),
+      body: JSON.stringify({ email }),
     });
 
     if (response.ok) {

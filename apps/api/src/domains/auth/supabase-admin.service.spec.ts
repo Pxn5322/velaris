@@ -143,6 +143,58 @@ describe('SupabaseAdminService', () => {
     });
   });
 
+  describe('inviteUser', () => {
+    it('sends redirect_to as a query parameter and only email in the body', async () => {
+      vi.stubEnv('APP_BASE_URL', 'https://app.example.com/');
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, { id: 'auth-2', email: 'invitee@acme.test' }),
+      );
+
+      const invited = await admin.inviteUser('invitee@acme.test');
+
+      expect(invited).toEqual({ id: 'auth-2', email: 'invitee@acme.test' });
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const parsed = new URL(url);
+      expect(`${parsed.origin}${parsed.pathname}`).toBe(
+        'https://project.supabase.co/auth/v1/invite',
+      );
+      expect(parsed.searchParams.get('redirect_to')).toBe(
+        'https://app.example.com/auth/callback',
+      );
+      expect(JSON.parse(init.body as string)).toEqual({
+        email: 'invitee@acme.test',
+      });
+    });
+
+    it('omits redirect_to when APP_BASE_URL is not set', async () => {
+      vi.stubEnv('APP_BASE_URL', '');
+      fetchMock.mockResolvedValue(jsonResponse(200, { id: 'auth-2' }));
+
+      await admin.inviteUser('invitee@acme.test');
+
+      const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(new URL(url).search).toBe('');
+    });
+
+    it('answers 502 when GoTrue returns no account id', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, {}));
+
+      await expect(admin.inviteUser('invitee@acme.test')).rejects.toThrow(
+        expect.objectContaining({ status: HttpStatus.BAD_GATEWAY }),
+      );
+    });
+
+    it('maps a 422 refusal to Conflict', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(422, { msg: 'should be a valid email' }),
+      );
+
+      await expect(admin.inviteUser('invitee@acme.test')).rejects.toThrow(
+        'An account with this email already exists',
+      );
+    });
+  });
+
   describe('findUserByEmail', () => {
     it('returns null when the deployment is not configured', async () => {
       vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', '');
