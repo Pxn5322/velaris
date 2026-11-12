@@ -2,22 +2,29 @@
  * Tenant user management (F-03, AC-F03-1/AC-F03-2).
  *
  * Three operations a tenant administrator needs to run a workspace:
- * list the members and their roles, add a member, and suspend or
- * reinstate a membership. The routes declare their own permission
- * (ROLE_MANAGE / USER_CREATE / USER_DISABLE) and are scoped to the
- * tenant in the path, so a caller can only manage their own tenant.
+ * list the members and their roles, add or invite a member, change a
+ * membership, and remove a membership. The routes declare their own
+ * permission (ROLE_MANAGE / USER_CREATE / USER_DISABLE) and are scoped to
+ * the tenant in the path, so a caller can only manage their own tenant.
+ *
+ * Two rules protect the tenant:
+ * - a tenant route accepts only tenant-scoped role codes, so a tenant
+ *   administrator cannot grant the platform role (AC-F03-3);
+ * - the last active tenant administrator cannot be suspended or removed,
+ *   because that would lock every administrator out of the tenant.
  *
  * Identity note: an application user row exists only after the identity
  * provider knows the account. `add` therefore resolves the account in
  * this order - an existing VELARIS user row, then a Supabase Auth lookup
- * by email, then creating a new auth account when the caller supplies a
- * password. Without any of those it refuses with 409 instead of
- * inventing an identity that can never sign in.
+ * by email, then an invitation, then creating a new auth account when the
+ * caller supplies a password. Without any of those it refuses with 409
+ * instead of inventing an identity that can never sign in.
  */
 
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -29,6 +36,7 @@ import type {
   AddMemberDto,
   SetMembershipStatusDto,
 } from './dto/governance.dto.js';
+import { hasMembershipRole, isTenantAssignableRole } from './tenant-roles.js';
 
 /** Membership states an administrator may set (docs/DATABASE.md E-tenant). */
 const SETTABLE_MEMBERSHIP_STATUS = ['ACTIVE', 'SUSPENDED'] as const;
@@ -43,6 +51,18 @@ export interface TenantMemberView {
   displayName: string;
   status: string;
   roles: string[];
+}
+
+export interface AddMemberResult extends TenantMemberView {
+  /** True only when this request sent a Supabase invitation email. */
+  invited: boolean;
+}
+
+export interface RemoveMemberResult {
+  membershipId: string;
+  tenantId: string;
+  email: string;
+  removed: true;
 }
 
 @Injectable()
@@ -75,14 +95,19 @@ export class TenantUsersService {
   }
 
   /**
-   * Add a member with one role (AC-F03-1). The role must exist and be in
-   * scope for the tenant: a system role or a role that belongs to it
-   * (AC-F03-2), and an unknown code is a 400 before anything is written.
+   * Add or invite a member with one role (AC-F03-1). The role must exist,
+   * be tenant-scoped and be in scope for the tenant (AC-F03-2). An unknown
+   * or platform role is a 400 before anything is written.
    */
-  async add(tenantId: string, input: AddMemberDto) {
+  async add(tenantId: string, input: AddMemberDto): Promise<AddMemberResult> {
     requireText(tenantId, 'tenantId');
     const email = normalizeEmail(input.email);
     requireText(input.roleCode, 'roleCode');
+    if (!isTenantAssignableRole(input.roleCode)) {
+      throw new BadRequestException(
+        `Role code ${input.roleCode} cannot be assigned from a tenant route`,
+      );
+    }
 
     const role = await this.prisma.role.findFirst({
       where: {
@@ -94,7 +119,11 @@ export class TenantUsersService {
       throw new BadRequestException(`Unknown role code: ${input.roleCode}`);
     }
 
-    const identity = await this.resolveIdentity(email, input.password);
+    const identity = await this.resolveIdentity(
+      email,
+      input.password,
+      input.invite === true,
+    );
     const existingMembership = await this.prisma.tenantMembership.findUnique({
       where: { tenantId_userId: { tenantId, userId: identity.userId } },
     });
@@ -116,8 +145,10 @@ export class TenantUsersService {
       membershipId: membership.id,
       userId: identity.userId,
       email,
+      displayName: email,
       status: membership.status,
       roles: [input.roleCode],
+      invited: identity.invited,
     };
   }
 
@@ -140,6 +171,7 @@ export class TenantUsersService {
 
     const membership = await this.prisma.tenantMembership.findUnique({
       where: { id: membershipId },
+      include: { roles: { include: { role: true } } },
     });
     // A membership of another tenant reads as missing, so an attacker
     // learns nothing about other tenants' identifiers (AC-F04-3).
@@ -147,6 +179,20 @@ export class TenantUsersService {
       throw new NotFoundException(
         `Membership with ID ${membershipId} not found`,
       );
+    }
+
+    if (hasMembershipRole(membership, 'R-enterprise-admin')) {
+      throw new ForbiddenException(
+        'Platform administrator memberships are managed outside the tenant routes',
+      );
+    }
+
+    if (
+      input.status === 'SUSPENDED' &&
+      membership.status === 'ACTIVE' &&
+      hasMembershipRole(membership, 'R-tenant-admin')
+    ) {
+      await this.assertOtherActiveAdmin(tenantId, membershipId);
     }
 
     const updated = await this.prisma.tenantMembership.update({
@@ -161,19 +207,67 @@ export class TenantUsersService {
   }
 
   /**
-   * Resolve the application user for an email, creating the auth account
-   * only when the caller supplies a password. Order: existing VELARIS
-   * user row, Supabase Auth lookup, then account creation.
+   * Remove one membership from a tenant (USER_DISABLE). The auth account is
+   * not deleted because the same person may belong to other tenants. The
+   * last active tenant administrator cannot be removed.
+   */
+  async remove(
+    tenantId: string,
+    membershipId: string,
+  ): Promise<RemoveMemberResult> {
+    requireText(tenantId, 'tenantId');
+    const membership = await this.prisma.tenantMembership.findUnique({
+      where: { id: membershipId },
+      include: {
+        user: true,
+        roles: { include: { role: true } },
+      },
+    });
+    if (!membership || membership.tenantId !== tenantId) {
+      throw new NotFoundException(
+        `Membership with ID ${membershipId} not found`,
+      );
+    }
+    if (hasMembershipRole(membership, 'R-enterprise-admin')) {
+      throw new ForbiddenException(
+        'Platform administrator memberships are managed outside the tenant routes',
+      );
+    }
+    if (
+      membership.status === 'ACTIVE' &&
+      hasMembershipRole(membership, 'R-tenant-admin')
+    ) {
+      await this.assertOtherActiveAdmin(tenantId, membershipId);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.membershipRole.deleteMany({ where: { membershipId } });
+      await tx.tenantMembership.delete({ where: { id: membershipId } });
+    });
+
+    return {
+      membershipId,
+      tenantId,
+      email: membership.user.emailNormalized,
+      removed: true,
+    };
+  }
+
+  /**
+   * Resolve the application user for an email. An invitation is sent only
+   * when the caller asks for one and no local or provider account exists.
+   * A password creates a confirmed account when no invitation is requested.
    */
   private async resolveIdentity(
     email: string,
     password: unknown,
-  ): Promise<{ userId: string }> {
+    invite: boolean,
+  ): Promise<{ userId: string; invited: boolean }> {
     const localUser = await this.prisma.user.findFirst({
       where: { provider: 'supabase', emailNormalized: email },
     });
     if (localUser) {
-      return { userId: localUser.id };
+      return { userId: localUser.id, invited: false };
     }
 
     this.admin.requireConfigured();
@@ -187,12 +281,25 @@ export class TenantUsersService {
           displayName: email,
         },
       });
-      return { userId: row.id };
+      return { userId: row.id, invited: false };
+    }
+
+    if (invite) {
+      const invited = await this.admin.inviteUser(email);
+      const row = await this.prisma.user.create({
+        data: {
+          provider: 'supabase',
+          externalSubject: invited.id,
+          emailNormalized: email,
+          displayName: email,
+        },
+      });
+      return { userId: row.id, invited: true };
     }
 
     if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
       throw new ConflictException(
-        `No account exists for ${email}. Supply a password of at least ${MIN_PASSWORD_LENGTH} characters to create it`,
+        `No account exists for ${email}. Supply a password of at least ${MIN_PASSWORD_LENGTH} characters to create it, or send an invitation`,
       );
     }
     const created = await this.admin.createUser(email, password);
@@ -204,7 +311,27 @@ export class TenantUsersService {
         displayName: email,
       },
     });
-    return { userId: row.id };
+    return { userId: row.id, invited: false };
+  }
+
+  /** Refuse a change that would leave the tenant without an active admin. */
+  private async assertOtherActiveAdmin(
+    tenantId: string,
+    membershipId: string,
+  ): Promise<void> {
+    const otherAdmins = await this.prisma.tenantMembership.count({
+      where: {
+        tenantId,
+        status: 'ACTIVE',
+        id: { not: membershipId },
+        roles: { some: { role: { code: 'R-tenant-admin' } } },
+      },
+    });
+    if (otherAdmins === 0) {
+      throw new ConflictException(
+        'A tenant must keep at least one active administrator',
+      );
+    }
   }
 }
 

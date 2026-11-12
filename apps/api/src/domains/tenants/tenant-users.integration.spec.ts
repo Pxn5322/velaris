@@ -93,6 +93,12 @@ function fakePrisma() {
                 tenantId: TENANT_ID,
                 userId: 'user-1',
                 status: 'ACTIVE',
+                user: {
+                  id: 'user-1',
+                  emailNormalized: 'agent@acme.test',
+                  displayName: 'agent@acme.test',
+                },
+                roles: store.memberRoles,
               };
         },
       ),
@@ -112,6 +118,10 @@ function fakePrisma() {
           data: { status: string };
         }) => ({ id: where.id, tenantId: TENANT_ID, status: data.status }),
       ),
+      delete: vi.fn(async ({ where }: { where: { id: string } }) => ({
+        id: where.id,
+      })),
+      count: vi.fn(async () => store.otherAdminCount),
     },
     user: {
       findFirst: vi.fn(
@@ -137,6 +147,7 @@ function fakePrisma() {
     },
     membershipRole: {
       create: vi.fn(async () => ({ id: 'mr-1' })),
+      deleteMany: vi.fn(async () => ({ count: 1 })),
     },
     $transaction: vi.fn(async (fn: (tx: typeof store) => Promise<unknown>) =>
       fn(store),
@@ -145,6 +156,12 @@ function fakePrisma() {
     localUser: null as { id: string } | null,
     /** Set by a test to simulate an existing membership for user-1. */
     hasExistingMembership: false,
+    /** Roles returned for a membership read by id. */
+    memberRoles: [{ role: { code: 'R-agent' } }] as {
+      role: { code: string };
+    }[],
+    /** Active tenant administrators other than the target membership. */
+    otherAdminCount: 1,
   };
   return store;
 }
@@ -158,6 +175,7 @@ describe('Tenant user management routes (integration)', () => {
     requireConfigured: ReturnType<typeof vi.fn>;
     findUserByEmail: ReturnType<typeof vi.fn>;
     createUser: ReturnType<typeof vi.fn>;
+    inviteUser: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -181,6 +199,10 @@ describe('Tenant user management routes (integration)', () => {
       createUser: vi
         .fn()
         .mockResolvedValue({ id: 'auth-uid-new', email: 'new@acme.test' }),
+      inviteUser: vi.fn().mockResolvedValue({
+        id: 'auth-uid-invited',
+        email: 'invited@acme.test',
+      }),
     };
 
     const resolver: RoleResolver = { resolveRole: async () => role };
@@ -470,5 +492,156 @@ describe('Tenant user management routes (integration)', () => {
       .set('Authorization', 'Bearer valid-token');
 
     expect(res.status).toBe(403);
+  });
+
+  it('invites a new identity and adds the membership', async () => {
+    role = 'R-tenant-admin';
+    prisma.localUser = null;
+    admin.findUserByEmail.mockResolvedValue(null);
+
+    const res = await request(app.getHttpServer())
+      .post(`/tenants/${TENANT_ID}/users`)
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        email: 'invited@acme.test',
+        roleCode: 'R-agent',
+        invite: true,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      membershipId: MEMBER_MEMBERSHIP_ID,
+      userId: 'user-new',
+      email: 'invited@acme.test',
+      roles: ['R-agent'],
+      invited: true,
+    });
+    expect(admin.inviteUser).toHaveBeenCalledWith('invited@acme.test');
+    expect(admin.createUser).not.toHaveBeenCalled();
+    expect(prisma.user.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        externalSubject: 'auth-uid-invited',
+        emailNormalized: 'invited@acme.test',
+      }),
+    });
+  });
+
+  it('does not send an invitation when the email already has a local user', async () => {
+    role = 'R-tenant-admin';
+    prisma.localUser = { id: 'user-1' };
+
+    const res = await request(app.getHttpServer())
+      .post(`/tenants/${TENANT_ID}/users`)
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        email: 'agent@acme.test',
+        roleCode: 'R-agent',
+        invite: true,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.invited).toBe(false);
+    expect(admin.inviteUser).not.toHaveBeenCalled();
+    expect(admin.requireConfigured).not.toHaveBeenCalled();
+  });
+
+  it('rejects a platform role on add with 400 before any write', async () => {
+    role = 'R-tenant-admin';
+    prisma.localUser = { id: 'user-1' };
+
+    const res = await request(app.getHttpServer())
+      .post(`/tenants/${TENANT_ID}/users`)
+      .set('Authorization', 'Bearer valid-token')
+      .send({ email: 'agent@acme.test', roleCode: 'R-enterprise-admin' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('cannot be assigned');
+    expect(prisma.tenantMembership.create).not.toHaveBeenCalled();
+    expect(admin.requireConfigured).not.toHaveBeenCalled();
+  });
+
+  it('removes a membership and emits one audit event', async () => {
+    role = 'R-tenant-admin';
+
+    const res = await request(app.getHttpServer())
+      .delete(`/tenants/${TENANT_ID}/memberships/${MEMBER_MEMBERSHIP_ID}`)
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      membershipId: MEMBER_MEMBERSHIP_ID,
+      tenantId: TENANT_ID,
+      email: 'agent@acme.test',
+      removed: true,
+    });
+    expect(prisma.membershipRole.deleteMany).toHaveBeenCalledWith({
+      where: { membershipId: MEMBER_MEMBERSHIP_ID },
+    });
+    expect(prisma.tenantMembership.delete).toHaveBeenCalledWith({
+      where: { id: MEMBER_MEMBERSHIP_ID },
+    });
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'user.removed',
+        resourceType: 'membership',
+        resourceId: MEMBER_MEMBERSHIP_ID,
+        tenantId: TENANT_ID,
+        metadata: { email: 'agent@acme.test' },
+      }),
+    );
+  });
+
+  it('refuses to remove the last active tenant administrator', async () => {
+    role = 'R-tenant-admin';
+    prisma.memberRoles = [{ role: { code: 'R-tenant-admin' } }];
+    prisma.otherAdminCount = 0;
+
+    const res = await request(app.getHttpServer())
+      .delete(`/tenants/${TENANT_ID}/memberships/${MEMBER_MEMBERSHIP_ID}`)
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain('at least one active administrator');
+    expect(prisma.tenantMembership.delete).not.toHaveBeenCalled();
+    expect(prisma.membershipRole.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses to suspend the last active tenant administrator', async () => {
+    role = 'R-tenant-admin';
+    prisma.memberRoles = [{ role: { code: 'R-tenant-admin' } }];
+    prisma.otherAdminCount = 0;
+
+    const res = await request(app.getHttpServer())
+      .patch(`/tenants/${TENANT_ID}/memberships/${MEMBER_MEMBERSHIP_ID}/status`)
+      .set('Authorization', 'Bearer valid-token')
+      .send({ status: 'SUSPENDED' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain('at least one active administrator');
+    expect(prisma.tenantMembership.update).not.toHaveBeenCalled();
+  });
+
+  it('reports a foreign membership as 404 on removal (AC-F04-3)', async () => {
+    role = 'R-tenant-admin';
+
+    const res = await request(app.getHttpServer())
+      .delete(`/tenants/${TENANT_ID}/memberships/${FOREIGN_MEMBERSHIP_ID}`)
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(404);
+    expect(prisma.tenantMembership.delete).not.toHaveBeenCalled();
+  });
+
+  it('refuses to change a platform administrator membership from a tenant route', async () => {
+    role = 'R-tenant-admin';
+    prisma.memberRoles = [{ role: { code: 'R-enterprise-admin' } }];
+
+    const res = await request(app.getHttpServer())
+      .patch(`/tenants/${TENANT_ID}/memberships/${MEMBER_MEMBERSHIP_ID}/status`)
+      .set('Authorization', 'Bearer valid-token')
+      .send({ status: 'SUSPENDED' });
+
+    expect(res.status).toBe(403);
+    expect(prisma.tenantMembership.update).not.toHaveBeenCalled();
   });
 });

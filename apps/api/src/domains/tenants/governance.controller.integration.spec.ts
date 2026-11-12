@@ -53,7 +53,10 @@ describe('Governance routes (integration)', () => {
       findUnique: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
     };
-    tenantMembership: { findUnique: ReturnType<typeof vi.fn> };
+    tenantMembership: {
+      findUnique: ReturnType<typeof vi.fn>;
+      count: ReturnType<typeof vi.fn>;
+    };
     role: { findFirst: ReturnType<typeof vi.fn> };
     membershipRole: {
       deleteMany: ReturnType<typeof vi.fn>;
@@ -104,7 +107,9 @@ describe('Governance routes (integration)', () => {
           tenantId: TENANT_ID,
           userId: 'user-1',
           status: 'ACTIVE',
+          roles: [],
         }),
+        count: vi.fn().mockResolvedValue(1),
       },
       role: {
         findFirst: vi.fn().mockResolvedValue({
@@ -326,9 +331,62 @@ describe('Governance routes (integration)', () => {
     const res = await request(app.getHttpServer())
       .put(`/tenants/${TENANT_ID}/memberships/${MEMBERSHIP_ID}/roles`)
       .set('Authorization', 'Bearer valid-token')
-      .send({ roleCode: 'R-made-up' });
+      .send({ roleCode: 'R-agent' });
 
     expect(res.status).toBe(400);
+    expect(prisma.membershipRole.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses the platform role from a tenant route (AC-F03-3)', async () => {
+    role = 'R-enterprise-admin';
+
+    const res = await request(app.getHttpServer())
+      .put(`/tenants/${TENANT_ID}/memberships/${MEMBERSHIP_ID}/roles`)
+      .set('Authorization', 'Bearer valid-token')
+      .send({ roleCode: 'R-enterprise-admin' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('cannot be assigned');
+    expect(prisma.membershipRole.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses to demote the last active tenant administrator', async () => {
+    role = 'R-tenant-admin';
+    prisma.tenantMembership.findUnique.mockResolvedValue({
+      id: MEMBERSHIP_ID,
+      tenantId: TENANT_ID,
+      userId: 'user-1',
+      status: 'ACTIVE',
+      roles: [{ role: { code: 'R-tenant-admin' } }],
+    });
+    prisma.tenantMembership.count.mockResolvedValue(0);
+
+    const res = await request(app.getHttpServer())
+      .put(`/tenants/${TENANT_ID}/memberships/${MEMBERSHIP_ID}/roles`)
+      .set('Authorization', 'Bearer valid-token')
+      .send({ roleCode: 'R-agent' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain('at least one active administrator');
+    expect(prisma.membershipRole.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses to change a platform administrator membership from a tenant route', async () => {
+    role = 'R-tenant-admin';
+    prisma.tenantMembership.findUnique.mockResolvedValue({
+      id: MEMBERSHIP_ID,
+      tenantId: TENANT_ID,
+      userId: 'user-1',
+      status: 'ACTIVE',
+      roles: [{ role: { code: 'R-enterprise-admin' } }],
+    });
+
+    const res = await request(app.getHttpServer())
+      .put(`/tenants/${TENANT_ID}/memberships/${MEMBERSHIP_ID}/roles`)
+      .set('Authorization', 'Bearer valid-token')
+      .send({ roleCode: 'R-agent' });
+
+    expect(res.status).toBe(403);
     expect(prisma.membershipRole.deleteMany).not.toHaveBeenCalled();
   });
 

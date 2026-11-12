@@ -44,6 +44,7 @@ const sessionResponse = {
       },
     ],
   },
+  role: "R-tenant-admin",
 };
 
 const AGENT_ID = "aaaaaaaa-0000-4000-8000-000000000001";
@@ -185,7 +186,14 @@ async function routeLifecycle(page, state) {
       );
       state.agent = agentRow({ activeVersion: 1, activeVersionId: V1_ID });
       await route.fulfill(
-        json({ agentId: AGENT_ID, version: 1, publishedAt: "2026-11-03T10:06:00.000Z" }, 201),
+        json(
+          {
+            agentId: AGENT_ID,
+            version: 1,
+            publishedAt: "2026-11-03T10:06:00.000Z",
+          },
+          201,
+        ),
       );
       return;
     }
@@ -221,24 +229,23 @@ async function routeLifecycle(page, state) {
 }
 
 test.describe("agent lifecycle (T4.06, F-08)", () => {
-  test("signed out, the evaluation tab shows the denial state", async ({
+  test("signed out, the studio redirects to the landing sign-in modal", async ({
     page,
   }) => {
-    await page.route("**/auth/session*", (route) =>
-      route.fulfill(json(sessionResponse)),
-    );
-    await page.route("**/ai/agents**", (route) =>
-      route.fulfill(json({ message: "Unauthorized" }, 401)),
-    );
-
     await page.goto("/studio");
-    await page.getByRole("button", { name: "8. Evaluation" }).click();
 
-    await expect(page.getByTestId("agents-denied")).toBeVisible();
+    await expect(page).toHaveURL(/\?signin=1/, { timeout: 10_000 });
+    await expect(
+      page.getByRole("heading", { name: "Sign In to VELARIS" }),
+    ).toBeVisible();
   });
 
   test("an empty tenant can create the first draft agent", async ({ page }) => {
-    const state = { agent: agentRow(), versions: [versionRow()], created: false };
+    const state = {
+      agent: agentRow(),
+      versions: [versionRow()],
+      created: false,
+    };
     await seedSession(page);
     await routeLifecycle(page, state);
 
@@ -290,7 +297,9 @@ test.describe("agent lifecycle (T4.06, F-08)", () => {
     await expect(page.getByTestId("evaluation-result")).toContainText("PASSED");
 
     await page.getByTestId("publish-version").click();
-    await expect(page.getByTestId("agents-notice")).toContainText("Published v1");
+    await expect(page.getByTestId("agents-notice")).toContainText(
+      "Published v1",
+    );
     await expect(page.getByTestId("active-version")).toContainText("Live: v1");
   });
 
@@ -306,7 +315,11 @@ test.describe("agent lifecycle (T4.06, F-08)", () => {
           status: "PUBLISHED",
           publishedAt: "2026-11-03T10:06:00.000Z",
         }),
-        versionRow({ version: 1, status: "PUBLISHED", publishedAt: "2026-11-03T10:00:00.000Z" }),
+        versionRow({
+          version: 1,
+          status: "PUBLISHED",
+          publishedAt: "2026-11-03T10:00:00.000Z",
+        }),
       ],
       created: true,
     };

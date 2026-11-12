@@ -40,6 +40,7 @@ const sessionResponse = {
       },
     ],
   },
+  role: "R-tenant-admin",
 };
 
 function metric(code, label, unit, value, sample, formula) {
@@ -231,11 +232,15 @@ async function routeSession(page) {
 }
 
 test.describe("analytics and governance views (T5.04, AC-F12 / AC-F11-3)", () => {
-  test("signed out, analytics offers a sign-in path", async ({ page }) => {
+  test("signed out, analytics redirects to the landing sign-in modal", async ({
+    page,
+  }) => {
     await page.goto("/analytics");
 
-    await expect(page.getByTestId("analytics-denied")).toBeVisible();
-    await expect(page.getByTestId("analytics-denied")).toContainText("Sign in");
+    await expect(page).toHaveURL(/\?signin=1/);
+    await expect(
+      page.getByRole("heading", { name: "Sign In to VELARIS" }),
+    ).toBeVisible();
   });
 
   test("shows the loading state before the summary arrives", async ({

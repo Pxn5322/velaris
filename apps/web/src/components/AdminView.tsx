@@ -5,64 +5,15 @@ import { Shield, Users, Lock, Cpu, Settings, Activity } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import { adminScopeForRole } from "@/lib/auth/uiRole";
 import { RetentionSettings } from "@/components/RetentionSettings";
+import { TenantUsersPanel } from "@/components/TenantUsersPanel";
 
 export function AdminView() {
   const [activeTab, setActiveTab] = useState<
     "analytics" | "users" | "roles" | "ai-gov" | "settings"
   >("analytics");
-  const [userSearch, setUserSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("ALL");
-  const [statusFilter] = useState("ALL");
   const { role, theme } = useRole();
   const isLight = theme === "light";
   const scope = adminScopeForRole(role);
-
-  const usersData = [
-    {
-      name: "Alex Vance",
-      email: "alex@velaris.ai",
-      role: "ENTERPRISE",
-      status: "Active",
-      lastLogin: "2 mins ago",
-    },
-    {
-      name: "Sarah Lin",
-      email: "sarah@acme.com",
-      role: "AGENT",
-      status: "Active",
-      lastLogin: "10 mins ago",
-    },
-    {
-      name: "Marcus Brody",
-      email: "marcus@globex.io",
-      role: "USER",
-      status: "Inactive",
-      lastLogin: "3 days ago",
-    },
-    {
-      name: "Elena Rostova",
-      email: "elena@initech.com",
-      role: "AGENT",
-      status: "Active",
-      lastLogin: "1 hour ago",
-    },
-    {
-      name: "David Kim",
-      email: "david@velaris.ai",
-      role: "ADMIN",
-      status: "Active",
-      lastLogin: "Just now",
-    },
-  ];
-
-  const filteredUsers = usersData.filter((u) => {
-    const matchesSearch =
-      u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
-      u.email.toLowerCase().includes(userSearch.toLowerCase());
-    const matchesRole = roleFilter === "ALL" || u.role === roleFilter;
-    const matchesStatus = statusFilter === "ALL" || u.status === statusFilter;
-    return matchesSearch && matchesRole && matchesStatus;
-  });
 
   return (
     <div className="flex-1 p-4 md:p-8 overflow-y-auto space-y-6">
@@ -225,124 +176,7 @@ export function AdminView() {
         </div>
       )}
 
-      {activeTab === "users" && (
-        <div className="glass-panel p-6 rounded-2xl space-y-4 border border-slate-700/50">
-          <div className="flex flex-col sm:flex-row justify-between gap-3">
-            <input
-              type="text"
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
-              placeholder="Search users..."
-              className={`border rounded-xl px-3 py-1.5 text-xs text-heading focus:outline-none ${isLight ? "bg-white border-slate-300" : "bg-slate-900/80 border-slate-700/60"}`}
-            />
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className={`border rounded-xl px-3 py-1.5 text-xs text-heading font-semibold focus:outline-none ${isLight ? "bg-white border-slate-300" : "bg-slate-900/80 border-slate-700/60"}`}
-            >
-              <option value="ALL">All Roles</option>
-              <option value="ENTERPRISE">ENTERPRISE</option>
-              <option value="ADMIN">ADMIN</option>
-              <option value="AGENT">AGENT</option>
-              <option value="USER">USER</option>
-            </select>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table
-              className="w-full text-left text-xs"
-              style={{ color: "var(--text-main)" }}
-            >
-              <thead
-                className="font-mono uppercase border-b"
-                style={{
-                  borderColor: "var(--card-border)",
-                  color: "var(--text-muted)",
-                }}
-              >
-                <tr>
-                  <th className="p-3">User</th>
-                  <th className="p-3">Role</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Last Login</th>
-                  <th className="p-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody
-                className="divide-y"
-                style={{ borderColor: "var(--card-border)" }}
-              >
-                {filteredUsers.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="p-8 text-center font-mono"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      No matching users found
-                    </td>
-                  </tr>
-                ) : (
-                  filteredUsers.map((u, i) => (
-                    <tr key={i} className="hover:bg-slate-500/10 transition">
-                      <td className="p-3 font-semibold text-heading">
-                        {u.name}
-                        <br />
-                        <span
-                          className="text-[10px] font-mono"
-                          style={{ color: "var(--text-muted)" }}
-                        >
-                          {u.email}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <span
-                          className="px-2 py-0.5 rounded font-mono font-bold text-[10px]"
-                          style={{
-                            background: isLight
-                              ? "rgba(37,99,235,0.1)"
-                              : "rgba(59,130,246,0.2)",
-                            color: "var(--accent-cyan)",
-                          }}
-                        >
-                          {u.role}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <span
-                          className="font-bold"
-                          style={{
-                            color:
-                              u.status === "Active"
-                                ? "var(--accent-emerald)"
-                                : "var(--text-muted)",
-                          }}
-                        >
-                          ● {u.status}
-                        </span>
-                      </td>
-                      <td
-                        className="p-3 font-mono text-[10px]"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        {u.lastLogin}
-                      </td>
-                      <td className="p-3 text-right">
-                        <button
-                          className="px-2.5 py-1 rounded glass-panel text-[10px] font-bold"
-                          style={{ color: "var(--accent-cyan)" }}
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {activeTab === "users" && <TenantUsersPanel />}
 
       {activeTab === "settings" && <RetentionSettings />}
 

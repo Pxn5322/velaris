@@ -40,6 +40,7 @@ const sessionResponse = {
       },
     ],
   },
+  role: "R-tenant-admin",
 };
 
 const readySource = {
@@ -98,12 +99,15 @@ async function openKnowledgeTab(page) {
 }
 
 test.describe("knowledge sources tab (T3.05, AC-F07)", () => {
-  test("signed out, the tab offers a sign-in path", async ({ page }) => {
-    await openKnowledgeTab(page);
-    await expect(page.getByTestId("knowledge-denied")).toBeVisible();
-    await expect(page.getByTestId("knowledge-denied")).toContainText(
-      "Sign in",
-    );
+  test("signed out, the studio redirects to the landing sign-in modal", async ({
+    page,
+  }) => {
+    await page.goto("/studio");
+
+    await expect(page).toHaveURL(/\?signin=1/);
+    await expect(
+      page.getByRole("heading", { name: "Sign In to VELARIS" }),
+    ).toBeVisible();
   });
 
   test("shows the loading state before sources arrive (AC-F07-1)", async ({
@@ -132,7 +136,9 @@ test.describe("knowledge sources tab (T3.05, AC-F07)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/knowledge-sources*", (route) => route.fulfill(json([])));
+    await page.route("**/knowledge-sources*", (route) =>
+      route.fulfill(json([])),
+    );
 
     await openKnowledgeTab(page);
     await expect(page.getByTestId("knowledge-empty")).toBeVisible();

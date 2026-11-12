@@ -11,6 +11,8 @@ interface RoleContextType {
   /** Server-resolved role; null while signed out or when unmapped. */
   role: UserRole | null;
   setRole: (role: UserRole | null) => void;
+  /** True until the server role is known; guards must wait for it. */
+  roleLoading: boolean;
   activeView: string;
   setActiveView: (view: string) => void;
   theme: ThemeMode;
@@ -23,6 +25,7 @@ const RoleContext = createContext<RoleContextType | undefined>(undefined);
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
   const [role, setRoleState] = useState<UserRole | null>(null);
+  const [roleLoading, setRoleLoading] = useState<boolean>(true);
   const [activeView, setActiveView] = useState<string>("admin");
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [tenantId, setTenantId] = useState<string>("tenant_acme_corp");
@@ -44,12 +47,18 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   // canonical role comes from GET /auth/session (membership_roles), never
   // from a client-side picker. Signed-out visitors stay null.
   useEffect(() => {
-    if (!getSession()) return;
+    if (!getSession()) {
+      // Signed-out visitors have no server role to wait for. Defer the state
+      // change so the effect body does not cascade a render.
+      const timer = setTimeout(() => setRoleLoading(false), 0);
+      return () => clearTimeout(timer);
+    }
     let cancelled = false;
     void fetchSessionRole().then((mapped) => {
       if (cancelled) return;
       setRoleState(mapped);
       if (mapped) setActiveView(viewForRole(mapped));
+      setRoleLoading(false);
     });
     return () => {
       cancelled = true;
@@ -65,6 +74,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       value={{
         role,
         setRole,
+        roleLoading,
         activeView,
         setActiveView,
         theme,
