@@ -26,6 +26,8 @@ export class AddMemberDto {
   roleCode!: string;
   /** Optional: creates the auth account when none exists yet. */
   password?: string;
+  /** Optional: send a Supabase invitation instead of creating a password. */
+  invite?: boolean;
 }
 
 export class SetMembershipStatusDto {

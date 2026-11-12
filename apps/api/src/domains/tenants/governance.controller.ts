@@ -16,6 +16,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -153,6 +154,25 @@ export class GovernanceController {
       metadata: { email: member.email, roleCode: member.roles[0] },
     });
     return member;
+  }
+
+  @Delete(':tenantId/memberships/:membershipId')
+  @RequirePermission(PERMISSIONS.USER_DISABLE)
+  async removeUser(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('membershipId', ParseUUIDPipe) membershipId: string,
+    @Req() request: AuthedRequest,
+  ) {
+    const result = await this.users.remove(tenantId, membershipId);
+    await this.audit.record({
+      action: 'user.removed',
+      resourceType: 'membership',
+      resourceId: membershipId,
+      tenantId,
+      actorId: request.user?.subject,
+      metadata: { email: result.email },
+    });
+    return result;
   }
 
   @Patch(':tenantId/memberships/:membershipId/status')

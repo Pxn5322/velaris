@@ -1,7 +1,12 @@
 "use client";
 
+import { RequireAdmin } from "@/components/auth/RequireAdmin";
 import { AuditView } from "@/components/audit/AuditView";
 
 export default function AuditPage() {
-  return <AuditView />;
+  return (
+    <RequireAdmin>
+      <AuditView />
+    </RequireAdmin>
+  );
 }

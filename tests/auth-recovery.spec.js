@@ -109,6 +109,23 @@ test.describe("Supabase Auth email links (D-03)", () => {
     expect(stored?.accessToken).toBe(ACCESS_TOKEN);
   });
 
+  test("accepts an invitation link and offers the password form", async ({
+    page,
+  }) => {
+    await page.goto(
+      `/auth/callback#access_token=${ACCESS_TOKEN}&refresh_token=${REFRESH_TOKEN}&expires_at=4102444800&type=invite`,
+    );
+
+    await expect(
+      page.getByRole("heading", { name: "Choose a new password" }),
+    ).toBeVisible();
+    const stored = await page.evaluate(
+      (key) => JSON.parse(window.localStorage.getItem(key) ?? "null"),
+      SESSION_KEY,
+    );
+    expect(stored?.accessToken).toBe(ACCESS_TOKEN);
+  });
+
   test("shows an actionable message for an expired link", async ({ page }) => {
     await page.goto(
       "/auth/callback#error=access_denied&error_description=Email+link+is+invalid+or+has+expired",

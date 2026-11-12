@@ -3,11 +3,12 @@
 /**
  * Supabase Auth email callback (T6.07; D-03).
  *
- * Supabase sends password-recovery and sign-up confirmation links back here.
- * The tokens arrive in the URL fragment, which the browser does not send to a
- * server. This page stores the session, removes the fragment from the address
- * bar, and offers the recovery form. Confirmation links show a short success
- * state. Invalid or expired links show an actionable message.
+ * Supabase sends password-recovery, invitation and sign-up confirmation links
+ * back here. The tokens arrive in the URL fragment, which the browser does not
+ * send to a server. This page stores the session, removes the fragment from the
+ * address bar, and offers the password form for recovery and invitation links.
+ * Confirmation links show a short success state. Invalid or expired links show
+ * an actionable message.
  */
 
 import { useEffect, useState, type FormEvent } from "react";
@@ -75,7 +76,7 @@ export default function AuthCallbackPage() {
       window.history.replaceState(null, "", window.location.pathname);
 
       const type = params.get("type");
-      if (type === "recovery") {
+      if (type === "recovery" || type === "invite") {
         setPhase("recovery");
       } else {
         setPhase("confirmed");

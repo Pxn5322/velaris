@@ -93,6 +93,55 @@ export class SupabaseAdminService {
   }
 
   /**
+   * Send a Supabase Auth invitation. GoTrue creates the pending account and
+   * emails a link back to /auth/callback with type=invite. The caller writes
+   * the application user row after this succeeds.
+   */
+  async inviteUser(email: string): Promise<CreatedUser> {
+    this.requireConfigured();
+    const baseUrl = process.env.APP_BASE_URL?.replace(/\/$/, '');
+    const response = await fetch(`${process.env.SUPABASE_URL}/auth/v1/invite`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        email,
+        ...(baseUrl ? { redirect_to: `${baseUrl}/auth/callback` } : {}),
+      }),
+    });
+
+    if (response.ok) {
+      const body = (await response.json()) as { id?: string; email?: string };
+      if (!body.id) {
+        throw new HttpException(
+          'Identity provider returned no account id',
+          HttpStatus.BAD_GATEWAY,
+        );
+      }
+      return { id: body.id, email: body.email ?? email };
+    }
+
+    const text = await response.text().catch(() => '');
+    const lowered = text.toLowerCase();
+    if (
+      response.status === 409 ||
+      response.status === 422 ||
+      lowered.includes('already') ||
+      lowered.includes('exists') ||
+      lowered.includes('registered')
+    ) {
+      throw new ConflictException('An account with this email already exists');
+    }
+    throw new HttpException(
+      'Identity provider rejected the invitation',
+      HttpStatus.BAD_GATEWAY,
+    );
+  }
+
+  /**
    * Best-effort lookup of an existing auth account by email.
    *
    * GoTrue exposes no supported get-by-email call, so this uses the
