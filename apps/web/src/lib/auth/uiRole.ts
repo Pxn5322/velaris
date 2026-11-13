@@ -18,6 +18,43 @@ const UI_ROLE_BY_CANONICAL: Record<string, UserRole> = {
   "R-customer": "USER",
 };
 
+export interface SessionIdentity {
+  displayName: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+}
+
+export interface SessionProfile {
+  role: UserRole | null;
+  identity: SessionIdentity | null;
+}
+
+/** Human label for the navigation identity block. */
+export function roleLabelFor(role: UserRole | null): string {
+  if (role === "ENTERPRISE") return "Super Admin";
+  if (role === "ADMIN") return "Tenant Admin";
+  if (role === "AGENT") return "Support Agent";
+  if (role === "USER") return "Customer";
+  return "Signed out";
+}
+
+/**
+ * Readable label from the stored display name. The API stores an email as
+ * the display name for invited members, so an email local part becomes
+ * "Acme Admin" instead of the raw address.
+ */
+export function displayNameForIdentity(
+  identity: SessionIdentity | null,
+): string {
+  const raw = identity?.displayName?.trim() || identity?.email?.trim() || "";
+  if (!raw) return "Account";
+  if (!raw.includes("@")) return raw;
+  return raw
+    .split("@")[0]
+    .replace(/[._-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export function mapUiRole(
   canonical: string | null | undefined,
 ): UserRole | null {
@@ -78,11 +115,33 @@ export function routeForRole(role: UserRole): string {
  * when signed out, when the API is unreachable, or when the session has
  * no mapped UI role (deny by default).
  */
-export async function fetchSessionRole(): Promise<UserRole | null> {
+export async function fetchSessionProfile(): Promise<SessionProfile> {
   try {
-    const session = await apiFetch<{ role: string | null }>("/auth/session");
-    return mapUiRole(session.role);
+    const session = await apiFetch<{
+      role: string | null;
+      identity?: { email?: string; avatarUrl?: string | null };
+      tenantContext?: { displayName?: string } | null;
+    }>("/auth/session");
+    const email = session.identity?.email ?? null;
+    return {
+      role: mapUiRole(session.role),
+      identity: {
+        displayName: session.tenantContext?.displayName ?? email,
+        email,
+        avatarUrl: session.identity?.avatarUrl ?? null,
+      },
+    };
   } catch {
-    return null;
+    return { role: null, identity: null };
   }
+}
+
+/**
+ * Reads the server-resolved role for the current session. Returns null
+ * when signed out, when the API is unreachable, or when the session has
+ * no mapped UI role (deny by default).
+ */
+export async function fetchSessionRole(): Promise<UserRole | null> {
+  const profile = await fetchSessionProfile();
+  return profile.role;
 }

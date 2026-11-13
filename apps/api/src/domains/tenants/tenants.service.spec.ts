@@ -48,6 +48,7 @@ describe('TenantsService', () => {
         id: 'user-1',
         provider: 'supabase',
         externalSubject: 'sub-123',
+        displayName: 'Acme Admin',
         status: 'ACTIVE',
         memberships: [
           membership(),
@@ -77,6 +78,7 @@ describe('TenantsService', () => {
       });
       expect(context).not.toBeNull();
       expect(context?.userId).toBe('user-1');
+      expect(context?.displayName).toBe('Acme Admin');
       expect(context?.tenants.map((t) => t.slug)).toEqual(['acme', 'beta']);
       expect(context?.tenants[0]).toEqual({
         tenantId: 'tenant-a',
@@ -133,12 +135,17 @@ describe('TenantsService', () => {
     it('returns an empty tenant list when the user has no memberships', async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: 'user-1',
+        displayName: 'Acme Admin',
         memberships: [],
       });
 
       const context = await service.resolveContext('supabase', 'sub-123');
 
-      expect(context).toEqual({ userId: 'user-1', tenants: [] });
+      expect(context).toEqual({
+        userId: 'user-1',
+        displayName: 'Acme Admin',
+        tenants: [],
+      });
     });
   });
 

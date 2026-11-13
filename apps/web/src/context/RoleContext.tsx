@@ -1,8 +1,12 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { getSession } from "@/lib/auth/session";
-import { fetchSessionRole, viewForRole } from "@/lib/auth/uiRole";
+import { getSession, signOut as clearStoredSession } from "@/lib/auth/session";
+import {
+  fetchSessionProfile,
+  viewForRole,
+  type SessionIdentity,
+} from "@/lib/auth/uiRole";
 
 export type UserRole = "ENTERPRISE" | "ADMIN" | "AGENT" | "USER";
 export type ThemeMode = "dark" | "light";
@@ -13,6 +17,10 @@ interface RoleContextType {
   setRole: (role: UserRole | null) => void;
   /** True until the server role is known; guards must wait for it. */
   roleLoading: boolean;
+  /** Name, email and optional picture for the navigation identity block. */
+  identity: SessionIdentity | null;
+  /** Clear the local session and the resolved identity. */
+  endSession: () => void;
   activeView: string;
   setActiveView: (view: string) => void;
   theme: ThemeMode;
@@ -25,6 +33,7 @@ const RoleContext = createContext<RoleContextType | undefined>(undefined);
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
   const [role, setRoleState] = useState<UserRole | null>(null);
+  const [identity, setIdentity] = useState<SessionIdentity | null>(null);
   const [roleLoading, setRoleLoading] = useState<boolean>(true);
   const [activeView, setActiveView] = useState<string>("admin");
   const [theme, setTheme] = useState<ThemeMode>("dark");
@@ -43,6 +52,13 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     if (newRole) setActiveView(viewForRole(newRole));
   };
 
+  const endSession = () => {
+    clearStoredSession();
+    setRoleState(null);
+    setIdentity(null);
+    setActiveView("admin");
+  };
+
   // Hydrate the role from the server on load: the signed-in caller's
   // canonical role comes from GET /auth/session (membership_roles), never
   // from a client-side picker. Signed-out visitors stay null.
@@ -54,10 +70,11 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       return () => clearTimeout(timer);
     }
     let cancelled = false;
-    void fetchSessionRole().then((mapped) => {
+    void fetchSessionProfile().then((profile) => {
       if (cancelled) return;
-      setRoleState(mapped);
-      if (mapped) setActiveView(viewForRole(mapped));
+      setRoleState(profile.role);
+      setIdentity(profile.identity);
+      if (profile.role) setActiveView(viewForRole(profile.role));
       setRoleLoading(false);
     });
     return () => {
@@ -75,6 +92,8 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         role,
         setRole,
         roleLoading,
+        identity,
+        endSession,
         activeView,
         setActiveView,
         theme,

@@ -13,14 +13,26 @@
  * through the version-guarded PATCH, so a stale write surfaces as a
  * visible conflict instead of a silent overwrite (AC-F05-2).
  *
- * Layout follows the unified-agent example: ticket queue on the left
- * (search + priority filter), active ticket detail in the middle, and
- * the customer profile of the selected ticket on the right.
+ * The layout follows the admin-v2.7 prototype: a support-agent header,
+ * ticket queue on the left (search, priority, rows per page, pagination),
+ * active ticket detail in the middle with a reply composer, and customer
+ * context on the right.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { AlertTriangle, Inbox, RefreshCw, Search, User } from "lucide-react";
+import {
+  AlertTriangle,
+  Headset,
+  Inbox,
+  PanelLeftClose,
+  PanelRightClose,
+  Paperclip,
+  RefreshCw,
+  Search,
+  Send,
+  User,
+} from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { getSession } from "@/lib/auth/session";
 
@@ -75,9 +87,9 @@ const PRIORITY_LABEL: Record<string, string> = {
 };
 
 const PRIORITY_BADGE: Record<string, string> = {
-  HIGH: "bg-red-500/20 text-red-300",
-  MEDIUM: "bg-amber-500/20 text-amber-300",
-  LOW: "bg-slate-500/20 text-slate-300",
+  HIGH: "bg-red-500/20 text-red-300 border-red-500/30",
+  MEDIUM: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+  LOW: "bg-slate-500/20 text-slate-300 border-slate-500/30",
 };
 
 /** Compact "4m ago" label for the queue cards. */
@@ -116,8 +128,16 @@ export default function InboxPage() {
   const [scope, setScope] = useState<TenantEntry | null>(null);
   const [query, setQuery] = useState("");
   const [priority, setPriority] = useState("ALL");
+  const [rowsPerPage, setRowsPerPage] = useState(3);
+  const [page, setPage] = useState(1);
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
   const [profile, setProfile] = useState<Customer | null>(null);
   const [profileState, setProfileState] = useState<ProfileState>("idle");
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -190,6 +210,9 @@ export default function InboxPage() {
     async (ticket: Ticket) => {
       setSelected(ticket);
       setConflict(null);
+      setSendError(null);
+      setReply("");
+      setConversationId(null);
       setTimeline("loading");
       void loadProfile(ticket);
       if (!scope) {
@@ -208,6 +231,7 @@ export default function InboxPage() {
           setTimeline("empty");
           return;
         }
+        setConversationId(own.id);
         const detail = await apiFetch<Conversation & { messages: Message[] }>(
           `/conversations/${own.id}?${tenantQuery}`,
         );
@@ -257,6 +281,41 @@ export default function InboxPage() {
     [scope, load],
   );
 
+  const sendReply = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!scope || !conversationId || !reply.trim() || sending) return;
+      setSending(true);
+      setSendError(null);
+      try {
+        const message = await apiFetch<Message>(
+          `/conversations/${conversationId}/messages?tenantId=${encodeURIComponent(scope.tenantId)}`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              body: reply.trim(),
+              visibility: "CUSTOMER_VISIBLE",
+              idempotencyKey: `inbox-${Date.now()}-${Math.random()
+                .toString(36)
+                .slice(2)}`,
+            }),
+          },
+        );
+        setMessages((rows) => [...rows, message]);
+        setReply("");
+      } catch (error) {
+        setSendError(
+          error instanceof Error
+            ? error.message
+            : "The reply could not be sent.",
+        );
+      } finally {
+        setSending(false);
+      }
+    },
+    [scope, conversationId, reply, sending],
+  );
+
   const visibleTickets = tickets.filter((ticket) => {
     if (
       tab === "mine" &&
@@ -274,49 +333,81 @@ export default function InboxPage() {
     );
   });
 
+  const pageCount = Math.max(1, Math.ceil(visibleTickets.length / rowsPerPage));
+  const currentPage = Math.min(page, pageCount);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const pageTickets = visibleTickets.slice(
+    startIndex,
+    startIndex + rowsPerPage,
+  );
+  const shownFrom = visibleTickets.length === 0 ? 0 : startIndex + 1;
+  const shownTo = Math.min(startIndex + rowsPerPage, visibleTickets.length);
+
+  const centerSpan =
+    leftOpen && rightOpen
+      ? "lg:col-span-6"
+      : leftOpen || rightOpen
+        ? "lg:col-span-9"
+        : "lg:col-span-12";
+
   return (
     <section className="flex-1 flex flex-col gap-4" data-testid="inbox">
-      <header className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Inbox aria-hidden="true" className="h-6 w-6" /> Support inbox
-        </h1>
-        <div
-          className="flex rounded-lg overflow-hidden border border-slate-700"
-          role="tablist"
-          aria-label="Inbox scope"
-        >
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700/50 pb-3">
+        <div>
+          <div
+            className="inline-flex items-center gap-1.5 text-xs font-mono font-bold"
+            style={{ color: "var(--accent-emerald)" }}
+          >
+            <Headset className="w-3.5 h-3.5" /> SUPPORT AGENT CENTER
+          </div>
+          <h1 className="font-display text-xl sm:text-2xl font-bold text-heading">
+            Unified Agent Inbox & Copilot
+          </h1>
+        </div>
+
+        <div className="flex items-center gap-2 font-mono text-xs font-bold">
           <button
             type="button"
-            role="tab"
-            aria-selected={tab === "all"}
-            data-testid="inbox-tab-all"
-            onClick={() => setTab("all")}
-            className={`px-4 py-1.5 text-sm ${tab === "all" ? "bg-slate-700 text-slate-100" : "text-slate-400"}`}
+            onClick={() => setLeftOpen((open) => !open)}
+            aria-pressed={leftOpen}
+            data-testid="inbox-toggle-tickets"
+            className="px-3 py-1.5 rounded-xl glass-panel text-heading hover:border-blue-600 flex items-center gap-1.5 transition-all"
           >
-            All tickets
+            <PanelLeftClose
+              className="w-4 h-4"
+              style={{ color: "var(--accent-cyan)" }}
+            />
+            <span>Tickets</span>
           </button>
           <button
             type="button"
-            role="tab"
-            aria-selected={tab === "mine"}
-            data-testid="inbox-tab-mine"
-            onClick={() => setTab("mine")}
-            className={`px-4 py-1.5 text-sm ${tab === "mine" ? "bg-slate-700 text-slate-100" : "text-slate-400"}`}
+            onClick={() => setRightOpen((open) => !open)}
+            aria-pressed={rightOpen}
+            data-testid="inbox-toggle-copilot"
+            className="px-3 py-1.5 rounded-xl glass-panel text-heading hover:border-blue-600 flex items-center gap-1.5 transition-all"
           >
-            Assigned to me
+            <PanelRightClose
+              className="w-4 h-4"
+              style={{ color: "var(--accent-cyan)" }}
+            />
+            <span>Copilot & Context</span>
           </button>
         </div>
       </header>
 
       {phase === "loading" && (
-        <p className="text-slate-400" data-testid="inbox-loading" role="status">
+        <p
+          className="text-sm text-muted-custom glass-panel rounded-xl p-4"
+          data-testid="inbox-loading"
+          role="status"
+        >
           Loading tickets…
         </p>
       )}
 
       {phase === "denied" && (
         <div
-          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-amber-200"
+          className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-200"
           data-testid="inbox-denied"
         >
           <p className="flex items-center gap-2">
@@ -331,7 +422,7 @@ export default function InboxPage() {
 
       {phase === "error" && (
         <div
-          className="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-red-200"
+          className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-red-200"
           data-testid="inbox-error"
         >
           <p>{failure}</p>
@@ -351,221 +442,484 @@ export default function InboxPage() {
       )}
 
       {phase === "ready" && (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,6fr)_minmax(0,3fr)]">
-          {/* Left: ticket queue (search + priority filter) */}
-          <div className="rounded-lg border border-slate-800 flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Ticket queue
-              </span>
-              <span
-                className="rounded bg-blue-600 px-1.5 py-0.5 text-xs text-white"
-                data-testid="inbox-count"
-              >
-                {visibleTickets.length}
-              </span>
-            </div>
-
-            <div className="p-3 space-y-2 border-b border-slate-800">
-              <div className="relative">
-                <Search
-                  aria-hidden="true"
-                  className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500"
-                />
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search ID or subject..."
-                  aria-label="Search tickets"
-                  data-testid="inbox-search"
-                  className="w-full rounded border border-slate-700 bg-slate-950 pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:border-cyan-500"
-                />
+        <div
+          className="grid grid-cols-12 gap-3 sm:gap-4 items-start min-h-[580px]"
+          data-testid="inbox-layout"
+        >
+          {leftOpen && (
+            <div
+              className="col-span-12 lg:col-span-3 glass-panel rounded-2xl p-3.5 space-y-3"
+              data-testid="inbox-queue"
+            >
+              <div className="flex items-center justify-between border-b border-slate-700/50 pb-2">
+                <span className="font-mono text-xs font-bold text-heading flex items-center gap-1.5">
+                  <Inbox
+                    className="w-3.5 h-3.5"
+                    style={{ color: "var(--accent-cyan)" }}
+                  />
+                  TICKET QUEUE
+                </span>
+                <span
+                  className="rounded-full px-2 py-0.5 text-[10px] font-mono font-bold"
+                  style={{
+                    background: "rgba(56,189,248,0.2)",
+                    color: "var(--accent-cyan)",
+                  }}
+                  data-testid="inbox-count"
+                >
+                  {visibleTickets.length}
+                </span>
               </div>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                aria-label="Filter by priority"
-                data-testid="inbox-priority"
-                className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm focus:outline-none focus:border-cyan-500"
-              >
-                <option value="ALL">All Priority</option>
-                <option value="HIGH">HIGH</option>
-                <option value="MEDIUM">MEDIUM</option>
-                <option value="LOW">LOW</option>
-              </select>
-            </div>
 
-            {visibleTickets.length === 0 ? (
-              <p className="p-4 text-slate-400" data-testid="inbox-empty">
-                No tickets in this view.
-              </p>
-            ) : (
-              <ul className="divide-y divide-slate-800 overflow-y-auto">
-                {visibleTickets.map((ticket) => (
-                  <li key={ticket.id}>
+              <div className="space-y-2 font-mono text-xs">
+                <div className="relative">
+                  <Search
+                    aria-hidden="true"
+                    className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500"
+                  />
+                  <input
+                    type="text"
+                    value={query}
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      setPage(1);
+                    }}
+                    placeholder="Search ID or subject..."
+                    aria-label="Search tickets"
+                    data-testid="inbox-search"
+                    className="w-full rounded-xl border px-2.5 py-1.5 pl-8 text-[11px] text-heading focus:outline-none focus:border-blue-600"
+                    style={{
+                      background: "var(--input-bg)",
+                      borderColor: "var(--input-border)",
+                    }}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                  <select
+                    value={priority}
+                    onChange={(event) => {
+                      setPriority(event.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Filter by priority"
+                    data-testid="inbox-priority"
+                    className="rounded-lg border px-1.5 py-1 text-heading focus:outline-none focus:border-blue-600"
+                    style={{
+                      background: "var(--input-bg)",
+                      borderColor: "var(--input-border)",
+                    }}
+                  >
+                    <option value="ALL">All Priority</option>
+                    <option value="HIGH">High</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="LOW">Low</option>
+                  </select>
+
+                  <select
+                    value={rowsPerPage}
+                    onChange={(event) => {
+                      setRowsPerPage(Number(event.target.value));
+                      setPage(1);
+                    }}
+                    aria-label="Tickets per page"
+                    data-testid="inbox-rows"
+                    className="rounded-lg border px-1.5 py-1 text-heading focus:outline-none focus:border-blue-600"
+                    style={{
+                      background: "var(--input-bg)",
+                      borderColor: "var(--input-border)",
+                    }}
+                  >
+                    <option value={3}>3 / page</option>
+                    <option value={5}>5 / page</option>
+                    <option value={10}>10 / page</option>
+                  </select>
+                </div>
+
+                <div
+                  className="grid grid-cols-2 gap-1 rounded-xl p-1 glass-panel"
+                  role="tablist"
+                  aria-label="Inbox scope"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === "all"}
+                    data-testid="inbox-tab-all"
+                    onClick={() => {
+                      setTab("all");
+                      setPage(1);
+                    }}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-bold ${
+                      tab === "all"
+                        ? "bg-blue-600/30 text-cyan-300"
+                        : "text-muted-custom"
+                    }`}
+                  >
+                    All tickets
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === "mine"}
+                    data-testid="inbox-tab-mine"
+                    onClick={() => {
+                      setTab("mine");
+                      setPage(1);
+                    }}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-bold ${
+                      tab === "mine"
+                        ? "bg-blue-600/30 text-cyan-300"
+                        : "text-muted-custom"
+                    }`}
+                  >
+                    Assigned to me
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                {visibleTickets.length === 0 ? (
+                  <p
+                    className="p-4 text-center text-muted-custom font-mono text-xs font-bold"
+                    data-testid="inbox-empty"
+                  >
+                    No matching tickets
+                  </p>
+                ) : (
+                  pageTickets.map((ticket) => (
                     <button
+                      key={ticket.id}
                       type="button"
                       data-testid="inbox-ticket"
                       onClick={() => void openTimeline(ticket)}
-                      className={`w-full text-left px-4 py-3 hover:bg-slate-900 ${selected?.id === ticket.id ? "bg-slate-900 ring-1 ring-inset ring-cyan-500/40" : ""}`}
+                      className={`w-full text-left p-3 rounded-xl border transition-all ${
+                        selected?.id === ticket.id
+                          ? "bg-blue-600/15 border-blue-500/50"
+                          : "bg-slate-800/40 border-slate-700/40 hover:bg-slate-800/80"
+                      }`}
                     >
-                      <span className="flex items-center justify-between gap-2 text-xs">
-                        <span className="font-mono text-cyan-400">
+                      <span className="flex items-center justify-between gap-2 text-[10px] font-mono mb-1">
+                        <span
+                          className="font-bold"
+                          style={{ color: "var(--accent-cyan)" }}
+                        >
                           #{ticket.id.slice(0, 8)}
                         </span>
                         <span
-                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${PRIORITY_BADGE[ticket.priority] ?? "bg-slate-500/20 text-slate-300"}`}
+                          className={`px-1.5 py-0.5 rounded border font-bold ${
+                            PRIORITY_BADGE[ticket.priority] ??
+                            "bg-slate-500/20 text-slate-300"
+                          }`}
                         >
                           {PRIORITY_LABEL[ticket.priority] ?? ticket.priority}
                         </span>
                       </span>
-                      <span className="block mt-1 text-sm font-medium">
+                      <span className="block text-xs font-semibold text-heading truncate">
                         {ticket.title}
                       </span>
-                      <span className="block text-xs text-slate-400">
-                        {ticket.customerId.slice(0, 8)} ·{" "}
+                      <span className="block text-[10px] text-muted-custom mt-1 font-bold">
+                        {ticket.customerId.slice(0, 8)} •{" "}
                         {timeAgo(ticket.updatedAt)}
                       </span>
                     </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+                  ))
+                )}
+              </div>
 
-            <div className="mt-auto px-4 py-2 border-t border-slate-800 text-xs text-slate-400">
-              {visibleTickets.length} of {tickets.length} tickets
+              <div className="pt-2 border-t border-slate-700/50 flex items-center justify-between font-mono text-[10px] text-muted-custom font-bold">
+                <span>
+                  {shownFrom}-{shownTo} of {visibleTickets.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPage((value) => Math.max(1, value - 1))}
+                    disabled={currentPage <= 1}
+                    aria-label="Prev ticket page"
+                    className="px-2 py-0.5 rounded glass-panel hover:border-blue-600 text-heading disabled:opacity-40"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPage((value) => Math.min(pageCount, value + 1))
+                    }
+                    disabled={currentPage >= pageCount}
+                    aria-label="Next ticket page"
+                    className="px-2 py-0.5 rounded glass-panel hover:border-blue-600 text-heading disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Middle: active ticket detail */}
           <div
-            className="rounded-lg border border-slate-800 p-4"
+            className={`col-span-12 ${centerSpan} glass-panel rounded-2xl p-4 sm:p-5 flex flex-col justify-between min-h-[540px] transition-all`}
             data-testid="inbox-detail"
           >
             {!selected ? (
-              <p className="text-slate-400">
-                Select a ticket to see its timeline.
-              </p>
+              <div className="flex-1 flex items-center justify-center text-center p-6">
+                <p className="text-sm text-muted-custom">
+                  Select a ticket to see its timeline.
+                </p>
+              </div>
             ) : (
               <>
-                <h2 className="text-lg font-semibold">{selected.title}</h2>
-                <p className="text-xs text-slate-400 mb-2">
-                  {selected.status} · priority {selected.priority} · v
-                  {selected.version}
-                </p>
-                {conflict && (
-                  <p
-                    className="mb-2 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-sm text-amber-200"
-                    data-testid="inbox-conflict"
-                  >
-                    {conflict}
-                  </p>
-                )}
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {STATUS_ACTIONS.map((status) => (
-                    <button
-                      key={status}
-                      type="button"
-                      data-testid={`inbox-status-${status}`}
-                      onClick={() => void changeStatus(selected, status)}
-                      className="rounded border border-slate-700 px-2 py-1 text-xs hover:bg-slate-800"
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between gap-3 border-b border-slate-700/50 pb-3">
+                    <div className="min-w-0">
+                      <h2 className="font-display text-sm sm:text-base font-bold text-heading truncate">
+                        #{selected.id.slice(0, 8)}: {selected.title}
+                      </h2>
+                      <p className="text-[11px] text-muted-custom font-bold">
+                        Status {selected.status} · v{selected.version}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 px-2 py-1 rounded-lg border text-[10px] font-mono font-bold ${
+                        PRIORITY_BADGE[selected.priority] ??
+                        "bg-slate-500/20 text-slate-300"
+                      }`}
                     >
-                      {status.replace("_", " ")}
-                    </button>
-                  ))}
-                </div>
-                <h3 className="text-sm text-slate-400 mb-2">Timeline</h3>
-                {timeline === "loading" && (
-                  <p className="text-slate-400" role="status">
-                    Loading timeline…
-                  </p>
-                )}
-                {timeline === "empty" && (
-                  <p
-                    className="text-slate-400"
-                    data-testid="inbox-timeline-empty"
-                  >
-                    No conversation for this customer yet.
-                  </p>
-                )}
-                {timeline === "error" && (
-                  <p
-                    className="text-red-300"
-                    data-testid="inbox-timeline-error"
-                  >
-                    Timeline could not be loaded.
-                  </p>
-                )}
-                {timeline === "ready" && (
-                  <ul className="space-y-2" data-testid="inbox-timeline">
-                    {messages.map((message) => (
-                      <li
-                        key={message.id}
-                        className="rounded border border-slate-800 p-2 text-sm"
+                      {selected.priority} PRIORITY
+                    </span>
+                  </div>
+
+                  {conflict && (
+                    <p
+                      className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-2 text-sm text-amber-200"
+                      data-testid="inbox-conflict"
+                    >
+                      {conflict}
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    {STATUS_ACTIONS.map((status) => (
+                      <button
+                        key={status}
+                        type="button"
+                        data-testid={`inbox-status-${status}`}
+                        onClick={() => void changeStatus(selected, status)}
+                        className="rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-mono font-bold hover:bg-slate-800"
                       >
-                        <span className="flex items-center gap-2 text-xs text-slate-400">
-                          <User aria-hidden="true" className="h-3 w-3" />
-                          {message.authorType}
-                          {message.visibility === "INTERNAL" && (
-                            <span
-                              className="rounded bg-purple-500/20 px-1.5 py-0.5 text-purple-200"
-                              data-testid="inbox-internal-note"
-                            >
-                              Internal note
-                            </span>
-                          )}
-                        </span>
-                        {message.body}
-                      </li>
+                        {status.replace("_", " ")}
+                      </button>
                     ))}
-                  </ul>
+                  </div>
+
+                  <div>
+                    <h3 className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted-custom mb-2">
+                      Timeline
+                    </h3>
+                    {timeline === "loading" && (
+                      <p className="text-sm text-muted-custom" role="status">
+                        Loading timeline…
+                      </p>
+                    )}
+                    {timeline === "empty" && (
+                      <p
+                        className="text-sm text-muted-custom"
+                        data-testid="inbox-timeline-empty"
+                      >
+                        No conversation for this customer yet.
+                      </p>
+                    )}
+                    {timeline === "error" && (
+                      <p
+                        className="text-sm text-red-300"
+                        data-testid="inbox-timeline-error"
+                      >
+                        Timeline could not be loaded.
+                      </p>
+                    )}
+                    {timeline === "ready" && (
+                      <ul
+                        className="space-y-2 max-h-[320px] overflow-y-auto pr-1"
+                        data-testid="inbox-timeline"
+                      >
+                        {messages.map((message) => {
+                          const fromCustomer =
+                            message.authorType === "CUSTOMER";
+                          return (
+                            <li
+                              key={message.id}
+                              className={`rounded-xl border p-3 text-sm ${
+                                fromCustomer
+                                  ? "bg-slate-800/60 border-slate-700/40"
+                                  : "bg-blue-600/10 border-blue-500/30"
+                              }`}
+                            >
+                              <span className="flex items-center gap-2 text-[10px] font-mono font-bold text-muted-custom mb-1">
+                                <User aria-hidden="true" className="h-3 w-3" />
+                                {message.authorType}
+                                {message.visibility === "INTERNAL" && (
+                                  <span
+                                    className="rounded bg-purple-500/20 px-1.5 py-0.5 text-purple-200"
+                                    data-testid="inbox-internal-note"
+                                  >
+                                    Internal note
+                                  </span>
+                                )}
+                              </span>
+                              <p className="text-heading">{message.body}</p>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                {timeline === "ready" && conversationId && (
+                  <form
+                    onSubmit={sendReply}
+                    className="pt-4 mt-4 border-t border-slate-700/50 space-y-2"
+                  >
+                    {sendError && (
+                      <p
+                        className="text-xs text-red-300 font-bold"
+                        data-testid="inbox-send-error"
+                      >
+                        {sendError}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled
+                        title="Attachments are not available in this view"
+                        aria-label="Attach a file"
+                        className="p-2.5 rounded-xl glass-panel text-slate-400 opacity-60 cursor-not-allowed shrink-0"
+                      >
+                        <Paperclip className="w-4 h-4" />
+                      </button>
+                      <input
+                        type="text"
+                        value={reply}
+                        onChange={(event) => setReply(event.target.value)}
+                        placeholder="Type agent response..."
+                        aria-label="Reply message"
+                        data-testid="inbox-reply"
+                        className="w-full rounded-xl border px-3.5 py-2 text-xs text-heading focus:outline-none focus:border-blue-600"
+                        style={{
+                          background: "var(--input-bg)",
+                          borderColor: "var(--input-border)",
+                        }}
+                      />
+                      <button
+                        type="submit"
+                        disabled={!reply.trim() || sending}
+                        data-testid="inbox-send"
+                        className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shrink-0 flex items-center gap-1.5 hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        {sending ? "Sending…" : "Send"}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-muted-custom font-mono">
+                      Replies are sent as customer-visible messages.
+                    </p>
+                  </form>
                 )}
               </>
             )}
           </div>
 
-          {/* Right: customer profile of the selected ticket */}
-          <aside
-            className="rounded-lg border border-slate-800 p-4"
-            data-testid="inbox-profile"
-          >
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Customer profile
-            </span>
-            {!selected && (
-              <p className="mt-3 text-sm text-slate-400">
-                Select a ticket to see the customer.
-              </p>
-            )}
-            {selected && profileState === "loading" && (
-              <p className="mt-3 text-sm text-slate-400" role="status">
-                Loading customer…
-              </p>
-            )}
-            {selected && profileState === "error" && (
-              <p
-                className="mt-3 text-sm text-red-300"
-                data-testid="inbox-profile-error"
-              >
-                Customer profile unavailable.
-              </p>
-            )}
-            {selected && profileState === "ready" && profile && (
-              <div className="mt-3 space-y-1">
-                <p className="text-lg font-semibold">{profile.displayName}</p>
-                {profile.email && (
-                  <p className="text-sm text-slate-400">{profile.email}</p>
+          {rightOpen && (
+            <aside
+              className="col-span-12 lg:col-span-3 glass-panel rounded-2xl p-3.5 space-y-4"
+              data-testid="inbox-copilot"
+            >
+              <div className="border-b border-slate-700/50 pb-3 space-y-1.5 font-mono text-xs">
+                <div className="text-[10px] text-muted-custom uppercase font-bold">
+                  Customer Profile
+                </div>
+                {!selected && (
+                  <p className="text-sm text-muted-custom">
+                    Select a ticket to see the customer.
+                  </p>
                 )}
-                {profile.phone && (
-                  <p className="text-sm text-slate-400">{profile.phone}</p>
+                {selected && profileState === "loading" && (
+                  <p className="text-sm text-muted-custom" role="status">
+                    Loading customer…
+                  </p>
                 )}
-                <p className="text-xs text-slate-400">
-                  Status: {profile.status}
-                </p>
+                {selected && profileState === "error" && (
+                  <p
+                    className="text-sm text-red-300"
+                    data-testid="inbox-profile-error"
+                  >
+                    Customer profile unavailable.
+                  </p>
+                )}
+                {selected && profileState === "ready" && profile && (
+                  <div data-testid="inbox-profile" className="space-y-1">
+                    <p className="font-bold text-heading text-sm">
+                      {profile.displayName}
+                    </p>
+                    {profile.email && (
+                      <p className="text-[11px] text-muted-custom">
+                        {profile.email}
+                      </p>
+                    )}
+                    {profile.phone && (
+                      <p className="text-[11px] text-muted-custom">
+                        {profile.phone}
+                      </p>
+                    )}
+                    <p className="text-[11px] text-muted-custom">
+                      Status: {profile.status}
+                    </p>
+                  </div>
+                )}
               </div>
-            )}
-          </aside>
+
+              {selected && (
+                <div className="space-y-2 font-mono text-xs">
+                  <div className="text-[10px] text-muted-custom uppercase font-bold">
+                    Ticket Context
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-custom">Priority</span>
+                    <span className="text-heading font-bold">
+                      {selected.priority}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-custom">Status</span>
+                    <span className="text-heading font-bold">
+                      {selected.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-custom">Version</span>
+                    <span className="text-heading font-bold">
+                      v{selected.version}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-custom">Assigned</span>
+                    <span className="text-heading font-bold">
+                      {selected.assigneeMembershipId ? "Yes" : "Unassigned"}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-3 rounded-xl bg-purple-500/10 border border-blue-500/30 text-xs text-slate-200">
+                <div className="text-[10px] font-mono text-muted-custom uppercase font-bold mb-1.5">
+                  Workspace Note
+                </div>
+                AI suggestions and knowledge citations appear when the
+                conversation has grounded context.
+              </div>
+            </aside>
+          )}
         </div>
       )}
     </section>

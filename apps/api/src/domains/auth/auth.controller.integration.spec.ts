@@ -32,6 +32,7 @@ const USER_ROW = {
   id: 'user-1',
   provider: 'supabase',
   externalSubject: 'sub-123',
+  displayName: 'Acme Admin',
   status: 'ACTIVE',
   memberships: [
     {
@@ -151,6 +152,7 @@ describe('GET /auth/session (integration)', () => {
     // Suspended tenant beta is excluded; only active membership acme remains.
     expect(res.body.tenantContext).toEqual({
       userId: 'user-1',
+      displayName: 'Acme Admin',
       tenants: [
         {
           tenantId: 'tenant-a',
