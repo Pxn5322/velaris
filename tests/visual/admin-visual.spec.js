@@ -4,11 +4,12 @@ import { test, expect } from "@playwright/test";
 /**
  * Screenshot regression checks for the administrator layouts.
  *
- * Ten full-page images: dashboard, user directory, inbox and audit at
- * 1280×900 and 390×844, plus light-theme inbox and audit variants. Time is
- * fixed, API responses are deterministic, and the WebGL particle canvas is
- * hidden. The background grid and every layout surface remain visible, so
- * spacing, wrapping and hierarchy changes fail the check.
+ * Eleven images: ten full-page layouts (dashboard, user directory, inbox and
+ * audit at 1280×900 and 390×844, plus light-theme inbox and audit variants)
+ * and one 320×844 header with a long display name. Time is fixed, API
+ * responses are deterministic, and the WebGL particle canvas is hidden. The
+ * background grid and every layout surface remain visible, so spacing,
+ * wrapping and hierarchy changes fail the check.
  */
 
 const SESSION_KEY = "velaris.auth.session.v1";
@@ -40,6 +41,14 @@ const sessionResponse = {
     ],
   },
   role: "R-enterprise-admin",
+};
+
+const longNameSessionResponse = {
+  ...sessionResponse,
+  tenantContext: {
+    ...sessionResponse.tenantContext,
+    displayName: "Live Governance Administrator",
+  },
 };
 
 const members = [
@@ -265,7 +274,7 @@ function json(body, status = 200) {
   };
 }
 
-async function prepare(page) {
+async function prepare(page, response = sessionResponse) {
   await page.addInitScript(
     ([key, value]) => window.localStorage.setItem(key, value),
     [SESSION_KEY, JSON.stringify(session)],
@@ -273,7 +282,7 @@ async function prepare(page) {
   await page.clock.setFixedTime(FIXED_TIME);
 
   await page.route("**/auth/session*", (route) =>
-    route.fulfill(json(sessionResponse)),
+    route.fulfill(json(response)),
   );
   await page.route("**/tenants/*/users*", (route) =>
     route.fulfill(json(members)),
@@ -388,5 +397,22 @@ test.describe("administrator visual layouts", () => {
 
     await capture(page, "audit-light-mobile.png", 390, 844);
     await expect(page.getByLabel("Toggle Navigation")).toBeVisible();
+  });
+
+  test("long-name header at 320px", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 844 });
+    await prepare(page, longNameSessionResponse);
+    await page.goto("/admin");
+
+    await expect(page.getByTestId("nav-identity-mobile-name")).toHaveText(
+      "Live Governance Administrator",
+    );
+    await expect(page.getByTestId("nav-avatar-mobile")).toBeHidden();
+
+    await removeDynamicSurface(page);
+    await page.waitForTimeout(250);
+    await expect(page.locator("header")).toHaveScreenshot(
+      "header-long-name-320.png",
+    );
   });
 });
