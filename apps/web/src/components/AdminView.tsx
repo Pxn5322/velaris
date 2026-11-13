@@ -15,6 +15,7 @@ import { useRole } from "@/context/RoleContext";
 import { adminScopeForRole } from "@/lib/auth/uiRole";
 import { RetentionSettings } from "@/components/RetentionSettings";
 import { TenantUsersPanel } from "@/components/TenantUsersPanel";
+import { AdminAuditStream } from "@/components/analytics/AdminAuditStream";
 
 export function AdminView() {
   const [activeTab, setActiveTab] = useState<
@@ -125,82 +126,85 @@ export function AdminView() {
       )}
 
       {activeTab === "analytics" && scope.platformWide && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-700/50">
-            <span
-              className="text-[10px] sm:text-xs uppercase font-mono font-bold"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Total Active Tenants
-            </span>
-            <div className="text-2xl sm:text-3xl font-bold font-display text-heading mt-1.5 sm:mt-2">
-              42
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-700/50">
+              <span
+                className="text-[10px] sm:text-xs uppercase font-mono font-bold"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Total Active Tenants
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold font-display text-heading mt-1.5 sm:mt-2">
+                42
+              </div>
+              <span
+                className="text-[10px] sm:text-xs mt-1 block font-bold"
+                style={{ color: "var(--accent-emerald)" }}
+              >
+                ↑ +4 this month
+              </span>
             </div>
-            <span
-              className="text-[10px] sm:text-xs mt-1 block font-bold"
-              style={{ color: "var(--accent-emerald)" }}
-            >
-              ↑ +4 this month
-            </span>
-          </div>
-          <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-700/50">
-            <span
-              className="text-[10px] sm:text-xs uppercase font-mono font-bold"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Total AI Operations
-            </span>
-            <div className="text-2xl sm:text-3xl font-bold font-display text-heading mt-1.5 sm:mt-2">
-              1,420,890
+            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-700/50">
+              <span
+                className="text-[10px] sm:text-xs uppercase font-mono font-bold"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Total AI Operations
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold font-display text-heading mt-1.5 sm:mt-2">
+                1,420,890
+              </div>
+              <span
+                className="text-[10px] sm:text-xs mt-1 block font-bold"
+                style={{ color: "var(--accent-emerald)" }}
+              >
+                99.98% SLA target
+              </span>
             </div>
-            <span
-              className="text-[10px] sm:text-xs mt-1 block font-bold"
-              style={{ color: "var(--accent-emerald)" }}
-            >
-              99.98% SLA target
-            </span>
-          </div>
-          <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-700/50">
-            <span
-              className="text-[10px] sm:text-xs uppercase font-mono font-bold"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Average Deflection Rate
-            </span>
-            <div
-              className="text-2xl sm:text-3xl font-bold font-display mt-1.5 sm:mt-2"
-              style={{ color: "var(--accent-cyan)" }}
-            >
-              64.2%
+            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-700/50">
+              <span
+                className="text-[10px] sm:text-xs uppercase font-mono font-bold"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Average Deflection Rate
+              </span>
+              <div
+                className="text-2xl sm:text-3xl font-bold font-display mt-1.5 sm:mt-2"
+                style={{ color: "var(--accent-cyan)" }}
+              >
+                64.2%
+              </div>
+              <span
+                className="text-[10px] sm:text-xs mt-1 block"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Across all tenants
+              </span>
             </div>
-            <span
-              className="text-[10px] sm:text-xs mt-1 block"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Across all tenants
-            </span>
-          </div>
-          <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-700/50">
-            <span
-              className="text-[10px] sm:text-xs uppercase font-mono font-bold"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Security Violations
-            </span>
-            <div
-              className="text-2xl sm:text-3xl font-bold font-display mt-1.5 sm:mt-2"
-              style={{ color: "var(--accent-rose)" }}
-            >
-              0
+            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-700/50">
+              <span
+                className="text-[10px] sm:text-xs uppercase font-mono font-bold"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Security Violations
+              </span>
+              <div
+                className="text-2xl sm:text-3xl font-bold font-display mt-1.5 sm:mt-2"
+                style={{ color: "var(--accent-rose)" }}
+              >
+                0
+              </div>
+              <span
+                className="text-[10px] sm:text-xs mt-1 block font-bold"
+                style={{ color: "var(--accent-emerald)" }}
+              >
+                100% Isolated
+              </span>
             </div>
-            <span
-              className="text-[10px] sm:text-xs mt-1 block font-bold"
-              style={{ color: "var(--accent-emerald)" }}
-            >
-              100% Isolated
-            </span>
           </div>
-        </div>
+          <AdminAuditStream />
+        </>
       )}
 
       {activeTab === "users" && <TenantUsersPanel />}
