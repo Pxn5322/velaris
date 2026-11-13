@@ -12,6 +12,8 @@
  * a reload; they are never sent anywhere except the VELARIS API.
  */
 
+import { API_BASE_URL } from "@/lib/api/client";
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
@@ -66,8 +68,30 @@ export function storeSession(session: AuthSession): void {
   }
 }
 
-export function signOut(): void {
-  if (typeof window !== "undefined") {
+/**
+ * Revoke the current Supabase session at the API before clearing local state.
+ * The API records the access token in a durable denylist and calls Supabase
+ * logout, so a copied token stops working immediately. A network failure must
+ * not trap the user in the browser, so local state is still cleared.
+ */
+export async function signOut(): Promise<void> {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const session = getSession();
+  try {
+    if (session) {
+      await fetch(`${API_BASE_URL}/auth/signout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+        cache: "no-store",
+        signal: AbortSignal.timeout(5_000),
+      });
+    }
+  } catch {
+    // The local session is still cleared; the API denial is retried by the
+    // next sign-out if the server was unreachable.
+  } finally {
     window.localStorage.removeItem(STORAGE_KEY);
   }
 }

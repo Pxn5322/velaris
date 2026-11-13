@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { getSession, signOut as clearStoredSession } from "@/lib/auth/session";
+import { getSession, signOut as revokeSession } from "@/lib/auth/session";
 import {
   fetchSessionProfile,
   viewForRole,
@@ -21,8 +21,8 @@ interface RoleContextType {
   identity: SessionIdentity | null;
   /** Apply the identity returned by the same session read as the role. */
   setIdentity: (identity: SessionIdentity | null) => void;
-  /** Clear the local session and the resolved identity. */
-  endSession: () => void;
+  /** Revoke the server session and clear the local identity. */
+  endSession: () => Promise<void>;
   activeView: string;
   setActiveView: (view: string) => void;
   theme: ThemeMode;
@@ -54,8 +54,8 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     if (newRole) setActiveView(viewForRole(newRole));
   };
 
-  const endSession = () => {
-    clearStoredSession();
+  const endSession = async () => {
+    await revokeSession();
     setRoleState(null);
     setIdentity(null);
     setActiveView("admin");

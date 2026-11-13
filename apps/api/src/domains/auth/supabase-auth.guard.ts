@@ -12,11 +12,14 @@
 
 import {
   ExecutionContext,
+  Inject,
   Injectable,
+  Optional,
   UnauthorizedException,
   type CanActivate,
 } from '@nestjs/common';
 import type { AuthenticatedIdentity } from './auth.interface.js';
+import { TokenRevocationService } from './token-revocation.service.js';
 // Value import on purpose: with emitDecoratorMetadata the Nest injector
 // reads design:paramtypes from this import. `import type` erases the class
 // and the guard cannot resolve its dependency at runtime.
@@ -27,16 +30,28 @@ const BEARER_PATTERN = /^\s*Bearer\s+(\S+)\s*$/i;
 type GuardedRequest = {
   headers: { authorization?: string };
   user?: AuthenticatedIdentity;
+  accessToken?: string;
 };
 
 @Injectable()
 export class SupabaseAuthGuard implements CanActivate {
-  constructor(private readonly verifier: SupabaseTokenVerifier) {}
+  constructor(
+    private readonly verifier: SupabaseTokenVerifier,
+    @Optional()
+    @Inject(TokenRevocationService)
+    private readonly revocations: TokenRevocationService | null = null,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<GuardedRequest>();
     const match = BEARER_PATTERN.exec(request.headers.authorization ?? '');
     if (!match) {
+      throw new UnauthorizedException();
+    }
+
+    // Sign-out writes this row before the verifier cache can accept a reused
+    // access token, so the denial is shared across API instances.
+    if (this.revocations && (await this.revocations.isRevoked(match[1]))) {
       throw new UnauthorizedException();
     }
 
@@ -46,6 +61,7 @@ export class SupabaseAuthGuard implements CanActivate {
     }
 
     request.user = identity;
+    request.accessToken = match[1];
     return true;
   }
 }

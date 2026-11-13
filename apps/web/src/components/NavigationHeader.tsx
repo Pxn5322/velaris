@@ -91,10 +91,10 @@ export function NavigationHeader() {
   const adminLabel = adminScopeForRole(role).navLabel;
   const identityName = displayNameForIdentity(identity);
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     setIsMobileMenuOpen(false);
     setIsProfileOpen(false);
-    endSession();
+    await endSession();
     router.replace("/?signin=1");
   };
 

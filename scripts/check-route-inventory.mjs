@@ -60,6 +60,12 @@ const AUTHENTICATED_WITHOUT_PERMISSION = [
     reason:
       "Identity bootstrap: the caller reads its own session, so there is no resource to scope",
   },
+  {
+    controller: "domains/auth/auth.controller.ts",
+    handler: "signout",
+    reason:
+      "Self-service session revocation: the caller can revoke only its own bearer token",
+  },
 ];
 
 function listControllerFiles(directory) {
