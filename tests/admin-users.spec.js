@@ -389,6 +389,62 @@ test.describe("tenant administrator user directory (F-03)", () => {
     );
   });
 
+  test("fits the identity and Sign out in the mobile header at 390px", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedSession(page);
+    await routeSession(page);
+
+    await page.goto("/admin");
+
+    await expect(page.getByTestId("nav-identity-mobile")).toBeVisible();
+    await expect(page.getByTestId("nav-identity-mobile")).toContainText(
+      "Acme Admin",
+    );
+    await expect(page.getByTestId("nav-identity-mobile")).toContainText(
+      "Tenant Admin",
+    );
+    await expect(page.getByTestId("nav-sign-out-mobile")).toBeVisible();
+    await expect(page.getByTestId("nav-sign-out-mobile")).toContainText(
+      "Sign out",
+    );
+    await expect(page.getByTestId("nav-identity")).toBeHidden();
+    await expect(page.getByTestId("nav-sign-out")).toBeHidden();
+    await expect(page.getByTestId("admin-sign-out")).toHaveCount(0);
+
+    const layout = await page.evaluate(() => {
+      const logo = document.querySelector('header a[href="/"]');
+      const identity = document.querySelector(
+        '[data-testid="nav-identity-mobile"]',
+      );
+      const signOut = document.querySelector(
+        '[data-testid="nav-sign-out-mobile"]',
+      );
+      const menu = document.querySelector('[aria-label="Toggle Navigation"]');
+      if (!logo || !identity || !signOut || !menu) {
+        throw new Error("The mobile header controls are not rendered");
+      }
+      return {
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        logoRight: logo.getBoundingClientRect().right,
+        identityLeft: identity.getBoundingClientRect().left,
+        identityRight: identity.getBoundingClientRect().right,
+        signOutLeft: signOut.getBoundingClientRect().left,
+        signOutRight: signOut.getBoundingClientRect().right,
+        menuLeft: menu.getBoundingClientRect().left,
+        menuRight: menu.getBoundingClientRect().right,
+      };
+    });
+
+    expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.identityLeft).toBeGreaterThanOrEqual(layout.logoRight);
+    expect(layout.identityRight).toBeLessThanOrEqual(layout.signOutLeft);
+    expect(layout.signOutRight).toBeLessThanOrEqual(layout.menuLeft);
+    expect(layout.menuRight).toBeLessThanOrEqual(layout.viewportWidth);
+  });
+
   test("keeps status and actions visible in the mobile user directory", async ({
     page,
   }) => {

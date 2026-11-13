@@ -1,16 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  Shield,
-  Users,
-  Lock,
-  Cpu,
-  Settings,
-  Activity,
-  LogOut,
-} from "lucide-react";
+import { Shield, Users, Lock, Cpu, Settings, Activity } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import { adminScopeForRole } from "@/lib/auth/uiRole";
 import { RetentionSettings } from "@/components/RetentionSettings";
@@ -21,15 +12,9 @@ export function AdminView() {
   const [activeTab, setActiveTab] = useState<
     "analytics" | "users" | "roles" | "ai-gov" | "settings"
   >("analytics");
-  const { role, theme, endSession } = useRole();
-  const router = useRouter();
+  const { role, theme } = useRole();
   const isLight = theme === "light";
   const scope = adminScopeForRole(role);
-
-  const handleSignOut = async () => {
-    await endSession();
-    router.replace("/?signin=1");
-  };
 
   return (
     <div className="flex-1 py-4 md:py-8 overflow-y-auto space-y-6">
@@ -44,29 +29,6 @@ export function AdminView() {
           <h1 className="text-2xl sm:text-3xl font-bold font-display text-heading">
             {scope.title}
           </h1>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap lg:hidden">
-          <span
-            className="px-3 py-1 rounded-full text-xs font-bold w-fit"
-            style={{
-              background: isLight
-                ? "rgba(37,99,235,0.1)"
-                : "rgba(59,130,246,0.1)",
-              color: "var(--accent-cyan)",
-              border: "1px solid var(--card-border)",
-            }}
-          >
-            Role: {scope.roleLabel}
-          </span>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            data-testid="admin-sign-out"
-            className="px-3 py-1.5 rounded-xl glass-panel text-xs font-mono font-bold text-heading inline-flex items-center gap-1.5 hover:border-rose-500/50 hover:text-rose-400 transition-all"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            Sign out
-          </button>
         </div>
       </div>
 
