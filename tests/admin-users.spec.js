@@ -97,6 +97,38 @@ async function openUserDirectory(page) {
   await expect(page.getByTestId("tenant-users-panel")).toBeVisible();
 }
 
+async function mobileHeaderLayout(page) {
+  return page.evaluate(() => {
+    const logo = document.querySelector('header a[href="/"]');
+    const identity = document.querySelector(
+      '[data-testid="nav-identity-mobile"]',
+    );
+    const name = document.querySelector(
+      '[data-testid="nav-identity-mobile-name"]',
+    );
+    const signOut = document.querySelector(
+      '[data-testid="nav-sign-out-mobile"]',
+    );
+    const menu = document.querySelector('[aria-label="Toggle Navigation"]');
+    if (!logo || !identity || !name || !signOut || !menu) {
+      throw new Error("The mobile header controls are not rendered");
+    }
+    return {
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+      logoRight: logo.getBoundingClientRect().right,
+      identityLeft: identity.getBoundingClientRect().left,
+      identityRight: identity.getBoundingClientRect().right,
+      nameWidth: name.getBoundingClientRect().width,
+      nameScrollWidth: name.scrollWidth,
+      signOutLeft: signOut.getBoundingClientRect().left,
+      signOutRight: signOut.getBoundingClientRect().right,
+      menuLeft: menu.getBoundingClientRect().left,
+      menuRight: menu.getBoundingClientRect().right,
+    };
+  });
+}
+
 test.describe("tenant administrator user directory (F-03)", () => {
   test("lists only members of the signed-in tenant", async ({ page }) => {
     let listUrl = null;
@@ -406,6 +438,7 @@ test.describe("tenant administrator user directory (F-03)", () => {
       "Tenant Admin",
     );
     await expect(page.getByTestId("nav-sign-out-mobile")).toBeVisible();
+    await expect(page.getByTestId("nav-avatar-mobile")).toBeVisible();
     await expect(page.getByTestId("nav-sign-out-mobile")).toContainText(
       "Sign out",
     );
@@ -413,36 +446,49 @@ test.describe("tenant administrator user directory (F-03)", () => {
     await expect(page.getByTestId("nav-sign-out")).toBeHidden();
     await expect(page.getByTestId("admin-sign-out")).toHaveCount(0);
 
-    const layout = await page.evaluate(() => {
-      const logo = document.querySelector('header a[href="/"]');
-      const identity = document.querySelector(
-        '[data-testid="nav-identity-mobile"]',
-      );
-      const signOut = document.querySelector(
-        '[data-testid="nav-sign-out-mobile"]',
-      );
-      const menu = document.querySelector('[aria-label="Toggle Navigation"]');
-      if (!logo || !identity || !signOut || !menu) {
-        throw new Error("The mobile header controls are not rendered");
-      }
-      return {
-        documentWidth: document.documentElement.scrollWidth,
-        viewportWidth: window.innerWidth,
-        logoRight: logo.getBoundingClientRect().right,
-        identityLeft: identity.getBoundingClientRect().left,
-        identityRight: identity.getBoundingClientRect().right,
-        signOutLeft: signOut.getBoundingClientRect().left,
-        signOutRight: signOut.getBoundingClientRect().right,
-        menuLeft: menu.getBoundingClientRect().left,
-        menuRight: menu.getBoundingClientRect().right,
-      };
-    });
+    const layout = await mobileHeaderLayout(page);
 
     expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
     expect(layout.identityLeft).toBeGreaterThanOrEqual(layout.logoRight);
     expect(layout.identityRight).toBeLessThanOrEqual(layout.signOutLeft);
     expect(layout.signOutRight).toBeLessThanOrEqual(layout.menuLeft);
     expect(layout.menuRight).toBeLessThanOrEqual(layout.viewportWidth);
+  });
+
+  test("keeps the mobile header inside 320px with a long display name", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 844 });
+    await seedSession(page);
+    await routeSession(page, {
+      ...sessionResponse,
+      tenantContext: {
+        ...sessionResponse.tenantContext,
+        displayName: "Live Governance Administrator",
+      },
+    });
+
+    await page.goto("/admin");
+
+    await expect(page.getByTestId("nav-identity-mobile")).toContainText(
+      "Live Governance Administrator",
+    );
+    await expect(page.getByTestId("nav-avatar-mobile")).toBeHidden();
+    await expect(page.getByTestId("nav-identity-mobile-name")).toHaveAttribute(
+      "title",
+      "admin@acme.test",
+    );
+    await expect(page.getByTestId("nav-sign-out-mobile")).toContainText(
+      "Sign out",
+    );
+
+    const layout = await mobileHeaderLayout(page);
+
+    expect(layout.identityLeft).toBeGreaterThanOrEqual(layout.logoRight);
+    expect(layout.identityRight).toBeLessThanOrEqual(layout.signOutLeft);
+    expect(layout.signOutRight).toBeLessThanOrEqual(layout.menuLeft);
+    expect(layout.menuRight).toBeLessThanOrEqual(320);
+    expect(layout.nameScrollWidth).toBeGreaterThan(layout.nameWidth);
   });
 
   test("keeps status and actions visible in the mobile user directory", async ({
