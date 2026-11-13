@@ -18,6 +18,7 @@ import {
   X,
   LogOut,
   ShieldCheck,
+  UserRound,
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import {
@@ -26,6 +27,7 @@ import {
   roleLabelFor,
   type SessionIdentity,
 } from "@/lib/auth/uiRole";
+import { ProfileSettingsDialog } from "@/components/ProfileSettingsDialog";
 
 /** Two-letter avatar fallback for the signed-in caller. */
 function initialsFor(name: string): string {
@@ -84,19 +86,27 @@ export function NavigationHeader() {
     endSession,
   } = useRole();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const router = useRouter();
   const adminLabel = adminScopeForRole(role).navLabel;
   const identityName = displayNameForIdentity(identity);
 
   const handleSignOut = () => {
     setIsMobileMenuOpen(false);
+    setIsProfileOpen(false);
     endSession();
     router.replace("/?signin=1");
   };
 
   const openSignIn = () => {
     setIsMobileMenuOpen(false);
+    setIsProfileOpen(false);
     router.push("/?signin=1");
+  };
+
+  const openProfile = () => {
+    setIsMobileMenuOpen(false);
+    setIsProfileOpen(true);
   };
 
   const navLinks = [
@@ -239,6 +249,19 @@ export function NavigationHeader() {
           {role && (
             <button
               type="button"
+              onClick={openProfile}
+              data-testid="nav-profile"
+              className="hidden lg:flex items-center justify-center p-2 rounded-xl glass-panel text-heading hover:border-cyan-500/50 hover:text-cyan-300 transition-all"
+              aria-label="Profile settings"
+              title="Profile settings"
+            >
+              <UserRound className="w-4 h-4" />
+            </button>
+          )}
+
+          {role && (
+            <button
+              type="button"
               onClick={handleSignOut}
               data-testid="nav-sign-out"
               className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl glass-panel text-xs font-mono font-bold text-heading hover:border-rose-500/50 hover:text-rose-400 transition-all"
@@ -311,16 +334,27 @@ export function NavigationHeader() {
                   </div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={handleSignOut}
-                data-testid="nav-sign-out-mobile"
-                className="px-3 py-2 rounded-xl glass-panel text-xs font-mono font-bold text-rose-400 inline-flex items-center gap-1.5"
-                aria-label="Sign out"
-              >
-                <LogOut className="w-4 h-4" />
-                Sign out
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={openProfile}
+                  data-testid="nav-profile-mobile"
+                  className="p-2 rounded-xl glass-panel text-heading hover:text-cyan-300"
+                  aria-label="Profile settings"
+                >
+                  <UserRound className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  data-testid="nav-sign-out-mobile"
+                  className="px-3 py-2 rounded-xl glass-panel text-xs font-mono font-bold text-rose-400 inline-flex items-center gap-1.5"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign out
+                </button>
+              </div>
             </div>
           )}
           {role && (
@@ -364,6 +398,10 @@ export function NavigationHeader() {
             </div>
           )}
         </div>
+      )}
+
+      {isProfileOpen && (
+        <ProfileSettingsDialog onClose={() => setIsProfileOpen(false)} />
       )}
     </header>
   );
