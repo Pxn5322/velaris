@@ -11,7 +11,7 @@ import {
   signIn,
   signOut,
 } from "@/lib/auth/session";
-import { fetchSessionRole, routeForRole } from "@/lib/auth/uiRole";
+import { fetchSessionProfile, routeForRole } from "@/lib/auth/uiRole";
 
 interface LandingAuthModalProps {
   isOpen: boolean;
@@ -25,7 +25,7 @@ export function LandingAuthModal({
   onClose,
 }: LandingAuthModalProps) {
   const router = useRouter();
-  const { setRole } = useRole();
+  const { setRole, setIdentity } = useRole();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
@@ -72,9 +72,10 @@ export function LandingAuthModal({
       }
       // Real Supabase Auth sign-in (D-03); the token rides apiFetch.
       await signIn(email.trim(), password);
-      // The role comes from the server (membership_roles), never a picker.
-      const uiRole = await fetchSessionRole();
-      if (!uiRole) {
+      // The role and identity come from the server (membership_roles and
+      // the user row), never a picker or a client-side guess.
+      const profile = await fetchSessionProfile();
+      if (!profile.role) {
         await signOut();
         setError(
           isSignup
@@ -84,9 +85,10 @@ export function LandingAuthModal({
         setSubmitting(false);
         return;
       }
-      setRole(uiRole);
+      setRole(profile.role);
+      setIdentity(profile.identity);
       onClose();
-      router.push(routeForRole(uiRole));
+      router.push(routeForRole(profile.role));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed.");
       setSubmitting(false);

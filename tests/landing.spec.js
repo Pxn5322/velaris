@@ -2,6 +2,14 @@
 import { test, expect } from "@playwright/test";
 import { expectNoSeriousA11yViolations } from "./a11y.js";
 
+function json(body, status = 200) {
+  return {
+    status,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  };
+}
+
 /**
  * E2E journey J-01: public landing page.
  *
@@ -64,7 +72,9 @@ test.describe("landing page (AC-F01-1)", () => {
       // Chrome reports its own ring as `auto`; the design system ring is
       // `solid`. Either is visible, and `none` is the failure this test
       // exists to catch.
-      expect(stop.outlineStyle, `${stop.label}: outline style`).not.toBe("none");
+      expect(stop.outlineStyle, `${stop.label}: outline style`).not.toBe(
+        "none",
+      );
       expect(
         Number.parseFloat(stop.outlineWidth),
         `${stop.label}: outline width`,
@@ -104,6 +114,55 @@ test.describe("landing page (AC-F01-1)", () => {
     await expect(
       header.getByRole("button", { name: /Start Free/ }),
     ).toBeVisible();
+  });
+
+  test("sign-in applies the server role and identity together", async ({
+    page,
+  }) => {
+    await page.route("**/auth/v1/token*", (route) =>
+      route.fulfill(
+        json({
+          access_token: "e2e-access-token",
+          refresh_token: "e2e-refresh-token",
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          user: { email: "admin@acme.test" },
+        }),
+      ),
+    );
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(
+        json({
+          identity: {
+            provider: "supabase",
+            subject: "sub-e2e",
+            email: "admin@acme.test",
+          },
+          tenantContext: {
+            userId: "user-1",
+            displayName: "Acme Admin",
+            tenants: [
+              {
+                tenantId: "tenant-a",
+                slug: "acme",
+                name: "Acme",
+                membershipId: "membership-1",
+              },
+            ],
+          },
+          role: "R-tenant-admin",
+        }),
+      ),
+    );
+
+    await page.goto("/?signin=1");
+    await page.getByTestId("sign-in-email").fill("admin@acme.test");
+    await page.getByTestId("sign-in-password").fill("correct-horse-battery");
+    await page.getByTestId("sign-in-submit").click();
+
+    await expect(page).toHaveURL(/\/admin$/);
+    await expect(page.getByTestId("nav-identity")).toContainText("Acme Admin");
+    await expect(page.getByTestId("nav-role")).toHaveText("Tenant Admin");
+    await expect(page.getByTestId("nav-avatar-initials")).toHaveText("AA");
   });
 
   test("Start Free opens the tenant registration form (F-01)", async ({

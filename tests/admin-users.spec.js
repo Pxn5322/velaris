@@ -75,8 +75,14 @@ function json(body, status = 200) {
 }
 
 async function seedSession(page) {
+  // Seed the local session once per browser context. A document reload after
+  // sign-out must not recreate the session the test just cleared.
   await page.addInitScript(
-    ([key, value]) => window.localStorage.setItem(key, value),
+    ([key, value]) => {
+      if (window.sessionStorage.getItem("e2e-admin-seeded") === "1") return;
+      window.localStorage.setItem(key, value);
+      window.sessionStorage.setItem("e2e-admin-seeded", "1");
+    },
     [SESSION_KEY, JSON.stringify(session)],
   );
 }
