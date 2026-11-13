@@ -22,6 +22,8 @@ export interface TenantContextEntry {
 
 export interface TenantContext {
   userId: string;
+  /** Database display name for the signed-in user; used by the identity menu. */
+  displayName: string;
   tenants: TenantContextEntry[];
 }
 
@@ -59,7 +61,7 @@ export class TenantsService {
         membershipId: membership.id,
       }))
       .sort((a, b) => a.slug.localeCompare(b.slug));
-    return { userId: user.id, tenants };
+    return { userId: user.id, displayName: user.displayName, tenants };
   }
 
   /**

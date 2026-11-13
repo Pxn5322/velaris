@@ -34,6 +34,7 @@ const sessionResponse = {
   },
   tenantContext: {
     userId: "user-1",
+    displayName: "Acme Admin",
     tenants: [
       {
         tenantId: "tenant-a",
@@ -238,6 +239,87 @@ test.describe("tenant administrator user directory (F-03)", () => {
       .toBe(true);
     await expect(page.getByTestId("tenant-users-notice")).toContainText(
       "agent@acme.test was removed from this tenant",
+    );
+  });
+
+  test("shows the caller identity and signs out from the administrator page", async ({
+    page,
+  }) => {
+    await seedSession(page);
+    await routeSession(page);
+
+    await page.goto("/admin");
+
+    await expect(page.getByTestId("nav-identity")).toBeVisible();
+    await expect(page.getByTestId("nav-identity")).toContainText("Acme Admin");
+    await expect(page.getByTestId("nav-identity")).toContainText(
+      "Tenant Admin",
+    );
+    await expect(page.getByTestId("nav-avatar")).toBeVisible();
+
+    await page.getByTestId("nav-sign-out").click();
+
+    await expect(page).toHaveURL(/\?signin=1/);
+    await expect(
+      page.getByRole("heading", { name: "Sign In to VELARIS" }),
+    ).toBeVisible();
+    const stored = await page.evaluate(
+      (key) => window.localStorage.getItem(key),
+      SESSION_KEY,
+    );
+    expect(stored).toBeNull();
+  });
+
+  test("filters and paginates the user directory in the admin-v2.7 layout", async ({
+    page,
+  }) => {
+    const manyMembers = Array.from({ length: 12 }, (_, index) => ({
+      membershipId: `membership-${index + 1}`,
+      userId: `user-${index + 1}`,
+      email: `user${index + 1}@acme.test`,
+      displayName: `Acme User ${index + 1}`,
+      status: index >= 10 ? "SUSPENDED" : "ACTIVE",
+      roles: [index % 2 === 0 ? "R-customer" : "R-agent"],
+    }));
+
+    await seedSession(page);
+    await routeSession(page);
+    await page.route("**/tenants/*/users*", (route) =>
+      route.fulfill(json(manyMembers)),
+    );
+
+    await openUserDirectory(page);
+
+    await expect(page.getByTestId("tenant-invite-card")).toBeVisible();
+    await expect(page.getByTestId("tenant-users-directory-card")).toBeVisible();
+    await expect(page.getByTestId("tenant-user-row")).toHaveCount(10);
+    await expect(page.getByTestId("tenant-users-pagination")).toContainText(
+      "Showing 1 to 10 of 12 entries",
+    );
+
+    await page.getByTestId("tenant-users-rows").selectOption("5");
+    await expect(page.getByTestId("tenant-user-row")).toHaveCount(5);
+    await expect(page.getByTestId("tenant-users-pagination")).toContainText(
+      "Showing 1 to 5 of 12 entries",
+    );
+
+    await page.getByTestId("tenant-users-next").click();
+    await expect(page.getByTestId("tenant-users-pagination")).toContainText(
+      "Showing 6 to 10 of 12 entries",
+    );
+
+    await page
+      .getByTestId("tenant-users-status-filter")
+      .selectOption("SUSPENDED");
+    await expect(page.getByTestId("tenant-user-row")).toHaveCount(2);
+    await expect(page.getByTestId("tenant-users-pagination")).toContainText(
+      "Showing 1 to 2 of 2 entries",
+    );
+
+    await page.getByTestId("tenant-users-search").fill("user12");
+    await expect(page.getByTestId("tenant-user-row")).toHaveCount(1);
+    await expect(page.getByTestId("tenant-user-row")).toContainText(
+      "user12@acme.test",
     );
   });
 

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="velaris-icon-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F2FE" />
+      <stop offset="50%" stop-color="#4FACFE" />
+      <stop offset="100%" stop-color="#6B11FF" />
+    </linearGradient>
+    <linearGradient id="velaris-icon-2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#7F00FF" />
+      <stop offset="100%" stop-color="#E100FF" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="#0B0F17" />
+  <g>
+    <path d="M 256 420 L 390 120 L 310 120 L 256 250 L 202 120 L 122 120 Z" fill="url(#velaris-icon-2)" opacity="0.85" />
+    <path d="M 256 420 L 122 120 L 202 120 L 256 240 L 310 120 L 390 120 Z" fill="url(#velaris-icon-1)" />
+    <circle cx="256" cy="210" r="130" fill="none" stroke="url(#velaris-icon-1)" stroke-width="16" stroke-dasharray="210 60" stroke-linecap="round" />
+    <circle cx="256" cy="210" r="18" fill="#00F2FE" />
+    <circle cx="256" cy="210" r="8" fill="#FFFFFF" />
+  </g>
+</svg>

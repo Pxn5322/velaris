@@ -69,6 +69,9 @@ Values below are Proposed starting points, not approved brand decisions. No cont
 - Customer: My Tickets, New Request, Conversations, Profile.
 - AI agent detail sections: Overview, Instructions, Knowledge, Tools & Actions, Guardrails, Permissions, Workflows, Evaluation, Versions, Observability.
 - Navigation is permission-aware, but all route/API access is still checked server-side.
+- Signed-in navigation shows an identity block at the right: an initials avatar, the server-resolved display name, the role label and a Sign out control. The mobile drawer repeats the block. Sign out clears the local session and opens the landing sign-in modal.
+- The administrator User Directory uses two cards: an invite card and a directory card. The directory card has search, role and status filters, rows per page (5/10/20), a table and numbered pagination.
+- The agent inbox uses the admin-v2.7 three-column layout: ticket queue, active conversation, and customer/context. The queue and context panes collapse, and the queue paginates.
 
 ## 7. Key flows
 - Onboarding: Landing → Sign Up → Create Company → Tenant Created → Invite Agent → Upload Knowledge → Configure AI Agent → Test Agent → Publish → Customer Conversation → AI Resolution/Human Escalation.

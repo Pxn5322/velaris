@@ -218,6 +218,91 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await expect(page.getByTestId("inbox-ticket")).toHaveCount(2);
   });
 
+  test("renders the admin-v2.7 workspace and paginates the queue", async ({
+    page,
+  }) => {
+    const manyTickets = Array.from({ length: 5 }, (_, index) => ({
+      id: `ticket-${index + 1}`,
+      customerId: `customer-${index + 1}`,
+      title: `Ticket ${index + 1}`,
+      status: "OPEN",
+      priority: index === 0 ? "HIGH" : "LOW",
+      version: 0,
+      assigneeMembershipId: "membership-1",
+      updatedAt: new Date().toISOString(),
+    }));
+
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/tickets*", (route) =>
+      route.fulfill(json(manyTickets)),
+    );
+
+    await page.goto("/inbox");
+
+    await expect(
+      page.getByRole("heading", { name: "Unified Agent Inbox & Copilot" }),
+    ).toBeVisible();
+    await expect(page.getByTestId("inbox-layout")).toBeVisible();
+    await expect(page.getByTestId("inbox-queue")).toBeVisible();
+    await expect(page.getByTestId("inbox-copilot")).toBeVisible();
+    await expect(page.getByTestId("inbox-ticket")).toHaveCount(3);
+
+    await page.getByTestId("inbox-rows").selectOption("5");
+    await expect(page.getByTestId("inbox-ticket")).toHaveCount(5);
+
+    await page.getByTestId("inbox-toggle-copilot").click();
+    await expect(page.getByTestId("inbox-copilot")).toHaveCount(0);
+    await page.getByTestId("inbox-toggle-copilot").click();
+    await expect(page.getByTestId("inbox-copilot")).toBeVisible();
+
+    await expectNoSeriousA11yViolations(page, "agent inbox workspace");
+  });
+
+  test("sends a customer-visible reply from the composer", async ({ page }) => {
+    let posted = null;
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
+    await page.route("**/conversations?*", (route) =>
+      route.fulfill(json(conversations)),
+    );
+    await page.route("**/conversations/conv-1**", (route) => {
+      if (route.request().method() === "POST") {
+        posted = route.request().postDataJSON();
+        return route.fulfill(
+          json({
+            id: "msg-4",
+            body: posted.body,
+            authorType: "AGENT",
+            visibility: posted.visibility,
+            createdAt: "2026-10-20T10:07:00Z",
+          }),
+        );
+      }
+      return route.fulfill(json(timeline));
+    });
+
+    await page.goto("/inbox");
+    await page.getByTestId("inbox-ticket").first().click();
+    await expect(page.getByTestId("inbox-timeline")).toBeVisible();
+
+    await page.getByTestId("inbox-reply").fill("We are on it now.");
+    await page.getByTestId("inbox-send").click();
+
+    await expect(page.getByTestId("inbox-timeline")).toContainText(
+      "We are on it now.",
+    );
+    expect(posted).toMatchObject({
+      body: "We are on it now.",
+      visibility: "CUSTOMER_VISIBLE",
+    });
+  });
+
   test("timeline renders messages and a stale status update surfaces a conflict", async ({
     page,
   }) => {
