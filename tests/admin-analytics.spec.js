@@ -4,11 +4,12 @@ import { test, expect } from "@playwright/test";
 /**
  * Administrator analytics audit stream (F-11, F-12, J-05).
  *
- * The analytics tab keeps its KPI cards and adds the prototype's lower
- * audit-stream panel. The panel must render real GET /audit/events rows for
- * the tenant resolved by GET /auth/session, not sample rows from the
- * prototype. It also keeps the governance states explicit: loading, empty,
- * failure with retry and denial.
+ * The enterprise analytics tab keeps its KPI cards and adds the prototype's
+ * lower audit-stream panel. The tenant administrator gets the same stream as
+ * the default Audit Feed, without platform KPI cards. The panel must render
+ * real GET /audit/events rows for the tenant resolved by GET /auth/session,
+ * not sample rows from the prototype. It also keeps the governance states
+ * explicit: loading, empty, failure with retry and denial.
  *
  * The API calls are intercepted because the CI runner has no database.
  */
@@ -41,6 +42,11 @@ const sessionResponse = {
     ],
   },
   role: "R-enterprise-admin",
+};
+
+const tenantAdminSessionResponse = {
+  ...sessionResponse,
+  role: "R-tenant-admin",
 };
 
 const events = [
@@ -88,9 +94,9 @@ async function seedSession(page) {
   );
 }
 
-async function routeSession(page) {
+async function routeSession(page, response = sessionResponse) {
   await page.route("**/auth/session*", (route) =>
-    route.fulfill(json(sessionResponse)),
+    route.fulfill(json(response)),
   );
 }
 
@@ -125,6 +131,43 @@ test.describe("administrator analytics audit stream", () => {
     await expect(rows.nth(1)).toContainText("retention.policy_changed");
     await expect(rows.nth(1)).toContainText("request none recorded");
     await expect(rows.nth(1)).toContainText("actor none recorded");
+
+    expect(requestedUrl?.pathname).toBe("/audit/events");
+    expect(requestedUrl?.searchParams.get("tenantId")).toBe("tenant-a");
+    expect(requestedUrl?.searchParams.get("limit")).toBe("8");
+  });
+
+  test("renders the tenant-scoped feed for a tenant administrator", async ({
+    page,
+  }) => {
+    let requestedUrl = null;
+    await seedSession(page);
+    await routeSession(page, tenantAdminSessionResponse);
+    await page.route("**/audit/events*", (route) => {
+      requestedUrl = new URL(route.request().url());
+      return route.fulfill(json({ items: events, limit: 8, hasMore: false }));
+    });
+
+    await page.goto("/admin");
+
+    await expect(
+      page.getByRole("heading", { name: "Tenant Control Center" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Audit Feed", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Platform Analytics", exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByText("Total Active Tenants")).toHaveCount(0);
+    await expect(page.getByTestId("admin-audit-stream")).toBeVisible();
+    await expect(page.getByTestId("admin-audit-stream-tenant")).toContainText(
+      "Acme",
+    );
+    await expect(page.getByTestId("admin-audit-event")).toHaveCount(3);
+    await expect(
+      page.getByRole("link", { name: "Open full audit trail" }),
+    ).toHaveAttribute("href", "/audit");
 
     expect(requestedUrl?.pathname).toBe("/audit/events");
     expect(requestedUrl?.searchParams.get("tenantId")).toBe("tenant-a");
