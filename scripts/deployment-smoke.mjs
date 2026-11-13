@@ -3,22 +3,25 @@
  * Hosted T6.03 smoke checks (2026-11-10 deployment follow-up).
  *
  * Creates one synthetic tenant, then checks:
+ * - the web icon route returns SVG,
+ * - the session display name matches the synthetic account,
  * - an authenticated retention read returns 200,
  * - a foreign tenant read is denied with 403,
  * - a retention save returns the new window,
  * - the audit trail contains the matching retention.policy_changed row.
  *
  * Usage:
- *   node --env-file=.env scripts/deployment-smoke.mjs --url https://api.example.com
+ *   node --env-file=.env scripts/deployment-smoke.mjs \
+ *     --url https://api.example.com --web-url https://web.example.com
  *
  * Required environment: SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY.
  * The synthetic account is `smokecheck-*@velaris.test`; remove it with
  * scripts/cleanup-load-tenants.mjs. The script never prints a token or password.
  */
 
-import { randomBytes } from 'node:crypto';
+import { randomBytes } from "node:crypto";
 
-const FOREIGN_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+const FOREIGN_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 
 function requireEnvironment(name) {
   const value = process.env[name];
@@ -28,13 +31,14 @@ function requireEnvironment(name) {
   return value;
 }
 
-function parseUrl() {
-  const index = process.argv.indexOf('--url');
-  const value = index >= 0 ? process.argv[index + 1] : process.env.SMOKE_API_URL;
+function parseOrigin(argument, environmentName) {
+  const index = process.argv.indexOf(argument);
+  const value =
+    index >= 0 ? process.argv[index + 1] : process.env[environmentName];
   if (!value) {
-    throw new Error('Pass --url <api-origin> or set SMOKE_API_URL');
+    throw new Error(`Pass ${argument} <origin> or set ${environmentName}`);
   }
-  return value.replace(/\/+$/, '');
+  return value.replace(/\/+$/, "");
 }
 
 async function readJson(response) {
@@ -50,21 +54,43 @@ async function readJson(response) {
 }
 
 async function main() {
-  const apiUrl = parseUrl();
-  const supabaseUrl = requireEnvironment('SUPABASE_URL').replace(/\/+$/, '');
-  const publishableKey = requireEnvironment('SUPABASE_PUBLISHABLE_KEY');
-  const stamp = `${Date.now()}-${randomBytes(3).toString('hex')}`;
-  const email = `smokecheck-${stamp}@velaris.test`;
-  const password = `Synthetic-${randomBytes(8).toString('hex')}!`;
-  const tenantName = `Smoke check ${stamp}`;
+  const apiUrl = parseOrigin("--url", "SMOKE_API_URL");
+  const webUrl = parseOrigin("--web-url", "SMOKE_WEB_URL");
+  const supabaseUrl = requireEnvironment("SUPABASE_URL").replace(/\/+$/, "");
+  const publishableKey = requireEnvironment("SUPABASE_PUBLISHABLE_KEY");
   const checks = {};
+  let email = null;
   let tenantId = null;
   let token = null;
 
   try {
+    const icon = await fetch(`${webUrl}/icon.svg`, {
+      headers: { accept: "image/svg+xml" },
+    });
+    const iconBody = await icon.text();
+    const iconContentType = (icon.headers.get("content-type") ?? "")
+      .split(";")[0]
+      .trim();
+    checks.icon = icon.status;
+    checks.iconContentType = iconContentType;
+    if (
+      !icon.ok ||
+      iconContentType !== "image/svg+xml" ||
+      !iconBody.includes("<svg")
+    ) {
+      throw new Error(
+        `web icon failed with HTTP ${icon.status} and content type ${iconContentType || "none"}`,
+      );
+    }
+
+    const stamp = `${Date.now()}-${randomBytes(3).toString("hex")}`;
+    email = `smokecheck-${stamp}@velaris.test`;
+    const password = `Synthetic-${randomBytes(8).toString("hex")}!`;
+    const tenantName = `Smoke check ${stamp}`;
+
     const signup = await fetch(`${apiUrl}/auth/signup`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ email, password, tenantName }),
     });
     const signupBody = await readJson(signup);
@@ -79,10 +105,10 @@ async function main() {
     const grant = await fetch(
       `${supabaseUrl}/auth/v1/token?grant_type=password`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
           apikey: publishableKey,
-          'content-type': 'application/json',
+          "content-type": "application/json",
         },
         body: JSON.stringify({ email, password }),
       },
@@ -96,8 +122,22 @@ async function main() {
 
     const authHeaders = {
       authorization: `Bearer ${token}`,
-      'content-type': 'application/json',
+      "content-type": "application/json",
     };
+
+    const session = await fetch(`${apiUrl}/auth/session`, {
+      headers: authHeaders,
+    });
+    const sessionBody = await readJson(session);
+    checks.session = session.status;
+    const sessionDisplayName = sessionBody?.tenantContext?.displayName;
+    checks.sessionDisplayName =
+      sessionDisplayName === email ? "matches" : "mismatch";
+    if (!session.ok || sessionDisplayName !== email) {
+      throw new Error(
+        `session display name check failed with HTTP ${session.status}`,
+      );
+    }
 
     const own = await fetch(
       `${apiUrl}/settings/retention?tenantId=${encodeURIComponent(tenantId)}`,
@@ -119,11 +159,11 @@ async function main() {
     }
 
     const saved = await fetch(`${apiUrl}/settings/retention`, {
-      method: 'PUT',
+      method: "PUT",
       headers: authHeaders,
       body: JSON.stringify({
         tenantId,
-        category: 'TRACES',
+        category: "TRACES",
         retentionDays: 45,
       }),
     });
@@ -142,12 +182,12 @@ async function main() {
     const matched = Array.isArray(auditBody?.items)
       ? auditBody.items.find(
           (event) =>
-            event?.metadata?.category === 'TRACES' &&
+            event?.metadata?.category === "TRACES" &&
             event?.metadata?.retentionDays === 45,
         )
       : null;
     if (!audit.ok || !matched) {
-      throw new Error('retention audit row was not found');
+      throw new Error("retention audit row was not found");
     }
 
     console.log(

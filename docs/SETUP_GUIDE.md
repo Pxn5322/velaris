@@ -7,7 +7,7 @@ depends_on: [ARCHITECTURE, SECURITY, DATABASE]
 ---
 # Setup Guide — VELARIS
 
-Last verified: **2026-11-10** for the hosted deployment in sections 4, 6, 6.1, 6.3 and 6.4. Other sections remain proposed examples until they are rerun on a clean machine. Record the operator and date when a step is rerun.
+Last verified: **2026-11-13** for the hosted deployment and post-deploy smoke in sections 4, 6, 6.1, 6.3 and 6.4. Other sections remain proposed examples until they are rerun on a clean machine. Record the operator and date when a step is rerun.
 
 ## Supabase setup decisions (required before database foundation)
 - Create separate Supabase projects/environments for development, staging and production as appropriate to budget and risk.
@@ -186,9 +186,12 @@ curl -s -H "Authorization: Bearer $TOKEN" "https://velaris-api-aral.onrender.com
 # 4. Cross-tenant denial: expect 403
 curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" "https://velaris-api-aral.onrender.com/settings/retention?tenantId=$OTHER_TENANT_ID"
 
-# 5. Hosted smoke: cross-tenant 403, retention save and audit read-back
-node --env-file=.env scripts/deployment-smoke.mjs \
-  --url https://velaris-api-aral.onrender.com
+# 5. Hosted smoke: web icon, session display name, cross-tenant 403,
+#    retention save and audit read-back
+npm run smoke:hosted
+# Custom origins:
+# node --env-file=.env scripts/deployment-smoke.mjs \
+#   --url <api-origin> --web-url <web-origin>
 
 # 6. Authenticated load: creates one synthetic tenant and fills {tenantId}
 #    SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be in the shell.
@@ -205,6 +208,7 @@ E2E_LIVE_API_URL=https://velaris-api-aral.onrender.com E2E_BASE_URL=https://vela
 ```
 - [x] Liveness returned 200 and the protected route returned 401 on 2026-11-10.
 - [x] Hosted smoke passed on `a725bdd`: signup 201, login 200, own read 200, cross-tenant 403, retention save 200 and audit read 200. The audit row matched category `TRACES` and 45 days.
+- [x] Post-deploy smoke passed on 2026-11-13: `/icon.svg` returned 200 with `image/svg+xml`, `GET /auth/session` returned 200 and its display name matched the synthetic account, and the existing retention checks passed. A bad icon path returned 404 with `text/html` and exit 1, so the icon check fails closed. Cleanup left zero synthetic tenants and accounts.
 - [x] The retention panel has a ten-change recent history and links to the full filtered audit trail. Seven local retention journeys pass; the hosted panel was inspected on 2026-11-10 with a signed-in synthetic tenant, and `KNOWLEDGE 365` and `MEMORY 30` produced two history rows.
 - [x] `node scripts/load-profile.mjs --auth-signup` recorded a warm p95 of 1350.52 ms at concurrency 8 with 90/90 responses, zero errors and 9 req/s. The budget is 200 ms, so NFR-04 is not met. Report: `.agents/evidence-t6.03-load-hosted.json`.
 - [x] The same-region candidate run on 2026-11-10 measured p95 1094.14 ms and 994.47 ms at concurrency 8 with zero errors. Both are over the budget, so NFR-04 is still not met (section 6.4).
@@ -320,6 +324,8 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 | Hosted Auth email | Real recovery and confirmation delivered; callback redirect; password update and confirmed login returned 200 |
 | Hosted retention history | Two `retention.policy_changed` rows from `KNOWLEDGE 365` and `MEMORY 30`; cleanup zero |
 | Hosted smoke | signup 201, login 200, own read 200, cross-tenant 403, save 200, audit 200 |
+| Session display name | 200; display name matched the synthetic account |
+| Web icon route | `/icon.svg` 200 with `image/svg+xml`; body is SVG |
 | Vercel deployment | `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq` READY; aliases assigned; rollback to `dpl_CbaTyj8hZZ5mxP3ri3y152TrRFGD` and forward passed |
 | Vercel T6.07 deployment | `dpl_DgWjALjWD12Y6aasX8moiRJK31U2` READY for `ea086f3`; aliases assigned |
 | Render deployment | `dep-dbpetitbedkc738i7plg` live; rollback to `dep-dbpet2s9v7es73bn764g` and forward passed |
