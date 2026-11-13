@@ -24,6 +24,7 @@
     "inventory:check": "node scripts/check-route-inventory.mjs",
     "e2e": "npm run test:e2e --workspace apps/api",
     "e2e:web": "playwright test",
+    "e2e:visual": "playwright test --config=playwright.visual.config.js",
     "e2e:live": "playwright test tests/live",
     "smoke:hosted": "node --env-file=.env scripts/deployment-smoke.mjs --url https://velaris-api-aral.onrender.com --web-url https://velaris-web-bice.vercel.app"
   },

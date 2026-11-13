@@ -60,3 +60,49 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
+
+  visual:
+    name: Visual regression
+    timeout-minutes: 30
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Build apps/web for the production server
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if npm run build:web; then
+              exit 0
+            fi
+            echo "build attempt ${attempt} failed; retrying in 10s"
+            sleep 10
+          done
+          echo "build failed after 3 attempts"
+          exit 1
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://e2e-stub.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: e2e-stub-publishable-key
+
+      - name: Run screenshot regression checks
+        run: npx playwright test --config=playwright.visual.config.js
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ failure() }}
+        with:
+          name: visual-regression-failures
+          path: |
+            test-results/visual/
+            visual-report/
+          retention-days: 30
