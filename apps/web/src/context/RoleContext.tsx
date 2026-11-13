@@ -19,6 +19,8 @@ interface RoleContextType {
   roleLoading: boolean;
   /** Name, email and optional picture for the navigation identity block. */
   identity: SessionIdentity | null;
+  /** Apply the identity returned by the same session read as the role. */
+  setIdentity: (identity: SessionIdentity | null) => void;
   /** Clear the local session and the resolved identity. */
   endSession: () => void;
   activeView: string;
@@ -93,6 +95,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         setRole,
         roleLoading,
         identity,
+        setIdentity,
         endSession,
         activeView,
         setActiveView,

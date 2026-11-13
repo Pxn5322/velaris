@@ -15,7 +15,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, ShieldAlert } from "lucide-react";
-import { fetchSessionRole, routeForRole } from "@/lib/auth/uiRole";
+import { useRole } from "@/context/RoleContext";
+import { fetchSessionProfile, routeForRole } from "@/lib/auth/uiRole";
 import {
   getSession,
   storeSession,
@@ -31,6 +32,7 @@ function readFragment(): URLSearchParams {
 
 export default function AuthCallbackPage() {
   const router = useRouter();
+  const { setRole, setIdentity } = useRole();
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState("");
   const [password, setPassword] = useState("");
@@ -118,8 +120,14 @@ export default function AuthCallbackPage() {
       router.push("/");
       return;
     }
-    const role = await fetchSessionRole();
-    router.push(role ? routeForRole(role) : "/");
+    const profile = await fetchSessionProfile();
+    if (!profile.role) {
+      router.push("/");
+      return;
+    }
+    setRole(profile.role);
+    setIdentity(profile.identity);
+    router.push(routeForRole(profile.role));
   };
 
   return (
