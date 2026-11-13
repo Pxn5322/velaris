@@ -174,6 +174,30 @@ describe('GET /auth/session (integration)', () => {
     });
   });
 
+  it('returns the provider avatar from user metadata', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        sub: 'sub-123',
+        email: 'user@example.test',
+        user_metadata: {
+          avatar_url: 'https://cdn.example.test/avatars/user.png',
+        },
+      }),
+    );
+
+    const res = await request(app.getHttpServer())
+      .get('/auth/session')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(200);
+    expect(res.body.identity).toEqual({
+      provider: 'supabase',
+      subject: 'sub-123',
+      email: 'user@example.test',
+      avatarUrl: 'https://cdn.example.test/avatars/user.png',
+    });
+  });
+
   it('returns a null role when no membership resolves one (deny by default)', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, { sub: 'sub-123', email: 'user@example.test' }),

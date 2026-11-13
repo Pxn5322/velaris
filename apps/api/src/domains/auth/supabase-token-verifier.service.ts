@@ -134,6 +134,7 @@ export class SupabaseTokenVerifier {
       sub?: unknown;
       id?: unknown;
       email?: unknown;
+      user_metadata?: unknown;
     };
     // GoTrue's userinfo answer carries the user UUID in `id`; `sub` appears
     // in some versions and proxies. Accept both, prefer `sub` (verified
@@ -147,10 +148,12 @@ export class SupabaseTokenVerifier {
     if (!subject) {
       return null;
     }
+    const avatarUrl = readAvatarUrl(body.user_metadata);
     return {
       provider: 'supabase',
       subject,
       email: typeof body.email === 'string' ? body.email : undefined,
+      ...(avatarUrl ? { avatarUrl } : {}),
     };
   }
 
@@ -210,6 +213,37 @@ export class SupabaseTokenVerifier {
   private cacheKey(token: string): string {
     return createHash('sha256').update(token).digest('hex');
   }
+}
+
+/**
+ * Read a profile photo from Supabase user_metadata. OAuth providers publish
+ * `avatar_url`; some publish `picture`. Only an absolute https URL of bounded
+ * length is accepted, so the web client cannot render a script or data URL.
+ */
+function readAvatarUrl(metadata: unknown): string | undefined {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return undefined;
+  }
+  const record = metadata as Record<string, unknown>;
+  for (const key of ['avatar_url', 'picture'] as const) {
+    const value = record[key];
+    if (typeof value !== 'string') {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (trimmed.length === 0 || trimmed.length > 2_048) {
+      continue;
+    }
+    try {
+      const url = new URL(trimmed);
+      if (url.protocol === 'https:') {
+        return url.toString();
+      }
+    } catch {
+      // A malformed URL is not a profile photo. Try the next metadata key.
+    }
+  }
+  return undefined;
 }
 
 /** Read the `exp` claim without trusting it; it only bounds the cache TTL. */

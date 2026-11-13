@@ -256,6 +256,7 @@ test.describe("tenant administrator user directory (F-03)", () => {
       "Tenant Admin",
     );
     await expect(page.getByTestId("nav-avatar")).toBeVisible();
+    await expect(page.getByTestId("nav-avatar-initials")).toHaveText("AA");
 
     await page.getByTestId("nav-sign-out").click();
 
@@ -268,6 +269,57 @@ test.describe("tenant administrator user directory (F-03)", () => {
       SESSION_KEY,
     );
     expect(stored).toBeNull();
+  });
+
+  test("renders the profile photo from Supabase user metadata", async ({
+    page,
+  }) => {
+    const avatarUrl = "https://cdn.example.test/avatar.png";
+    const onePixelPng = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+
+    await seedSession(page);
+    await routeSession(page, {
+      ...sessionResponse,
+      identity: { ...sessionResponse.identity, avatarUrl },
+    });
+    await page.route(avatarUrl, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "image/png",
+        body: onePixelPng,
+      }),
+    );
+
+    await page.goto("/admin");
+
+    await expect(page.getByTestId("nav-avatar-image")).toHaveAttribute(
+      "src",
+      avatarUrl,
+    );
+    await expect(page.getByTestId("nav-avatar-initials")).toHaveCount(0);
+  });
+
+  test("falls back to initials when the profile photo cannot load", async ({
+    page,
+  }) => {
+    const avatarUrl = "https://cdn.example.test/missing-avatar.png";
+
+    await seedSession(page);
+    await routeSession(page, {
+      ...sessionResponse,
+      identity: { ...sessionResponse.identity, avatarUrl },
+    });
+    await page.route(avatarUrl, (route) =>
+      route.fulfill({ status: 404, body: "not found" }),
+    );
+
+    await page.goto("/admin");
+
+    await expect(page.getByTestId("nav-avatar-initials")).toHaveText("AA");
+    await expect(page.getByTestId("nav-avatar-image")).toHaveCount(0);
   });
 
   test("filters and paginates the user directory in the admin-v2.7 layout", async ({
