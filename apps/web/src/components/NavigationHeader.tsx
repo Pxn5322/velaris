@@ -40,15 +40,21 @@ function initialsFor(name: string): string {
 function IdentityAvatar({
   identity,
   name,
+  testIdPrefix = "nav-avatar",
 }: {
   identity: SessionIdentity | null;
   name: string;
+  testIdPrefix?: string;
 }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const avatarUrl = identity?.avatarUrl ?? null;
 
   return (
-    <div className="relative" data-testid="nav-avatar" aria-hidden="true">
+    <div
+      className="relative shrink-0"
+      data-testid={testIdPrefix}
+      aria-hidden="true"
+    >
       {avatarUrl && avatarUrl !== failedUrl ? (
         // The URL comes from the identity provider and the API accepts only
         // https. A plain img keeps the avatar host independent from the Next
@@ -57,14 +63,14 @@ function IdentityAvatar({
         <img
           src={avatarUrl}
           alt=""
-          data-testid="nav-avatar-image"
+          data-testid={`${testIdPrefix}-image`}
           referrerPolicy="no-referrer"
           className="w-8 h-8 rounded-lg object-cover ring-1 ring-blue-500/50"
           onError={() => setFailedUrl(avatarUrl)}
         />
       ) : (
         <span
-          data-testid="nav-avatar-initials"
+          data-testid={`${testIdPrefix}-initials`}
           className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 text-white text-[11px] font-mono font-bold flex items-center justify-center ring-1 ring-blue-500/50"
         >
           {initialsFor(name)}
@@ -169,9 +175,9 @@ export function NavigationHeader() {
   const isLight = theme === "light";
 
   return (
-    <header className="fixed top-0 left-0 w-full z-50 px-3 sm:px-6 py-3 transition-all duration-300">
-      <div className="max-w-7xl mx-auto flex items-center justify-between glass-panel rounded-2xl px-3 sm:px-5 py-2.5 shadow-xl">
-        <Link href="/" className="flex items-center gap-2.5 group">
+    <header className="fixed top-0 left-0 w-full z-50 px-2 sm:px-6 py-3 transition-all duration-300">
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 glass-panel rounded-2xl px-2 sm:px-5 py-2.5 shadow-xl">
+        <Link href="/" className="flex shrink-0 items-center gap-2.5 group">
           <div className="w-8 h-8 sm:w-9 sm:h-9 relative flex items-center justify-center group-hover:scale-105 transition-transform">
             <Image
               src="/logo.svg"
@@ -182,7 +188,7 @@ export function NavigationHeader() {
               priority
             />
           </div>
-          <span className="font-display font-bold text-base sm:text-xl tracking-tight text-heading">
+          <span className="hidden sm:inline font-display font-bold text-base sm:text-xl tracking-tight text-heading">
             VELARIS
           </span>
         </Link>
@@ -211,7 +217,36 @@ export function NavigationHeader() {
           })}
         </nav>
 
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
+          {role && (
+            <div
+              data-testid="nav-identity-mobile"
+              className={`flex lg:hidden min-w-0 items-center gap-1.5 rounded-xl glass-panel py-1 pl-1.5 pr-1 ${isLight ? "bg-white/80" : "bg-slate-900/80"}`}
+            >
+              <IdentityAvatar
+                identity={identity}
+                name={identityName}
+                testIdPrefix="nav-avatar-mobile"
+              />
+              <div className="flex min-w-0 max-w-[4.5rem] flex-col text-left">
+                <span
+                  data-testid="nav-identity-mobile-name"
+                  className="truncate text-[11px] font-semibold leading-tight text-heading"
+                  title={identity?.email ?? identityName}
+                >
+                  {identityName}
+                </span>
+                <span
+                  data-testid="nav-role-mobile"
+                  className="truncate text-[9px] font-mono font-bold leading-tight"
+                  style={{ color: "var(--accent-cyan)" }}
+                >
+                  {roleLabelFor(role)}
+                </span>
+              </div>
+            </div>
+          )}
+
           {role ? (
             <div
               data-testid="nav-identity"
@@ -272,9 +307,22 @@ export function NavigationHeader() {
             </button>
           )}
 
+          {role && (
+            <button
+              type="button"
+              onClick={handleSignOut}
+              data-testid="nav-sign-out-mobile"
+              className="inline-flex lg:hidden shrink-0 items-center gap-1 rounded-xl glass-panel px-2 py-2 text-[11px] font-mono font-bold text-heading transition-all hover:border-rose-500/50 hover:text-rose-400"
+              aria-label="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sign out</span>
+            </button>
+          )}
+
           <button
             onClick={toggleTheme}
-            className="p-2 sm:p-2.5 rounded-xl glass-panel hover:border-blue-500 transition-all text-heading"
+            className="shrink-0 rounded-xl glass-panel p-1.5 text-heading transition-all hover:border-blue-500 sm:p-2.5"
             aria-label="Toggle Theme"
           >
             {theme === "dark" ? (
@@ -286,7 +334,7 @@ export function NavigationHeader() {
 
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="lg:hidden p-2 sm:p-2.5 rounded-xl glass-panel text-heading hover:border-blue-500 transition-colors"
+            className="shrink-0 rounded-xl glass-panel p-1.5 text-heading transition-colors hover:border-blue-500 lg:hidden sm:p-2.5"
             aria-label="Toggle Navigation"
           >
             {isMobileMenuOpen ? (
@@ -321,7 +369,11 @@ export function NavigationHeader() {
           {role && (
             <div className="flex items-center justify-between gap-3 p-3 rounded-xl glass-panel">
               <div className="flex items-center gap-2.5 min-w-0">
-                <IdentityAvatar identity={identity} name={identityName} />
+                <IdentityAvatar
+                  identity={identity}
+                  name={identityName}
+                  testIdPrefix="nav-avatar-drawer"
+                />
                 <div className="min-w-0 text-left">
                   <div className="text-xs font-semibold text-heading truncate">
                     {identityName}
@@ -347,7 +399,7 @@ export function NavigationHeader() {
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  data-testid="nav-sign-out-mobile"
+                  data-testid="nav-sign-out-drawer"
                   className="px-3 py-2 rounded-xl glass-panel text-xs font-mono font-bold text-rose-400 inline-flex items-center gap-1.5"
                   aria-label="Sign out"
                 >
