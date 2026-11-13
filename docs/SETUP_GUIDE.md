@@ -291,7 +291,7 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 - Health check path `/`; the API has no separate `/health` route.
 - Environment names: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NODE_ENV=production`, `CORS_ORIGIN` and `APP_BASE_URL`.
 - `CORS_ORIGIN` lists the three Vercel aliases. `APP_BASE_URL` is the short alias.
-- Auto-deploy is off. Use Manual Deploy in the Render dashboard.
+- Auto-deploy is on for branch `master`; a push to `master` creates a production deploy. There is no path build filter, so web and documentation commits rebuild the API too. Enabling the setting does not backfill the live build: use Manual Deploy once if `master` is ahead of the running API.
 
 **Manual recreation or change**
 1. Vercel: import `Pxn5322/velaris`, set root `apps/web`, set the install and build commands above, add the three public variables, then deploy `master`.
