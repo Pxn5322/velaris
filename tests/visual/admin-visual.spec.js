@@ -4,10 +4,11 @@ import { test, expect } from "@playwright/test";
 /**
  * Screenshot regression checks for the administrator layouts.
  *
- * Six full-page images: dashboard, user directory and inbox at 1280×900 and
- * 390×844. Time is fixed, API responses are deterministic, and the WebGL
- * particle canvas is hidden. The background grid and every layout surface
- * remain visible, so spacing, wrapping and hierarchy changes fail the check.
+ * Ten full-page images: dashboard, user directory, inbox and audit at
+ * 1280×900 and 390×844, plus light-theme inbox and audit variants. Time is
+ * fixed, API responses are deterministic, and the WebGL particle canvas is
+ * hidden. The background grid and every layout surface remain visible, so
+ * spacing, wrapping and hierarchy changes fail the check.
  */
 
 const SESSION_KEY = "velaris.auth.session.v1";
@@ -160,6 +161,19 @@ const auditEvents = [
   }),
 );
 
+const auditTraces = [
+  {
+    id: "trace-1",
+    correlationId: "req-abc",
+    provider: "openai",
+    model: "gpt-4.1-mini",
+    outcome: "SUCCESS",
+    latencyMs: 820,
+    createdAt: "2026-11-13T09:42:01.000Z",
+    expiresAt: "2026-12-13T09:42:01.000Z",
+  },
+];
+
 const tickets = [
   [
     "ticket-1",
@@ -267,6 +281,9 @@ async function prepare(page) {
   await page.route("**/audit/events*", (route) =>
     route.fulfill(json({ items: auditEvents, limit: 8, hasMore: false })),
   );
+  await page.route("**/audit/traces*", (route) =>
+    route.fulfill(json({ items: auditTraces, limit: 25, hasMore: false })),
+  );
   await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
   await page.route("**/conversations?*", (route) =>
     route.fulfill(json(conversations)),
@@ -295,6 +312,12 @@ async function capture(page, name, width, height) {
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(250);
   await expect(page).toHaveScreenshot(name, { fullPage: true });
+}
+
+async function enableLightTheme(page) {
+  await page.getByRole("button", { name: "Toggle Theme" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.waitForTimeout(400);
 }
 
 test.describe("administrator visual layouts", () => {
@@ -336,6 +359,34 @@ test.describe("administrator visual layouts", () => {
     await capture(page, "inbox-desktop.png", 1280, 900);
 
     await capture(page, "inbox-mobile.png", 390, 844);
+    await expect(page.getByLabel("Toggle Navigation")).toBeVisible();
+  });
+
+  test("inbox light theme at desktop and mobile widths", async ({ page }) => {
+    await prepare(page);
+    await page.goto("/inbox");
+    await page.getByTestId("inbox-ticket").first().click();
+    await expect(page.getByTestId("inbox-timeline")).toBeVisible();
+    await expect(page.getByTestId("inbox-profile")).toBeVisible();
+
+    await enableLightTheme(page);
+    await removeDynamicSurface(page);
+    await capture(page, "inbox-light-desktop.png", 1280, 900);
+
+    await capture(page, "inbox-light-mobile.png", 390, 844);
+    await expect(page.getByLabel("Toggle Navigation")).toBeVisible();
+  });
+
+  test("audit light theme at desktop and mobile widths", async ({ page }) => {
+    await prepare(page);
+    await page.goto("/audit");
+    await expect(page.getByTestId("audit-event")).toHaveCount(4);
+
+    await enableLightTheme(page);
+    await removeDynamicSurface(page);
+    await capture(page, "audit-light-desktop.png", 1280, 900);
+
+    await capture(page, "audit-light-mobile.png", 390, 844);
     await expect(page.getByLabel("Toggle Navigation")).toBeVisible();
   });
 });
