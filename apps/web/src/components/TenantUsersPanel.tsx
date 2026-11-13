@@ -623,10 +623,10 @@ export function TenantUsersPanel() {
           </p>
         )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+        <div className="sm:overflow-x-auto">
+          <table className="block w-full text-left text-xs sm:table">
             <thead
-              className="font-mono uppercase border-b text-muted-custom"
+              className="hidden font-mono uppercase border-b text-muted-custom sm:table-header-group"
               style={{ borderColor: "var(--card-border)" }}
             >
               <tr>
@@ -637,14 +637,14 @@ export function TenantUsersPanel() {
               </tr>
             </thead>
             <tbody
-              className="divide-y"
+              className="block sm:table-row-group sm:divide-y"
               style={{ borderColor: "var(--card-border)" }}
             >
               {!loading && filteredMembers.length === 0 ? (
-                <tr>
+                <tr className="block sm:table-row">
                   <td
                     colSpan={4}
-                    className="p-10 text-center font-mono"
+                    className="block p-10 text-center font-mono sm:table-cell"
                     style={{ color: "var(--text-muted)" }}
                     data-testid="tenant-users-empty"
                   >
@@ -672,62 +672,90 @@ export function TenantUsersPanel() {
                     <tr
                       key={member.membershipId}
                       data-testid="tenant-user-row"
-                      className="hover:bg-slate-500/10 transition"
+                      className="mb-2 block rounded-xl border p-3 last:mb-0 hover:bg-slate-500/10 transition sm:mb-0 sm:table-row sm:rounded-none sm:border-0 sm:p-0"
+                      style={{ borderColor: "var(--card-border)" }}
                     >
-                      <td className="p-3">
-                        <span className="flex items-center gap-2.5">
-                          <span
-                            className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 text-white text-[10px] font-mono font-bold flex items-center justify-center shrink-0"
-                            aria-hidden="true"
-                          >
-                            {initialsFor(member)}
+                      <td className="block p-0 sm:table-cell sm:p-3">
+                        <span className="flex items-start justify-between gap-3 sm:items-center">
+                          <span className="flex min-w-0 items-center gap-2.5">
+                            <span
+                              className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 text-white text-[10px] font-mono font-bold flex items-center justify-center shrink-0"
+                              aria-hidden="true"
+                            >
+                              {initialsFor(member)}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block font-semibold text-heading truncate">
+                                {member.displayName || member.email}
+                              </span>
+                              <span className="block text-[10px] font-mono text-muted-custom truncate">
+                                {member.email}
+                              </span>
+                            </span>
                           </span>
-                          <span className="min-w-0">
-                            <span className="block font-semibold text-heading truncate">
-                              {member.displayName || member.email}
-                            </span>
-                            <span className="block text-[10px] font-mono text-muted-custom truncate">
-                              {member.email}
-                            </span>
+                          <span
+                            data-testid="tenant-user-status-mobile"
+                            className="sm:hidden shrink-0 inline-flex items-center gap-1.5 text-[10px] font-bold"
+                            style={{
+                              color:
+                                member.status === "ACTIVE"
+                                  ? "var(--accent-emerald)"
+                                  : "var(--text-muted)",
+                            }}
+                          >
+                            <span
+                              className={
+                                "w-1.5 h-1.5 rounded-full " +
+                                (member.status === "ACTIVE"
+                                  ? "bg-emerald-400"
+                                  : "bg-slate-500")
+                              }
+                            />
+                            {statusLabel(member.status)}
                           </span>
                         </span>
                       </td>
-                      <td className="p-3">
-                        {editingId === member.membershipId ? (
-                          <select
-                            value={editingRole}
-                            onChange={(event) =>
-                              setEditingRole(event.target.value)
-                            }
-                            aria-label={`Role for ${member.email}`}
-                            data-testid="tenant-role-select"
-                            className="border rounded-lg px-2 py-1 text-[11px] text-heading font-semibold focus:outline-none"
-                            style={{
-                              background: "var(--input-bg)",
-                              borderColor: "var(--input-border)",
-                            }}
-                          >
-                            {ASSIGNABLE_ROLES.map((option) => (
-                              <option key={option.code} value={option.code}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span
-                            className="px-2 py-0.5 rounded font-mono font-bold text-[10px]"
-                            style={{
-                              background: "rgba(59,130,246,0.2)",
-                              color: "var(--accent-cyan)",
-                            }}
-                          >
-                            {member.roles
-                              .map((code) => ROLE_LABELS[code] ?? code)
-                              .join(", ") || "No role"}
+                      <td className="mt-3 block p-0 sm:mt-0 sm:table-cell sm:p-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-mono font-bold uppercase text-muted-custom sm:hidden">
+                            Role
                           </span>
-                        )}
+                          {editingId === member.membershipId ? (
+                            <select
+                              value={editingRole}
+                              onChange={(event) =>
+                                setEditingRole(event.target.value)
+                              }
+                              aria-label={`Role for ${member.email}`}
+                              data-testid="tenant-role-select"
+                              className="border rounded-lg px-2 py-1 text-[11px] text-heading font-semibold focus:outline-none"
+                              style={{
+                                background: "var(--input-bg)",
+                                borderColor: "var(--input-border)",
+                              }}
+                            >
+                              {ASSIGNABLE_ROLES.map((option) => (
+                                <option key={option.code} value={option.code}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span
+                              className="px-2 py-0.5 rounded font-mono font-bold text-[10px]"
+                              style={{
+                                background: "rgba(59,130,246,0.2)",
+                                color: "var(--accent-cyan)",
+                              }}
+                            >
+                              {member.roles
+                                .map((code) => ROLE_LABELS[code] ?? code)
+                                .join(", ") || "No role"}
+                            </span>
+                          )}
+                        </div>
                       </td>
-                      <td className="p-3">
+                      <td className="hidden p-3 sm:table-cell">
                         <span
                           className="font-bold inline-flex items-center gap-1.5"
                           style={{
@@ -748,8 +776,8 @@ export function TenantUsersPanel() {
                           {statusLabel(member.status)}
                         </span>
                       </td>
-                      <td className="p-3">
-                        <div className="flex flex-wrap justify-end gap-1.5">
+                      <td className="mt-3 block p-0 sm:mt-0 sm:table-cell sm:p-3">
+                        <div className="flex flex-wrap justify-start gap-1.5 sm:justify-end">
                           {editingId === member.membershipId ? (
                             <>
                               <button

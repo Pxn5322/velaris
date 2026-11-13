@@ -70,8 +70,9 @@ Values below are Proposed starting points, not approved brand decisions. No cont
 - AI agent detail sections: Overview, Instructions, Knowledge, Tools & Actions, Guardrails, Permissions, Workflows, Evaluation, Versions, Observability.
 - Navigation is permission-aware, but all route/API access is still checked server-side.
 - Signed-in navigation shows an identity block at the right: a profile photo from Supabase `user_metadata` (`avatar_url`, then `picture`), the server-resolved display name, the role label and a Sign out control. Show initials when the metadata has no valid https photo or the image fails to load. The mobile drawer repeats the block. Sign out clears the local session and opens the landing sign-in modal.
-- The administrator User Directory uses two cards: an invite card and a directory card. The directory card has search, role and status filters, rows per page (5/10/20), a table and numbered pagination.
-- The agent inbox uses the admin-v2.7 three-column layout: ticket queue, active conversation, and customer/context. The queue and context panes collapse, and the queue paginates.
+- The administrator User Directory uses two cards: an invite card and a directory card. The directory card has search, role and status filters, rows per page (5/10/20), a table and numbered pagination. Below 640 px, each member becomes a card with the name, status, role and actions visible; the table is used from 640 px.
+- The agent inbox uses the admin-v2.7 three-column layout: ticket queue, active conversation, and customer/context. The queue and context panes collapse, and the queue paginates. The active ticket title wraps on phones.
+- Administrator pages use only the app-shell horizontal inset. Do not add a second page padding, so the page edges align with the navigation. Metrics use a 2×2 grid on phones and four columns from 1024 px. Administrator tabs use a two-column grid below 640 px and one scrollable row from 640 px. From 1024 px, the navigation identity block is the only place for the role and sign-out; the admin page repeats them only below that width.
 
 ## 7. Key flows
 - Onboarding: Landing → Sign Up → Create Company → Tenant Created → Invite Agent → Upload Knowledge → Configure AI Agent → Test Agent → Publish → Customer Conversation → AI Resolution/Human Escalation.

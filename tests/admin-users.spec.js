@@ -375,6 +375,30 @@ test.describe("tenant administrator user directory (F-03)", () => {
     );
   });
 
+  test("keeps status and actions visible in the mobile user directory", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedSession(page);
+    await routeSession(page);
+    await page.route("**/tenants/*/users*", (route) =>
+      route.fulfill(json(members)),
+    );
+
+    await openUserDirectory(page);
+
+    const agentRow = page
+      .getByTestId("tenant-user-row")
+      .filter({ hasText: "agent@acme.test" });
+    await expect(agentRow.getByTestId("tenant-user-status-mobile")).toHaveText(
+      "Active",
+    );
+    await expect(
+      agentRow.getByRole("button", { name: "Edit role" }),
+    ).toBeVisible();
+    await expect(page.getByTestId("tenant-users-pagination")).toBeVisible();
+  });
+
   test("redirects a signed-out visitor from every administrator route", async ({
     page,
   }) => {
