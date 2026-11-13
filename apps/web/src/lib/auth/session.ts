@@ -154,6 +154,61 @@ export async function requestPasswordReset(email: string): Promise<void> {
   }
 }
 
+const MAX_AVATAR_URL_LENGTH = 2048;
+
+/**
+ * Validate the user-owned avatar URL before it reaches Supabase metadata.
+ * The API repeats this check, so a crafted request cannot bypass the UI.
+ */
+export function normalizeAvatarUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > MAX_AVATAR_URL_LENGTH) {
+    throw new Error(
+      `Avatar URL must be ${MAX_AVATAR_URL_LENGTH.toLocaleString()} characters or fewer.`,
+    );
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error("Enter a valid HTTPS image URL.");
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error("Avatar URL must start with https://.");
+  }
+  return trimmed;
+}
+
+/**
+ * Set or clear the caller's Supabase avatar_url. Supabase stores it in the
+ * user metadata that the API reads for GET /auth/session.
+ */
+export async function updateAvatarUrl(value: string): Promise<string | null> {
+  const avatarUrl = normalizeAvatarUrl(value);
+  const session = getSession();
+  if (!session || !isAuthConfigured()) {
+    throw new Error("Sign in again to update your profile photo.");
+  }
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_PUBLISHABLE_KEY as string,
+      Authorization: `Bearer ${session.accessToken}`,
+    },
+    body: JSON.stringify({ data: { avatar_url: avatarUrl } }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      response.status === 401 || response.status === 403
+        ? "Your session has expired. Sign in again."
+        : "Your profile photo could not be saved. Try again.",
+    );
+  }
+  return avatarUrl;
+}
+
 /** Set a new password for the session delivered by a recovery link. */
 export async function updatePassword(password: string): Promise<void> {
   const session = getSession();
