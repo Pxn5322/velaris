@@ -26,8 +26,8 @@ export function AdminView() {
   const isLight = theme === "light";
   const scope = adminScopeForRole(role);
 
-  const handleSignOut = () => {
-    endSession();
+  const handleSignOut = async () => {
+    await endSession();
     router.replace("/?signin=1");
   };
 

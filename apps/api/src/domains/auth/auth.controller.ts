@@ -18,9 +18,12 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Inject,
   Post,
   Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -38,9 +41,13 @@ import {
   type RoleResolver,
 } from '../permissions/role-resolver.js';
 import { highestPrivilegeRole } from '../permissions/role-permissions.js';
+import { TokenRevocationService } from './token-revocation.service.js';
 
 /** Express request carrying the identity SupabaseAuthGuard attached. */
-type SessionRequest = Request & { user?: AuthenticatedIdentity };
+type SessionRequest = Request & {
+  user?: AuthenticatedIdentity;
+  accessToken?: string;
+};
 
 @Controller('auth')
 export class AuthController {
@@ -49,6 +56,7 @@ export class AuthController {
     @Inject(ROLE_RESOLVER) private readonly roles: RoleResolver,
     private readonly signupService: SignupService,
     private readonly audit: AuditService,
+    private readonly revocations: TokenRevocationService,
   ) {}
 
   /**
@@ -86,6 +94,23 @@ export class AuthController {
     );
     const role = await this.resolveRole(identity, tenantContext?.tenants ?? []);
     return { identity, tenantContext, role };
+  }
+
+  /**
+   * Sign out the caller's current Supabase session. The guard has already
+   * verified the bearer token; this route records the token/session denial
+   * before revoking the refresh token at Supabase, so a copied access token
+   * is refused immediately by every API instance.
+   */
+  @Post('signout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(SupabaseAuthGuard)
+  async signout(@Req() request: SessionRequest): Promise<void> {
+    const token = request.accessToken;
+    if (!token) {
+      throw new UnauthorizedException();
+    }
+    await this.revocations.revoke(token);
   }
 
   /** Highest-privilege role across active memberships; null when none. */

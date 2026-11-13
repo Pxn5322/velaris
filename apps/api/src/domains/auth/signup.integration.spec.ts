@@ -26,6 +26,7 @@ import { SignupService } from './signup.service.js';
 import { SupabaseAdminService } from './supabase-admin.service.js';
 import { SupabaseAuthGuard } from './supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
+import { TokenRevocationService } from './token-revocation.service.js';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -138,6 +139,13 @@ describe('POST /auth/signup (integration)', () => {
         SupabaseAdminService,
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
+        {
+          provide: TokenRevocationService,
+          useValue: {
+            isRevoked: vi.fn().mockResolvedValue(false),
+            revoke: vi.fn(),
+          },
+        },
         { provide: PRISMA_SERVICE, useValue: prisma },
         { provide: AuditService, useValue: { record: auditRecord } },
         { provide: ROLE_RESOLVER, useValue: { resolveRole: async () => null } },
@@ -259,6 +267,13 @@ describe('POST /auth/signup (integration)', () => {
         SupabaseAdminService,
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
+        {
+          provide: TokenRevocationService,
+          useValue: {
+            isRevoked: vi.fn().mockResolvedValue(false),
+            revoke: vi.fn(),
+          },
+        },
         { provide: PRISMA_SERVICE, useValue: prisma },
         { provide: AuditService, useValue: { record: auditRecord } },
         { provide: ROLE_RESOLVER, useValue: { resolveRole: async () => null } },
@@ -325,6 +340,13 @@ describe('POST /auth/signup (integration)', () => {
         SupabaseAdminService,
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
+        {
+          provide: TokenRevocationService,
+          useValue: {
+            isRevoked: vi.fn().mockResolvedValue(false),
+            revoke: vi.fn(),
+          },
+        },
         { provide: PRISMA_SERVICE, useValue: prisma },
         { provide: AuditService, useValue: { record: auditRecord } },
         { provide: ROLE_RESOLVER, useValue: { resolveRole: async () => null } },
@@ -359,6 +381,13 @@ describe('POST /auth/signup (integration)', () => {
         SupabaseAdminService,
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
+        {
+          provide: TokenRevocationService,
+          useValue: {
+            isRevoked: vi.fn().mockResolvedValue(false),
+            revoke: vi.fn(),
+          },
+        },
         { provide: PRISMA_SERVICE, useValue: prisma },
         { provide: AuditService, useValue: { record: auditRecord } },
         { provide: ROLE_RESOLVER, useValue: { resolveRole: async () => null } },
@@ -389,6 +418,13 @@ describe('POST /auth/signup (integration)', () => {
         SupabaseAdminService,
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
+        {
+          provide: TokenRevocationService,
+          useValue: {
+            isRevoked: vi.fn().mockResolvedValue(false),
+            revoke: vi.fn(),
+          },
+        },
         { provide: PRISMA_SERVICE, useValue: prisma },
         { provide: AuditService, useValue: { record: auditRecord } },
         { provide: ROLE_RESOLVER, useValue: { resolveRole: async () => null } },
@@ -420,6 +456,13 @@ describe('POST /auth/signup (integration)', () => {
         SupabaseAdminService,
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
+        {
+          provide: TokenRevocationService,
+          useValue: {
+            isRevoked: vi.fn().mockResolvedValue(false),
+            revoke: vi.fn(),
+          },
+        },
         { provide: PRISMA_SERVICE, useValue: prisma },
         { provide: AuditService, useValue: { record: auditRecord } },
         { provide: ROLE_RESOLVER, useValue: { resolveRole: async () => null } },

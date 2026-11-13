@@ -94,6 +94,40 @@ export class SupabaseTokenVerifier {
     return verification;
   }
 
+  /**
+   * Revoke the Supabase session behind this access token. GoTrue removes the
+   * session and its refresh token; the API guard separately records the token
+   * so the access JWT is refused before its own expiry. A 401/403 means the
+   * session is already gone, which is the desired end state.
+   */
+  async revokeProviderSession(token: string): Promise<void> {
+    const configuration = this.configuration();
+    this.forget(token);
+    let response: Response;
+    try {
+      response = await fetch(
+        `${configuration.baseUrl}/auth/v1/logout?scope=local`,
+        {
+          method: 'POST',
+          headers: {
+            apikey: configuration.apiKey,
+            Authorization: `Bearer ${token}`,
+          },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        },
+      );
+    } catch {
+      throw new ServiceUnavailableException('Supabase Auth is unreachable');
+    }
+    if (!response.ok && response.status !== 401 && response.status !== 403) {
+      throw new ServiceUnavailableException('Supabase Auth refused sign-out');
+    }
+  }
+
+  private forget(token: string): void {
+    this.cache.delete(this.cacheKey(token));
+  }
+
   private configuration(): SupabaseConfiguration {
     const baseUrl = process.env.SUPABASE_URL?.replace(/\/+$/, '');
     const apiKey = process.env.SUPABASE_PUBLISHABLE_KEY;

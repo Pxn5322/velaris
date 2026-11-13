@@ -7,6 +7,7 @@ import { SignupService } from './signup.service.js';
 import { SupabaseAdminService } from './supabase-admin.service.js';
 import { SupabaseAuthGuard } from './supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
+import { TokenRevocationService } from './token-revocation.service.js';
 
 @Module({
   imports: [TenantsModule, PermissionsModule, AuditModule],
@@ -16,6 +17,7 @@ import { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
     SupabaseAuthGuard,
     SupabaseAdminService,
     SignupService,
+    TokenRevocationService,
   ],
   // Consumers that apply SupabaseAuthGuard on their own controllers
   // (example: TicketsModule) resolve the verifier through this export.

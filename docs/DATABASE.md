@@ -36,6 +36,7 @@ Provider: Supabase-managed PostgreSQL + Prisma, with pgvector proposed for initi
 | E-evaluation-run | EvaluationRun | Dataset/agent version and result summary | Tenant/platform | internal/restricted | governance policy not yet selected | F-08,F-11 |
 | E-ai-trace | AiTrace | AI run metadata, spans, outcomes and correlation | Tenant | restricted; minimize personal data | short operational retention by default | F-09,F-11,F-12 |
 | E-audit-event | AuditEvent | Append-oriented security/admin action history | Tenant/platform | restricted | longer restricted retention; exact period not yet selected | F-03,F-10,F-11,F-14 |
+| E-revoked-token | RevokedAccessToken | Access-token and Supabase-session denial written by sign-out | Platform/security | restricted | until the token expiry | F-02 |
 | E-integration | IntegrationEndpoint | Registered inbound webhook: provider, display name, status and the name of the environment variable that holds the signing secret | Tenant | restricted | while connected plus audit requirements | F-13,F-14 |
 | E-idempotency | WebhookDelivery | Prevent a repeated provider delivery from repeating its side effect | Tenant/platform | internal | bounded TTL by operation type | F-05,F-10,F-13 |
 | E-outbox-event | OutboxEvent | Reliable publication of committed domain events | Tenant/platform | internal | until delivered plus bounded retention | F-05,F-11,F-13 |
@@ -72,6 +73,7 @@ Proposed baseline fields and constraints; exact Prisma schema and field types ar
 - `evaluation_runs(id, tenant_id, agent_version_id, dataset_version, provider, model, status, aggregate_json, failure_reasons_json, created_at, completed_at nullable)`; `dataset_version` names an immutable dataset object in `packages/ai-evals` (D-21), `aggregate_json` holds the case summary and `failure_reasons_json` the failed cases with severity, which the publish gate reads (T4.05). A run belongs to one agent version, so a run for an older version is never evidence for a new one.
 - `ai_traces(id, tenant_id, correlation_id, agent_id, agent_version_id, provider, model, outcome, latency_ms, usage_json, spans_metadata_json, created_at, expires_at)`; avoid raw secrets and minimize message content. Every AI run writes one row through `AiTraceService` (T5.06, D-31). `expires_at` comes from the tenant TRACES retention policy, with a 30-day default when the tenant has none. Message text and document content never enter a row.
 - `audit_events(id, tenant_id nullable, actor_id nullable, action, resource_type, resource_id, metadata_json, request_id, created_at)`; append-oriented, restricted; index tenant/time and resource/time.
+- `revoked_access_tokens(token_hash char(64) primary key, session_id varchar(64) nullable, expires_at, revoked_at)`; written by `POST /auth/signout` (D-51). Only a SHA-256 digest is stored, never the bearer token. `session_id` is indexed so a second access token from the same Supabase session is denied; `expires_at` bounds retention and is checked by the guard.
 - `integration_endpoints(id, tenant_id, provider, display_name, secret_ref, status, created_at, updated_at)`; unique `(tenant_id, provider, display_name)`. `secret_ref` names an environment variable and never holds the secret value itself (D-30, migration `0008_webhook_integrations`, T5.05).
 - `webhook_deliveries(id, endpoint_id, tenant_id, provider, delivery_id, payload_hash, status, received_at)`; unique `(endpoint_id, delivery_id)` and a tenant/time index. A repeat with the same `payload_hash` writes nothing and repeats no side effect; the same delivery id with another hash is a 409 (TH-08, T5.05).
 - `outbox_events(id, tenant_id nullable, event_type, schema_version, payload_json, correlation_id, occurred_at, published_at nullable, attempts)`; indexed unpublished events.
@@ -113,6 +115,7 @@ Authoritative matrix is `docs/SECURITY.md` section 3. Every tenant-owned table h
 | Vector similarity search | pgvector index plus mandatory tenant/permission filters | Retrieval performance without scope leakage |
 | Audit events by tenant/time | `(tenant_id,created_at DESC,id)` | Restricted audit browsing |
 | AI traces by correlation ID | `(correlation_id)` and `(tenant_id,created_at DESC)` | Debugging and operations |
+| Revoked token/session lookup | primary key `(token_hash)`, index `(session_id)`, index `(expires_at)` | Per-request sign-out denial without retaining raw credentials |
 | Pending outbox jobs | `(published_at,occurred_at)` partial index for unpublished events | Reliable event dispatch |
 
 Pagination must have maximum page size, stable ordering and tenant scope. Cursor pagination is preferred for high-volume timelines/feeds where offset pagination degrades.

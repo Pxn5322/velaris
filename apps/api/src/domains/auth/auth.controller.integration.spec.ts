@@ -27,6 +27,7 @@ import { SignupService } from './signup.service.js';
 import { SupabaseAdminService } from './supabase-admin.service.js';
 import { SupabaseAuthGuard } from './supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
+import { TokenRevocationService } from './token-revocation.service.js';
 
 const USER_ROW = {
   id: 'user-1',
@@ -85,6 +86,13 @@ describe('GET /auth/session (integration)', () => {
       providers: [
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
+        {
+          provide: TokenRevocationService,
+          useValue: {
+            isRevoked: vi.fn().mockResolvedValue(false),
+            revoke: vi.fn(),
+          },
+        },
         SignupService,
         SupabaseAdminService,
         // The controller emits one audit event from the public signup

@@ -251,8 +251,13 @@ test.describe("tenant administrator user directory (F-03)", () => {
   test("shows the caller identity and signs out from the administrator page", async ({
     page,
   }) => {
+    let signOutAuthorization = null;
     await seedSession(page);
     await routeSession(page);
+    await page.route("**/auth/signout", (route) => {
+      signOutAuthorization = route.request().headers()["authorization"];
+      return route.fulfill(json({ signedOut: true }));
+    });
 
     await page.goto("/admin");
 
@@ -266,6 +271,9 @@ test.describe("tenant administrator user directory (F-03)", () => {
 
     await page.getByTestId("nav-sign-out").click();
 
+    await expect
+      .poll(() => signOutAuthorization)
+      .toBe("Bearer e2e-access-token");
     await expect(page).toHaveURL(/\?signin=1/);
     await expect(
       page.getByRole("heading", { name: "Sign In to VELARIS" }),

@@ -10,7 +10,8 @@
 
 // The API listens on 3000 by default (apps/api/src/main.ts); 3001 is the
 // web dev server itself, so the old fallback called the wrong app.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 /** HTTP error carrying the response status for state decisions. */
 export class ApiError extends Error {
