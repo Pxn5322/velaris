@@ -73,7 +73,11 @@ export function AdminView() {
       <div className="glass-panel p-1.5 rounded-xl grid grid-cols-2 sm:flex sm:overflow-x-auto no-scrollbar gap-1 border border-slate-700/50">
         {(
           [
-            { id: "analytics", label: "Platform Analytics", icon: Activity },
+            {
+              id: "analytics",
+              label: scope.platformWide ? "Platform Analytics" : "Audit Feed",
+              icon: Activity,
+            },
             { id: "users", label: "User Directory", icon: Users },
             { id: "roles", label: "Roles & RBAC", icon: Lock },
             { id: "ai-gov", label: "AI Governance", icon: Cpu },
@@ -105,25 +109,7 @@ export function AdminView() {
         })}
       </div>
 
-      {activeTab === "analytics" && !scope.platformWide && (
-        <div className="glass-panel p-8 rounded-2xl text-center space-y-3 border border-slate-700/50">
-          <Shield
-            className="w-10 h-10 mx-auto"
-            style={{ color: "var(--accent-cyan)" }}
-          />
-          <h3 className="text-base font-bold text-heading uppercase tracking-wider">
-            Platform analytics are not available to this role
-          </h3>
-          <p
-            className="text-xs max-w-md mx-auto"
-            style={{ color: "var(--text-muted)" }}
-          >
-            Platform-wide figures cover every tenant, so only the enterprise
-            administrator reads them. Tenant-scoped analytics arrive with the
-            analytics task.
-          </p>
-        </div>
-      )}
+      {activeTab === "analytics" && !scope.platformWide && <AdminAuditStream />}
 
       {activeTab === "analytics" && scope.platformWide && (
         <>
