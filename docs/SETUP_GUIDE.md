@@ -186,8 +186,8 @@ curl -s -H "Authorization: Bearer $TOKEN" "https://velaris-api-aral.onrender.com
 # 4. Cross-tenant denial: expect 403
 curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" "https://velaris-api-aral.onrender.com/settings/retention?tenantId=$OTHER_TENANT_ID"
 
-# 5. Hosted smoke: web icon, session display name, cross-tenant 403,
-#    retention save and audit read-back
+# 5. Hosted smoke: web icon, session display name, avatar URL and fallback,
+#    cross-tenant 403, retention save and audit read-back
 npm run smoke:hosted
 # Custom origins:
 # node --env-file=.env scripts/deployment-smoke.mjs \
@@ -208,7 +208,7 @@ E2E_LIVE_API_URL=https://velaris-api-aral.onrender.com E2E_BASE_URL=https://vela
 ```
 - [x] Liveness returned 200 and the protected route returned 401 on 2026-11-10.
 - [x] Hosted smoke passed on `a725bdd`: signup 201, login 200, own read 200, cross-tenant 403, retention save 200 and audit read 200. The audit row matched category `TRACES` and 45 days.
-- [x] Post-deploy smoke passed on 2026-11-13: `/icon.svg` returned 200 with `image/svg+xml`, `GET /auth/session` returned 200 and its display name matched the synthetic account, and the existing retention checks passed. A bad icon path returned 404 with `text/html` and exit 1, so the icon check fails closed. Cleanup left zero synthetic tenants and accounts.
+- [x] Post-deploy smoke passed on 2026-11-13: `/icon.svg` returned 200 with `image/svg+xml`, `GET /auth/session` returned 200 and its display name matched the synthetic account, and the existing retention checks passed. A bad icon path returned 404 with `text/html` and exit 1, so the icon check fails closed. The smoke also set `avatar_url`, received it in a fresh session, cleared it, and received no `avatarUrl` (initials fallback). Cleanup left zero synthetic tenants and accounts.
 - [x] The retention panel has a ten-change recent history and links to the full filtered audit trail. Seven local retention journeys pass; the hosted panel was inspected on 2026-11-10 with a signed-in synthetic tenant, and `KNOWLEDGE 365` and `MEMORY 30` produced two history rows.
 - [x] `node scripts/load-profile.mjs --auth-signup` recorded a warm p95 of 1350.52 ms at concurrency 8 with 90/90 responses, zero errors and 9 req/s. The budget is 200 ms, so NFR-04 is not met. Report: `.agents/evidence-t6.03-load-hosted.json`.
 - [x] The same-region candidate run on 2026-11-10 measured p95 1094.14 ms and 994.47 ms at concurrency 8 with zero errors. Both are over the budget, so NFR-04 is still not met (section 6.4).
@@ -325,6 +325,8 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 | Hosted retention history | Two `retention.policy_changed` rows from `KNOWLEDGE 365` and `MEMORY 30`; cleanup zero |
 | Hosted smoke | signup 201, login 200, own read 200, cross-tenant 403, save 200, audit 200 |
 | Session display name | 200; display name matched the synthetic account |
+| Session avatar URL | 200 after metadata set; URL matched the synthetic account |
+| Initials fallback | Cleared metadata returned no `avatarUrl` in a fresh session |
 | Web icon route | `/icon.svg` 200 with `image/svg+xml`; body is SVG |
 | Vercel deployment | `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq` READY; aliases assigned; rollback to `dpl_CbaTyj8hZZ5mxP3ri3y152TrRFGD` and forward passed |
 | Vercel T6.07 deployment | `dpl_DgWjALjWD12Y6aasX8moiRJK31U2` READY for `ea086f3`; aliases assigned |
@@ -371,7 +373,7 @@ Both runs exceed the 200 ms budget. The API and database were in the same region
 - Monitoring: API error rate and p50/p95/p99 latency, queue depth/failures, provider availability, ingestion failures, AI evaluation/grounding/citation failures, cost, audit completeness and deployment health.
 - Release: run all gates, deploy to the single environment, smoke test, review telemetry, obtain human production approval, then use the provider's verified process.
 - Rollback: restore previous app artifact/config where safe; use forward fixes or tested restore for incompatible migrations. Agent rollback selects a prior immutable published version and preserves history.
-- Smoke tests: health endpoint; protected endpoint returns 401 without credentials; one allowed tenant-scoped read; cross-tenant read denied; AI provider/queue health; audit/trace sample present.
+- Smoke tests: health endpoint; protected endpoint returns 401 without credentials; one allowed tenant-scoped read; cross-tenant read denied; session display name and avatar URL; initials fallback after avatar clear; AI provider/queue health; audit/trace sample present.
 - Verify: T6.03 evidence is in `.agents/evidence-t6.03-hosted.md` and `docs/TESTING.md`; record the deployment ID, test outputs, owner approval and rollback rehearsal result. The same-region candidate evidence is in section 6.4 and `.agents/evidence-t6.04-inregion.md`.
 
 ## 8. Checklists and troubleshooting

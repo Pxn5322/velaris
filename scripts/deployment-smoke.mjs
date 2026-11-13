@@ -5,6 +5,7 @@
  * Creates one synthetic tenant, then checks:
  * - the web icon route returns SVG,
  * - the session display name matches the synthetic account,
+ * - a valid avatar_url returns in a fresh session and is omitted after clear,
  * - an authenticated retention read returns 200,
  * - a foreign tenant read is denied with 403,
  * - a retention save returns the new window,
@@ -51,6 +52,22 @@ async function readJson(response) {
   } catch {
     return text;
   }
+}
+
+async function passwordGrant(supabaseUrl, publishableKey, email, password) {
+  const response = await fetch(
+    `${supabaseUrl}/auth/v1/token?grant_type=password`,
+    {
+      method: "POST",
+      headers: {
+        apikey: publishableKey,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+    },
+  );
+  const body = await readJson(response);
+  return { status: response.status, token: body?.access_token ?? null };
 }
 
 async function main() {
@@ -102,23 +119,17 @@ async function main() {
     }
     tenantId = signupBody.tenantId;
 
-    const grant = await fetch(
-      `${supabaseUrl}/auth/v1/token?grant_type=password`,
-      {
-        method: "POST",
-        headers: {
-          apikey: publishableKey,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      },
+    const login = await passwordGrant(
+      supabaseUrl,
+      publishableKey,
+      email,
+      password,
     );
-    const grantBody = await readJson(grant);
-    checks.login = grant.status;
-    if (!grant.ok || !grantBody?.access_token) {
-      throw new Error(`password grant failed with HTTP ${grant.status}`);
+    checks.login = login.status;
+    if (!login.token) {
+      throw new Error(`password grant failed with HTTP ${login.status}`);
     }
-    token = grantBody.access_token;
+    token = login.token;
 
     const authHeaders = {
       authorization: `Bearer ${token}`,
@@ -136,6 +147,85 @@ async function main() {
     if (!session.ok || sessionDisplayName !== email) {
       throw new Error(
         `session display name check failed with HTTP ${session.status}`,
+      );
+    }
+
+    const avatarUrl = `${webUrl}/icon.svg`;
+    const avatarUpdate = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: "PUT",
+      headers: {
+        apikey: publishableKey,
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ data: { avatar_url: avatarUrl } }),
+    });
+    checks.avatarUpdate = avatarUpdate.status;
+    if (!avatarUpdate.ok) {
+      throw new Error(`avatar update failed with HTTP ${avatarUpdate.status}`);
+    }
+
+    const avatarLogin = await passwordGrant(
+      supabaseUrl,
+      publishableKey,
+      email,
+      password,
+    );
+    checks.avatarLogin = avatarLogin.status;
+    if (!avatarLogin.token) {
+      throw new Error(`avatar login failed with HTTP ${avatarLogin.status}`);
+    }
+    const avatarSession = await fetch(`${apiUrl}/auth/session`, {
+      headers: { authorization: `Bearer ${avatarLogin.token}` },
+    });
+    const avatarSessionBody = await readJson(avatarSession);
+    const avatarSessionUrl = avatarSessionBody?.identity?.avatarUrl;
+    checks.avatarSession = avatarSession.status;
+    checks.avatarSessionUrl =
+      avatarSessionUrl === avatarUrl ? "matches" : "mismatch";
+    if (!avatarSession.ok || avatarSessionUrl !== avatarUrl) {
+      throw new Error(
+        `avatar session check failed with HTTP ${avatarSession.status}`,
+      );
+    }
+
+    const avatarClear = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: "PUT",
+      headers: {
+        apikey: publishableKey,
+        authorization: `Bearer ${avatarLogin.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ data: { avatar_url: null } }),
+    });
+    checks.avatarClear = avatarClear.status;
+    if (!avatarClear.ok) {
+      throw new Error(`avatar clear failed with HTTP ${avatarClear.status}`);
+    }
+
+    const fallbackLogin = await passwordGrant(
+      supabaseUrl,
+      publishableKey,
+      email,
+      password,
+    );
+    checks.fallbackLogin = fallbackLogin.status;
+    if (!fallbackLogin.token) {
+      throw new Error(
+        `fallback login failed with HTTP ${fallbackLogin.status}`,
+      );
+    }
+    const fallbackSession = await fetch(`${apiUrl}/auth/session`, {
+      headers: { authorization: `Bearer ${fallbackLogin.token}` },
+    });
+    const fallbackSessionBody = await readJson(fallbackSession);
+    const fallbackIdentity = fallbackSessionBody?.identity ?? {};
+    const fallbackOmitted = !("avatarUrl" in fallbackIdentity);
+    checks.fallbackSession = fallbackSession.status;
+    checks.avatarFallback = fallbackOmitted ? "omitted" : "present";
+    if (!fallbackSession.ok || !fallbackOmitted) {
+      throw new Error(
+        `avatar fallback check failed with HTTP ${fallbackSession.status}`,
       );
     }
 
