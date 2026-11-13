@@ -417,6 +417,24 @@ test.describe("analytics and governance views (T5.04, AC-F12 / AC-F11-3)", () =>
     await expect(page.getByTestId("audit-traces-list")).toContainText("820 ms");
   });
 
+  test("passes WCAG contrast in the light theme", async ({ page }) => {
+    await seedSession(page);
+    await routeSession(page);
+    await page.route("**/audit/events*", (route) =>
+      route.fulfill(json({ items: [auditEvent], limit: 25, hasMore: false })),
+    );
+    await page.route("**/audit/traces*", (route) =>
+      route.fulfill(json({ items: [aiTrace], limit: 25, hasMore: false })),
+    );
+
+    await page.goto("/audit");
+    await page.getByRole("button", { name: "Toggle Theme" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(page.getByTestId("audit-event")).toHaveCount(1);
+
+    await expectNoSeriousA11yViolations(page, "audit trail light theme");
+  });
+
   test("shows a retention change with its actor, category and window", async ({
     page,
   }) => {

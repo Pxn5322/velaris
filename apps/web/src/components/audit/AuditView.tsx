@@ -177,7 +177,7 @@ export function AuditView() {
       {phase === "denied" && (
         <div
           data-testid="audit-denied"
-          className="glass-panel p-8 rounded-2xl text-center space-y-3 border border-slate-700/50"
+          className="glass-panel p-8 rounded-2xl text-center space-y-3 border border-[var(--card-border)]"
         >
           <ShieldAlert
             className="w-10 h-10 mx-auto"
@@ -205,7 +205,7 @@ export function AuditView() {
       {phase === "error" && (
         <div
           data-testid="audit-error"
-          className="glass-panel p-8 rounded-2xl text-center space-y-3 border border-slate-700/50"
+          className="glass-panel p-8 rounded-2xl text-center space-y-3 border border-[var(--card-border)]"
         >
           <AlertTriangle
             className="w-10 h-10 mx-auto"
@@ -225,7 +225,7 @@ export function AuditView() {
 
       {phase === "ready" && (
         <>
-          <div className="glass-panel p-1.5 rounded-xl flex gap-1 border border-slate-700/50 w-fit">
+          <div className="glass-panel p-1.5 rounded-xl flex gap-1 border border-[var(--card-border)] w-fit">
             {(
               [
                 { id: "events", label: "Audit trail", icon: ClipboardList },
@@ -242,7 +242,7 @@ export function AuditView() {
                   className={
                     "px-3 py-2 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all border " +
                     (isActive
-                      ? "bg-blue-600/30 text-cyan-300 border-cyan-500/40"
+                      ? "bg-[var(--pill-bg)] text-[var(--accent-cyan)] border-[var(--accent-cyan)]"
                       : "text-muted-custom hover:text-heading border-transparent")
                   }
                 >
@@ -254,7 +254,7 @@ export function AuditView() {
           </div>
 
           {tab === "events" && (
-            <div className="glass-panel p-5 rounded-2xl border border-slate-700/50 space-y-3">
+            <div className="glass-panel p-5 rounded-2xl border border-[var(--card-border)] space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span
                   className="text-[10px] font-mono uppercase tracking-wider"
@@ -273,7 +273,7 @@ export function AuditView() {
                     setOnlyRetention(next);
                     void load(next);
                   }}
-                  className="px-3 py-1.5 rounded-lg text-[10px] font-bold border border-cyan-500/40 text-cyan-300"
+                  className="px-3 py-1.5 rounded-lg text-[10px] font-bold border border-[var(--accent-cyan)] text-[var(--accent-cyan)]"
                 >
                   {onlyRetention ? "Show all events" : "Retention changes only"}
                 </button>
@@ -294,7 +294,7 @@ export function AuditView() {
                     <div
                       key={event.id}
                       data-testid="audit-event"
-                      className="p-3 rounded-xl border border-slate-700/40 space-y-1"
+                      className="p-3 rounded-xl border border-[var(--card-border)] space-y-1"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span
@@ -346,7 +346,7 @@ export function AuditView() {
           )}
 
           {tab === "traces" && (
-            <div className="glass-panel p-5 rounded-2xl border border-slate-700/50 space-y-3">
+            <div className="glass-panel p-5 rounded-2xl border border-[var(--card-border)] space-y-3">
               {!traces || traces.items.length === 0 ? (
                 <p
                   data-testid="audit-empty-traces"
@@ -361,7 +361,7 @@ export function AuditView() {
                     <div
                       key={trace.id}
                       data-testid="audit-trace"
-                      className="p-3 rounded-xl border border-slate-700/40 space-y-1"
+                      className="p-3 rounded-xl border border-[var(--card-border)] space-y-1"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span

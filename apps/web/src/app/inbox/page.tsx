@@ -87,9 +87,10 @@ const PRIORITY_LABEL: Record<string, string> = {
 };
 
 const PRIORITY_BADGE: Record<string, string> = {
-  HIGH: "bg-red-500/20 text-red-300 border-red-500/30",
-  MEDIUM: "bg-amber-500/20 text-amber-300 border-amber-500/30",
-  LOW: "bg-slate-500/20 text-slate-300 border-slate-500/30",
+  HIGH: "bg-[var(--pill-bg)] text-[var(--accent-rose)] border-[var(--accent-rose)]",
+  MEDIUM:
+    "bg-[var(--pill-bg)] text-[var(--accent-cyan)] border-[var(--accent-cyan)]",
+  LOW: "bg-[var(--pill-bg)] text-muted-custom border-[var(--card-border)]",
 };
 
 /** Compact "4m ago" label for the queue cards. */
@@ -352,7 +353,7 @@ export default function InboxPage() {
 
   return (
     <section className="flex-1 flex flex-col gap-4" data-testid="inbox">
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700/50 pb-3">
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--card-border)] pb-3">
         <div>
           <div
             className="inline-flex items-center gap-1.5 text-xs font-mono font-bold"
@@ -407,7 +408,7 @@ export default function InboxPage() {
 
       {phase === "denied" && (
         <div
-          className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-200"
+          className="rounded-xl border border-[var(--accent-cyan)] bg-[var(--pill-bg)] p-4 text-[var(--accent-cyan)]"
           data-testid="inbox-denied"
         >
           <p className="flex items-center gap-2">
@@ -422,7 +423,7 @@ export default function InboxPage() {
 
       {phase === "error" && (
         <div
-          className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-red-200"
+          className="rounded-xl border border-[var(--accent-rose)] bg-[var(--pill-bg)] p-4 text-[var(--accent-rose)]"
           data-testid="inbox-error"
         >
           <p>{failure}</p>
@@ -451,7 +452,7 @@ export default function InboxPage() {
               className="col-span-12 lg:col-span-3 glass-panel rounded-2xl p-3.5 space-y-3"
               data-testid="inbox-queue"
             >
-              <div className="flex items-center justify-between border-b border-slate-700/50 pb-2">
+              <div className="flex items-center justify-between border-b border-[var(--card-border)] pb-2">
                 <span className="font-mono text-xs font-bold text-heading flex items-center gap-1.5">
                   <Inbox
                     className="w-3.5 h-3.5"
@@ -462,7 +463,7 @@ export default function InboxPage() {
                 <span
                   className="rounded-full px-2 py-0.5 text-[10px] font-mono font-bold"
                   style={{
-                    background: "rgba(56,189,248,0.2)",
+                    background: "var(--pill-bg)",
                     color: "var(--accent-cyan)",
                   }}
                   data-testid="inbox-count"
@@ -475,7 +476,7 @@ export default function InboxPage() {
                 <div className="relative">
                   <Search
                     aria-hidden="true"
-                    className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500"
+                    className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-custom"
                   />
                   <input
                     type="text"
@@ -552,7 +553,7 @@ export default function InboxPage() {
                     }}
                     className={`px-2 py-1 rounded-lg text-[10px] font-bold ${
                       tab === "all"
-                        ? "bg-blue-600/30 text-cyan-300"
+                        ? "bg-[var(--pill-bg)] text-[var(--accent-cyan)]"
                         : "text-muted-custom"
                     }`}
                   >
@@ -569,7 +570,7 @@ export default function InboxPage() {
                     }}
                     className={`px-2 py-1 rounded-lg text-[10px] font-bold ${
                       tab === "mine"
-                        ? "bg-blue-600/30 text-cyan-300"
+                        ? "bg-[var(--pill-bg)] text-[var(--accent-cyan)]"
                         : "text-muted-custom"
                     }`}
                   >
@@ -595,8 +596,8 @@ export default function InboxPage() {
                       onClick={() => void openTimeline(ticket)}
                       className={`w-full text-left p-3 rounded-xl border transition-all ${
                         selected?.id === ticket.id
-                          ? "bg-blue-600/15 border-blue-500/50"
-                          : "bg-slate-800/40 border-slate-700/40 hover:bg-slate-800/80"
+                          ? "bg-[var(--pill-bg)] border-[var(--accent-cyan)]"
+                          : "border-[var(--card-border)] hover:bg-[var(--pill-bg)]"
                       }`}
                     >
                       <span className="flex items-center justify-between gap-2 text-[10px] font-mono mb-1">
@@ -609,7 +610,7 @@ export default function InboxPage() {
                         <span
                           className={`px-1.5 py-0.5 rounded border font-bold ${
                             PRIORITY_BADGE[ticket.priority] ??
-                            "bg-slate-500/20 text-slate-300"
+                            "border-[var(--card-border)] bg-[var(--pill-bg)] text-muted-custom"
                           }`}
                         >
                           {PRIORITY_LABEL[ticket.priority] ?? ticket.priority}
@@ -627,7 +628,7 @@ export default function InboxPage() {
                 )}
               </div>
 
-              <div className="pt-2 border-t border-slate-700/50 flex items-center justify-between font-mono text-[10px] text-muted-custom font-bold">
+              <div className="pt-2 border-t border-[var(--card-border)] flex items-center justify-between font-mono text-[10px] text-muted-custom font-bold">
                 <span>
                   {shownFrom}-{shownTo} of {visibleTickets.length}
                 </span>
@@ -670,7 +671,7 @@ export default function InboxPage() {
             ) : (
               <>
                 <div className="space-y-4">
-                  <div className="flex items-start justify-between gap-3 border-b border-slate-700/50 pb-3">
+                  <div className="flex items-start justify-between gap-3 border-b border-[var(--card-border)] pb-3">
                     <div className="min-w-0">
                       <h2 className="font-display text-sm sm:text-base font-bold text-heading break-words sm:truncate">
                         #{selected.id.slice(0, 8)}: {selected.title}
@@ -682,7 +683,7 @@ export default function InboxPage() {
                     <span
                       className={`shrink-0 px-2 py-1 rounded-lg border text-[10px] font-mono font-bold ${
                         PRIORITY_BADGE[selected.priority] ??
-                        "bg-slate-500/20 text-slate-300"
+                        "border-[var(--card-border)] bg-[var(--pill-bg)] text-muted-custom"
                       }`}
                     >
                       {selected.priority} PRIORITY
@@ -691,7 +692,7 @@ export default function InboxPage() {
 
                   {conflict && (
                     <p
-                      className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-2 text-sm text-amber-200"
+                      className="rounded-xl border border-[var(--accent-rose)] bg-[var(--pill-bg)] p-2 text-sm text-[var(--accent-rose)]"
                       data-testid="inbox-conflict"
                     >
                       {conflict}
@@ -705,7 +706,7 @@ export default function InboxPage() {
                         type="button"
                         data-testid={`inbox-status-${status}`}
                         onClick={() => void changeStatus(selected, status)}
-                        className="rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-mono font-bold hover:bg-slate-800"
+                        className="rounded-lg border border-[var(--card-border)] px-2 py-1 text-[10px] font-mono font-bold text-heading hover:bg-[var(--pill-bg)]"
                       >
                         {status.replace("_", " ")}
                       </button>
@@ -731,7 +732,7 @@ export default function InboxPage() {
                     )}
                     {timeline === "error" && (
                       <p
-                        className="text-sm text-red-300"
+                        className="text-sm text-[var(--accent-rose)]"
                         data-testid="inbox-timeline-error"
                       >
                         Timeline could not be loaded.
@@ -750,8 +751,8 @@ export default function InboxPage() {
                               key={message.id}
                               className={`rounded-xl border p-3 text-sm ${
                                 fromCustomer
-                                  ? "bg-slate-800/60 border-slate-700/40"
-                                  : "bg-blue-600/10 border-blue-500/30"
+                                  ? "bg-[var(--pill-bg)] border-[var(--card-border)]"
+                                  : "border-[var(--accent-blue)]"
                               }`}
                             >
                               <span className="flex items-center gap-2 text-[10px] font-mono font-bold text-muted-custom mb-1">
@@ -759,7 +760,7 @@ export default function InboxPage() {
                                 {message.authorType}
                                 {message.visibility === "INTERNAL" && (
                                   <span
-                                    className="rounded bg-purple-500/20 px-1.5 py-0.5 text-purple-200"
+                                    className="rounded border border-[var(--card-border)] bg-[var(--pill-bg)] px-1.5 py-0.5 text-[var(--accent-blue)]"
                                     data-testid="inbox-internal-note"
                                   >
                                     Internal note
@@ -778,11 +779,11 @@ export default function InboxPage() {
                 {timeline === "ready" && conversationId && (
                   <form
                     onSubmit={sendReply}
-                    className="pt-4 mt-4 border-t border-slate-700/50 space-y-2"
+                    className="pt-4 mt-4 border-t border-[var(--card-border)] space-y-2"
                   >
                     {sendError && (
                       <p
-                        className="text-xs text-red-300 font-bold"
+                        className="text-xs text-[var(--accent-rose)] font-bold"
                         data-testid="inbox-send-error"
                       >
                         {sendError}
@@ -794,7 +795,7 @@ export default function InboxPage() {
                         disabled
                         title="Attachments are not available in this view"
                         aria-label="Attach a file"
-                        className="p-2.5 rounded-xl glass-panel text-slate-400 opacity-60 cursor-not-allowed shrink-0"
+                        className="p-2.5 rounded-xl glass-panel text-muted-custom opacity-60 cursor-not-allowed shrink-0"
                       >
                         <Paperclip className="w-4 h-4" />
                       </button>
@@ -835,7 +836,7 @@ export default function InboxPage() {
               className="col-span-12 lg:col-span-3 glass-panel rounded-2xl p-3.5 space-y-4"
               data-testid="inbox-copilot"
             >
-              <div className="border-b border-slate-700/50 pb-3 space-y-1.5 font-mono text-xs">
+              <div className="border-b border-[var(--card-border)] pb-3 space-y-1.5 font-mono text-xs">
                 <div className="text-[10px] text-muted-custom uppercase font-bold">
                   Customer Profile
                 </div>
@@ -851,7 +852,7 @@ export default function InboxPage() {
                 )}
                 {selected && profileState === "error" && (
                   <p
-                    className="text-sm text-red-300"
+                    className="text-sm text-[var(--accent-rose)]"
                     data-testid="inbox-profile-error"
                   >
                     Customer profile unavailable.
@@ -911,7 +912,7 @@ export default function InboxPage() {
                 </div>
               )}
 
-              <div className="p-3 rounded-xl bg-purple-500/10 border border-blue-500/30 text-xs text-slate-200">
+              <div className="p-3 rounded-xl bg-[var(--pill-bg)] border border-[var(--card-border)] text-xs text-body-custom">
                 <div className="text-[10px] font-mono text-muted-custom uppercase font-bold mb-1.5">
                   Workspace Note
                 </div>
