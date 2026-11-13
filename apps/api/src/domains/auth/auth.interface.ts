@@ -14,6 +14,12 @@ export interface AuthenticatedIdentity {
   provider: string;
   subject: string;
   email?: string;
+  /**
+   * Provider profile photo from Supabase user_metadata. The verifier accepts
+   * only an absolute https URL, so the web client never renders a script or
+   * data URL. Missing or invalid values fall back to initials in the UI.
+   */
+  avatarUrl?: string;
 }
 
 export interface AuthSessionResponse {

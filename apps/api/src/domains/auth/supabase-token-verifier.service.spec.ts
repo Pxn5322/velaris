@@ -94,6 +94,97 @@ describe('SupabaseTokenVerifier', () => {
     });
   });
 
+  it('reads an https avatar from user metadata', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        sub: 'sub-avatar',
+        email: 'avatar@example.test',
+        user_metadata: {
+          avatar_url: 'https://cdn.example.test/avatars/user.png',
+        },
+      }),
+    );
+
+    await expect(verifier.verify('avatar-token')).resolves.toEqual({
+      provider: 'supabase',
+      subject: 'sub-avatar',
+      email: 'avatar@example.test',
+      avatarUrl: 'https://cdn.example.test/avatars/user.png',
+    });
+  });
+
+  it('accepts the OAuth picture field when avatar_url is absent', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        sub: 'sub-picture',
+        user_metadata: {
+          picture: 'https://lh3.googleusercontent.com/a/photo.jpg',
+        },
+      }),
+    );
+
+    await expect(verifier.verify('picture-token')).resolves.toEqual({
+      provider: 'supabase',
+      subject: 'sub-picture',
+      email: undefined,
+      avatarUrl: 'https://lh3.googleusercontent.com/a/photo.jpg',
+    });
+  });
+
+  it('prefers avatar_url over picture in user metadata', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        sub: 'sub-both',
+        user_metadata: {
+          avatar_url: 'https://cdn.example.test/primary.png',
+          picture: 'https://cdn.example.test/fallback.png',
+        },
+      }),
+    );
+
+    await expect(verifier.verify('both-token')).resolves.toMatchObject({
+      avatarUrl: 'https://cdn.example.test/primary.png',
+    });
+  });
+
+  it('ignores unsafe, non-https or malformed avatar values', async () => {
+    const rejected = [
+      'javascript:alert(1)',
+      'data:image/svg+xml,%3Csvg%3E%3C/svg%3E',
+      'http://insecure.example.test/avatar.png',
+      'not a url',
+      '',
+      `https://cdn.example.test/${'a'.repeat(2_100)}.png`,
+    ];
+
+    for (const [index, avatarUrl] of rejected.entries()) {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, {
+          sub: `sub-unsafe-${index}`,
+          user_metadata: { avatar_url: avatarUrl },
+        }),
+      );
+      const identity = await verifier.verify(`unsafe-token-${index}`);
+      expect(identity).not.toBeNull();
+      expect(identity).not.toHaveProperty('avatarUrl');
+    }
+  });
+
+  it('ignores user metadata that is not an object', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        sub: 'sub-metadata',
+        user_metadata: 'https://cdn.example.test/avatar.png',
+      }),
+    );
+
+    await expect(verifier.verify('metadata-token')).resolves.toEqual({
+      provider: 'supabase',
+      subject: 'sub-metadata',
+      email: undefined,
+    });
+  });
+
   it('returns an identity without email when Supabase omits it', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { sub: 'sub-456' }));
     // Trailing slash in the configured URL must not produce a double slash.

@@ -42,19 +42,29 @@ function IdentityAvatar({
   identity: SessionIdentity | null;
   name: string;
 }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const avatarUrl = identity?.avatarUrl ?? null;
+
   return (
     <div className="relative" data-testid="nav-avatar" aria-hidden="true">
-      {identity?.avatarUrl ? (
-        // The URL comes from the identity provider. A plain img keeps the
-        // avatar host independent from the Next image allowlist.
+      {avatarUrl && avatarUrl !== failedUrl ? (
+        // The URL comes from the identity provider and the API accepts only
+        // https. A plain img keeps the avatar host independent from the Next
+        // image allowlist; a load failure falls back to initials.
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={identity.avatarUrl}
+          src={avatarUrl}
           alt=""
+          data-testid="nav-avatar-image"
+          referrerPolicy="no-referrer"
           className="w-8 h-8 rounded-lg object-cover ring-1 ring-blue-500/50"
+          onError={() => setFailedUrl(avatarUrl)}
         />
       ) : (
-        <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 text-white text-[11px] font-mono font-bold flex items-center justify-center ring-1 ring-blue-500/50">
+        <span
+          data-testid="nav-avatar-initials"
+          className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 text-white text-[11px] font-mono font-bold flex items-center justify-center ring-1 ring-blue-500/50"
+        >
           {initialsFor(name)}
         </span>
       )}
