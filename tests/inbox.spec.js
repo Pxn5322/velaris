@@ -303,6 +303,30 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     });
   });
 
+  test("passes WCAG contrast in the light theme", async ({ page }) => {
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
+    await page.route("**/conversations?*", (route) =>
+      route.fulfill(json(conversations)),
+    );
+    await page.route("**/conversations/conv-1*", (route) =>
+      route.fulfill(json(timeline)),
+    );
+
+    await page.goto("/inbox");
+    await page.getByRole("button", { name: "Toggle Theme" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+
+    await page.getByTestId("inbox-ticket").first().click();
+    await expect(page.getByTestId("inbox-timeline")).toBeVisible();
+    await expect(page.getByTestId("inbox-internal-note")).toBeVisible();
+
+    await expectNoSeriousA11yViolations(page, "agent inbox light theme");
+  });
+
   test("timeline renders messages and a stale status update surfaces a conflict", async ({
     page,
   }) => {
