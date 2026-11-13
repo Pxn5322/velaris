@@ -223,11 +223,13 @@ export function NavigationHeader() {
               data-testid="nav-identity-mobile"
               className={`flex lg:hidden min-w-0 items-center gap-1.5 rounded-xl glass-panel py-1 pl-1.5 pr-1 ${isLight ? "bg-white/80" : "bg-slate-900/80"}`}
             >
-              <IdentityAvatar
-                identity={identity}
-                name={identityName}
-                testIdPrefix="nav-avatar-mobile"
-              />
+              <div className="hidden min-[360px]:block shrink-0">
+                <IdentityAvatar
+                  identity={identity}
+                  name={identityName}
+                  testIdPrefix="nav-avatar-mobile"
+                />
+              </div>
               <div className="flex min-w-0 max-w-[4.5rem] flex-col text-left">
                 <span
                   data-testid="nav-identity-mobile-name"
