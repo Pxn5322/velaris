@@ -365,7 +365,7 @@ export default function InboxPage() {
           </h1>
         </div>
 
-        <div className="flex items-center gap-2 font-mono text-xs font-bold">
+        <div className="flex flex-wrap items-center gap-2 font-mono text-xs font-bold">
           <button
             type="button"
             onClick={() => setLeftOpen((open) => !open)}
@@ -672,7 +672,7 @@ export default function InboxPage() {
                 <div className="space-y-4">
                   <div className="flex items-start justify-between gap-3 border-b border-slate-700/50 pb-3">
                     <div className="min-w-0">
-                      <h2 className="font-display text-sm sm:text-base font-bold text-heading truncate">
+                      <h2 className="font-display text-sm sm:text-base font-bold text-heading break-words sm:truncate">
                         #{selected.id.slice(0, 8)}: {selected.title}
                       </h2>
                       <p className="text-[11px] text-muted-custom font-bold">

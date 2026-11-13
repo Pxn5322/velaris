@@ -31,7 +31,7 @@ export function AdminView() {
   };
 
   return (
-    <div className="flex-1 p-4 md:p-8 overflow-y-auto space-y-6">
+    <div className="flex-1 py-4 md:py-8 overflow-y-auto space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <span
@@ -40,11 +40,11 @@ export function AdminView() {
           >
             {scope.eyebrow}
           </span>
-          <h1 className="text-2xl font-bold font-display text-heading">
+          <h1 className="text-2xl sm:text-3xl font-bold font-display text-heading">
             {scope.title}
           </h1>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap lg:hidden">
           <span
             className="px-3 py-1 rounded-full text-xs font-bold w-fit"
             style={{
@@ -69,7 +69,7 @@ export function AdminView() {
         </div>
       </div>
 
-      <div className="glass-panel p-1.5 rounded-xl flex overflow-x-auto no-scrollbar gap-1 border border-slate-700/50">
+      <div className="glass-panel p-1.5 rounded-xl grid grid-cols-2 sm:flex sm:overflow-x-auto no-scrollbar gap-1 border border-slate-700/50">
         {(
           [
             { id: "analytics", label: "Platform Analytics", icon: Activity },
@@ -89,7 +89,8 @@ export function AdminView() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={
-                "px-3 py-2 text-xs font-semibold rounded-lg flex items-center gap-1.5 whitespace-nowrap transition-all border " +
+                "px-3 py-2 text-xs font-semibold rounded-lg flex items-center justify-center sm:justify-start gap-1.5 whitespace-nowrap transition-all border " +
+                (tab.id === "settings" ? "col-span-2 sm:col-span-1 " : "") +
                 acls
               }
             >
@@ -124,76 +125,76 @@ export function AdminView() {
       )}
 
       {activeTab === "analytics" && scope.platformWide && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="glass-panel p-5 rounded-2xl border border-slate-700/50">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-700/50">
             <span
-              className="text-xs uppercase font-mono font-bold"
+              className="text-[10px] sm:text-xs uppercase font-mono font-bold"
               style={{ color: "var(--text-muted)" }}
             >
               Total Active Tenants
             </span>
-            <div className="text-3xl font-bold font-display text-heading mt-2">
+            <div className="text-2xl sm:text-3xl font-bold font-display text-heading mt-1.5 sm:mt-2">
               42
             </div>
             <span
-              className="text-xs mt-1 block font-bold"
+              className="text-[10px] sm:text-xs mt-1 block font-bold"
               style={{ color: "var(--accent-emerald)" }}
             >
               ↑ +4 this month
             </span>
           </div>
-          <div className="glass-panel p-5 rounded-2xl border border-slate-700/50">
+          <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-700/50">
             <span
-              className="text-xs uppercase font-mono font-bold"
+              className="text-[10px] sm:text-xs uppercase font-mono font-bold"
               style={{ color: "var(--text-muted)" }}
             >
               Total AI Operations
             </span>
-            <div className="text-3xl font-bold font-display text-heading mt-2">
+            <div className="text-2xl sm:text-3xl font-bold font-display text-heading mt-1.5 sm:mt-2">
               1,420,890
             </div>
             <span
-              className="text-xs mt-1 block font-bold"
+              className="text-[10px] sm:text-xs mt-1 block font-bold"
               style={{ color: "var(--accent-emerald)" }}
             >
               99.98% SLA target
             </span>
           </div>
-          <div className="glass-panel p-5 rounded-2xl border border-slate-700/50">
+          <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-700/50">
             <span
-              className="text-xs uppercase font-mono font-bold"
+              className="text-[10px] sm:text-xs uppercase font-mono font-bold"
               style={{ color: "var(--text-muted)" }}
             >
               Average Deflection Rate
             </span>
             <div
-              className="text-3xl font-bold font-display mt-2"
+              className="text-2xl sm:text-3xl font-bold font-display mt-1.5 sm:mt-2"
               style={{ color: "var(--accent-cyan)" }}
             >
               64.2%
             </div>
             <span
-              className="text-xs mt-1 block"
+              className="text-[10px] sm:text-xs mt-1 block"
               style={{ color: "var(--text-muted)" }}
             >
               Across all tenants
             </span>
           </div>
-          <div className="glass-panel p-5 rounded-2xl border border-slate-700/50">
+          <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-700/50">
             <span
-              className="text-xs uppercase font-mono font-bold"
+              className="text-[10px] sm:text-xs uppercase font-mono font-bold"
               style={{ color: "var(--text-muted)" }}
             >
               Security Violations
             </span>
             <div
-              className="text-3xl font-bold font-display mt-2"
+              className="text-2xl sm:text-3xl font-bold font-display mt-1.5 sm:mt-2"
               style={{ color: "var(--accent-rose)" }}
             >
               0
             </div>
             <span
-              className="text-xs mt-1 block font-bold"
+              className="text-[10px] sm:text-xs mt-1 block font-bold"
               style={{ color: "var(--accent-emerald)" }}
             >
               100% Isolated
