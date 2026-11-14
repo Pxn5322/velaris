@@ -66,6 +66,12 @@ const AUTHENTICATED_WITHOUT_PERMISSION = [
     reason:
       "Self-service session revocation: the caller can revoke only its own bearer token",
   },
+  {
+    controller: "domains/auth/auth.controller.ts",
+    handler: "updateProfile",
+    reason:
+      "Self-service profile edit: the caller writes only its own name and avatar",
+  },
 ];
 
 function listControllerFiles(directory) {

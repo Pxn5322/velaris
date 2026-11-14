@@ -92,6 +92,8 @@ model User {
   externalSubject String     @map("external_subject")
   emailNormalized String     @map("email_normalized")
   displayName     String     @map("display_name")
+  /** Small browser-compressed image; empty string records removal. */
+  avatarDataUrl   String?    @map("avatar_data_url") @db.Text
   status          UserStatus @default(ACTIVE)
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
@@ -132,6 +134,8 @@ model Role {
   code          String
   name          String
   systemManaged Boolean  @default(true) @map("system_managed")
+  /** Canonical permission profile inherited by a tenant custom role. */
+  baseRoleCode  String?  @map("base_role_code")
   createdAt     DateTime @default(now()) @map("created_at")
 
   tenant      Tenant?          @relation(fields: [tenantId], references: [id])

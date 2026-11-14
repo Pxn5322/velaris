@@ -69,9 +69,13 @@ export class DatabaseRoleResolver implements RoleResolver {
           ? { role: { OR: [{ tenantId: null }, { tenantId }] } }
           : {}),
       },
-      select: { role: { select: { code: true } } },
+      select: { role: { select: { code: true, baseRoleCode: true } } },
     });
 
-    return highestPrivilegeRole(assigned.map((row) => row.role.code));
+    // A tenant custom role inherits its canonical permission profile. The
+    // custom code itself never grants anything when no base profile exists.
+    return highestPrivilegeRole(
+      assigned.map((row) => row.role.baseRoleCode ?? row.role.code),
+    );
   }
 }

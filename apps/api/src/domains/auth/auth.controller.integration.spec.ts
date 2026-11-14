@@ -28,12 +28,14 @@ import { SupabaseAdminService } from './supabase-admin.service.js';
 import { SupabaseAuthGuard } from './supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
 import { TokenRevocationService } from './token-revocation.service.js';
+import { ProfileService } from './profile.service.js';
 
 const USER_ROW = {
   id: 'user-1',
   provider: 'supabase',
   externalSubject: 'sub-123',
   displayName: 'Acme Admin',
+  avatarDataUrl: null,
   status: 'ACTIVE',
   memberships: [
     {
@@ -69,6 +71,7 @@ describe('GET /auth/session (integration)', () => {
   let app: INestApplication<App>;
   let fetchMock: ReturnType<typeof vi.fn>;
   let findUnique: ReturnType<typeof vi.fn>;
+  let updateUser: ReturnType<typeof vi.fn>;
   let resolveRole: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
@@ -78,7 +81,11 @@ describe('GET /auth/session (integration)', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     findUnique = vi.fn().mockResolvedValue(USER_ROW);
-    const prisma = { user: { findUnique } };
+    updateUser = vi.fn().mockResolvedValue({
+      displayName: 'Acme Admin',
+      avatarDataUrl: null,
+    });
+    const prisma = { user: { findUnique, update: updateUser } };
     resolveRole = vi.fn().mockResolvedValue('R-tenant-admin');
 
     const moduleRef = await Test.createTestingModule({
@@ -95,6 +102,7 @@ describe('GET /auth/session (integration)', () => {
         },
         SignupService,
         SupabaseAdminService,
+        ProfileService,
         // The controller emits one audit event from the public signup
         // route; this spec exercises GET /auth/session only.
         { provide: AuditService, useValue: { record: vi.fn() } },
@@ -156,6 +164,7 @@ describe('GET /auth/session (integration)', () => {
       provider: 'supabase',
       subject: 'sub-123',
       email: 'user@example.test',
+      displayName: 'Acme Admin',
     });
     // Suspended tenant beta is excluded; only active membership acme remains.
     expect(res.body.tenantContext).toEqual({
@@ -202,6 +211,7 @@ describe('GET /auth/session (integration)', () => {
       provider: 'supabase',
       subject: 'sub-123',
       email: 'user@example.test',
+      displayName: 'Acme Admin',
       avatarUrl: 'https://cdn.example.test/avatars/user.png',
     });
   });
@@ -232,5 +242,45 @@ describe('GET /auth/session (integration)', () => {
     expect(res.status).toBe(200);
     expect(res.body.tenantContext).toBeNull();
     expect(res.body.role).toBeNull();
+  });
+
+  it('updates the caller display name', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { sub: 'sub-123', email: 'user@example.test' }),
+    );
+    updateUser.mockResolvedValue({
+      displayName: 'Support Lead',
+      avatarDataUrl: null,
+    });
+
+    const res = await request(app.getHttpServer())
+      .patch('/auth/profile')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ displayName: '  Support   Lead  ' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      displayName: 'Support Lead',
+      avatarUrl: null,
+    });
+    expect(updateUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { displayName: 'Support Lead' },
+      }),
+    );
+  });
+
+  it('rejects a profile photo that is not a valid image', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { sub: 'sub-123', email: 'user@example.test' }),
+    );
+
+    const res = await request(app.getHttpServer())
+      .patch('/auth/profile')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ avatarDataUrl: 'https://example.test/avatar.png' });
+
+    expect(res.status).toBe(400);
+    expect(updateUser).not.toHaveBeenCalled();
   });
 });

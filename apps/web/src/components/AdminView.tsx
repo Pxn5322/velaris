@@ -6,6 +6,7 @@ import { useRole } from "@/context/RoleContext";
 import { adminScopeForRole } from "@/lib/auth/uiRole";
 import { RetentionSettings } from "@/components/RetentionSettings";
 import { TenantUsersPanel } from "@/components/TenantUsersPanel";
+import { RolesPanel } from "@/components/RolesPanel";
 import { AdminAuditStream } from "@/components/analytics/AdminAuditStream";
 
 export function AdminView() {
@@ -157,10 +158,13 @@ export function AdminView() {
 
       {activeTab === "users" && <TenantUsersPanel />}
 
+      {activeTab === "roles" && <RolesPanel />}
+
       {activeTab === "settings" && <RetentionSettings />}
 
       {activeTab !== "analytics" &&
         activeTab !== "users" &&
+        activeTab !== "roles" &&
         activeTab !== "settings" && (
           <div className="glass-panel p-8 rounded-2xl text-center space-y-3 border border-slate-700/50">
             <Shield

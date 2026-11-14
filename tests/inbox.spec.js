@@ -43,6 +43,7 @@ const sessionResponse = {
       },
     ],
   },
+  role: "R-agent",
 };
 
 const tickets = [
@@ -122,15 +123,15 @@ async function seedSession(page) {
 }
 
 test.describe("agent inbox (AC-F06, J-04)", () => {
-  test("denies a signed-out visitor with a sign-in path (AC-F06-3)", async ({
+  test("redirects a signed-out visitor from the inbox (AC-F06-3)", async ({
     page,
   }) => {
     await page.goto("/inbox");
-    await expect(page.getByTestId("inbox-denied")).toBeVisible();
-    await expect(page.getByTestId("inbox-denied")).toContainText("Sign in");
+    await expect(page).toHaveURL(/\?signin=1/, { timeout: 10_000 });
     await expect(
-      page.getByRole("link", { name: "Go to sign in" }),
-    ).toHaveAttribute("href", "/?signin=1");
+      page.getByRole("heading", { name: "Sign In to VELARIS" }),
+    ).toBeVisible();
+    await expect(page.getByTestId("inbox-denied")).toHaveCount(0);
   });
 
   test("shows the loading state before tickets arrive", async ({ page }) => {
@@ -183,17 +184,15 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await expect(page.getByTestId("inbox-ticket")).toHaveCount(2);
   });
 
-  test("shows the denial state when the session is rejected (401)", async ({
-    page,
-  }) => {
+  test("redirects when the session is rejected (401)", async ({ page }) => {
     await seedSession(page);
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json({ message: "Unauthorized" }, 401)),
     );
 
     await page.goto("/inbox");
-    await expect(page.getByTestId("inbox-denied")).toBeVisible();
-    await expect(page.getByTestId("inbox-denied")).toContainText("expired");
+    await expect(page).toHaveURL(/\?signin=1/, { timeout: 10_000 });
+    await expect(page.getByTestId("inbox-denied")).toHaveCount(0);
   });
 
   test("assigned-to-me filters the list by the caller membership (AC-F06-2)", async ({

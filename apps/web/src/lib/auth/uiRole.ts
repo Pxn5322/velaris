@@ -119,14 +119,21 @@ export async function fetchSessionProfile(): Promise<SessionProfile> {
   try {
     const session = await apiFetch<{
       role: string | null;
-      identity?: { email?: string; avatarUrl?: string | null };
+      identity?: {
+        email?: string;
+        displayName?: string;
+        avatarUrl?: string | null;
+      };
       tenantContext?: { displayName?: string } | null;
     }>("/auth/session");
     const email = session.identity?.email ?? null;
     return {
       role: mapUiRole(session.role),
       identity: {
-        displayName: session.tenantContext?.displayName ?? email,
+        displayName:
+          session.identity?.displayName ??
+          session.tenantContext?.displayName ??
+          email,
         email,
         avatarUrl: session.identity?.avatarUrl ?? null,
       },

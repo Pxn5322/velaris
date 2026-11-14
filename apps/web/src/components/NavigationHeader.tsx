@@ -18,7 +18,7 @@ import {
   X,
   LogOut,
   ShieldCheck,
-  UserRound,
+  ChevronDown,
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import {
@@ -28,6 +28,7 @@ import {
   type SessionIdentity,
 } from "@/lib/auth/uiRole";
 import { ProfileSettingsDialog } from "@/components/ProfileSettingsDialog";
+import { AccountMenu, type ProfileSection } from "@/components/AccountMenu";
 
 /** Two-letter avatar fallback for the signed-in caller. */
 function initialsFor(name: string): string {
@@ -56,9 +57,8 @@ function IdentityAvatar({
       aria-hidden="true"
     >
       {avatarUrl && avatarUrl !== failedUrl ? (
-        // The URL comes from the identity provider and the API accepts only
-        // https. A plain img keeps the avatar host independent from the Next
-        // image allowlist; a load failure falls back to initials.
+        // The URL is either a bounded data URL from the API or an HTTPS
+        // provider photo. A plain img avoids a remote-host allowlist.
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={avatarUrl}
@@ -92,27 +92,37 @@ export function NavigationHeader() {
     endSession,
   } = useRole();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [accountMenu, setAccountMenu] = useState<"desktop" | "drawer" | null>(
+    null,
+  );
+  const [profileSection, setProfileSection] = useState<ProfileSection | null>(
+    null,
+  );
   const router = useRouter();
   const adminLabel = adminScopeForRole(role).navLabel;
   const identityName = displayNameForIdentity(identity);
 
   const handleSignOut = async () => {
     setIsMobileMenuOpen(false);
-    setIsProfileOpen(false);
+    setAccountMenu(null);
+    setProfileSection(null);
     await endSession();
     router.replace("/?signin=1");
   };
 
   const openSignIn = () => {
     setIsMobileMenuOpen(false);
-    setIsProfileOpen(false);
+    setAccountMenu(null);
     router.push("/?signin=1");
   };
 
-  const openProfile = () => {
-    setIsMobileMenuOpen(false);
-    setIsProfileOpen(true);
+  const editProfile = (section: ProfileSection) => {
+    setAccountMenu(null);
+    setProfileSection(section);
+  };
+
+  const toggleAccountMenu = (variant: "desktop" | "drawer") => {
+    setAccountMenu((current) => (current === variant ? null : variant));
   };
 
   const navLinks = [
@@ -218,60 +228,42 @@ export function NavigationHeader() {
         </nav>
 
         <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
-          {role && (
-            <div
-              data-testid="nav-identity-mobile"
-              className={`flex lg:hidden min-w-0 items-center gap-1.5 rounded-xl glass-panel py-1 pl-1.5 pr-1 ${isLight ? "bg-white/80" : "bg-slate-900/80"}`}
-            >
-              <div className="hidden min-[360px]:block shrink-0">
-                <IdentityAvatar
-                  identity={identity}
-                  name={identityName}
-                  testIdPrefix="nav-avatar-mobile"
-                />
-              </div>
-              <div className="flex min-w-0 max-w-[4.5rem] flex-col text-left">
-                <span
-                  data-testid="nav-identity-mobile-name"
-                  className="truncate text-[11px] font-semibold leading-tight text-heading"
-                  title={identity?.email ?? identityName}
-                >
-                  {identityName}
-                </span>
-                <span
-                  data-testid="nav-role-mobile"
-                  className="truncate text-[9px] font-mono font-bold leading-tight"
-                  style={{ color: "var(--accent-cyan)" }}
-                >
-                  {roleLabelFor(role)}
-                </span>
-              </div>
-            </div>
-          )}
-
           {role ? (
-            <div
-              data-testid="nav-identity"
-              className={`hidden lg:flex items-center gap-2.5 pl-3 pr-2.5 py-1 rounded-xl glass-panel ${isLight ? "bg-white/80" : "bg-slate-900/80"}`}
-            >
-              <IdentityAvatar identity={identity} name={identityName} />
-              <div className="flex flex-col text-left max-w-[9.5rem]">
-                <span
-                  className="text-xs font-semibold text-heading leading-tight truncate"
-                  title={identity?.email ?? identityName}
-                >
-                  {identityName}
-                </span>
-                <span
-                  data-testid="nav-role"
-                  data-role={role}
-                  className="text-[10px] font-mono font-bold leading-tight inline-flex items-center gap-1"
-                  style={{ color: "var(--accent-cyan)" }}
-                >
-                  <ShieldCheck className="w-3 h-3" />
-                  {roleLabelFor(role)}
-                </span>
-              </div>
+            <div className="relative hidden lg:block">
+              <button
+                type="button"
+                data-testid="nav-identity"
+                onClick={() => toggleAccountMenu("desktop")}
+                aria-haspopup="menu"
+                aria-expanded={accountMenu === "desktop"}
+                className={`flex items-center gap-2.5 pl-3 pr-2.5 py-1 rounded-xl glass-panel text-left ${isLight ? "bg-white/80" : "bg-slate-900/80"}`}
+              >
+                <IdentityAvatar identity={identity} name={identityName} />
+                <div className="flex flex-col text-left max-w-[9.5rem]">
+                  <span
+                    className="text-xs font-semibold text-heading leading-tight truncate"
+                    title={identity?.email ?? identityName}
+                  >
+                    {identityName}
+                  </span>
+                  <span
+                    data-testid="nav-role"
+                    data-role={role}
+                    className="text-[10px] font-mono font-bold leading-tight inline-flex items-center gap-1"
+                    style={{ color: "var(--accent-cyan)" }}
+                  >
+                    <ShieldCheck className="w-3 h-3" />
+                    {roleLabelFor(role)}
+                  </span>
+                </div>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-custom" />
+              </button>
+              <AccountMenu
+                variant="desktop"
+                open={accountMenu === "desktop"}
+                onClose={() => setAccountMenu(null)}
+                onSelect={editProfile}
+              />
             </div>
           ) : (
             <button
@@ -286,38 +278,12 @@ export function NavigationHeader() {
           {role && (
             <button
               type="button"
-              onClick={openProfile}
-              data-testid="nav-profile"
-              className="hidden lg:flex items-center justify-center p-2 rounded-xl glass-panel text-heading hover:border-cyan-500/50 hover:text-cyan-300 transition-all"
-              aria-label="Profile settings"
-              title="Profile settings"
-            >
-              <UserRound className="w-4 h-4" />
-            </button>
-          )}
-
-          {role && (
-            <button
-              type="button"
               onClick={handleSignOut}
               data-testid="nav-sign-out"
               className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl glass-panel text-xs font-mono font-bold text-heading hover:border-rose-500/50 hover:text-rose-400 transition-all"
               aria-label="Sign out"
             >
               <LogOut className="w-4 h-4" />
-              <span>Sign out</span>
-            </button>
-          )}
-
-          {role && (
-            <button
-              type="button"
-              onClick={handleSignOut}
-              data-testid="nav-sign-out-mobile"
-              className="inline-flex lg:hidden shrink-0 items-center gap-1 rounded-xl glass-panel px-2 py-2 text-[11px] font-mono font-bold text-heading transition-all hover:border-rose-500/50 hover:text-rose-400"
-              aria-label="Sign out"
-            >
-              <LogOut className="w-3.5 h-3.5" />
               <span>Sign out</span>
             </button>
           )}
@@ -368,49 +334,63 @@ export function NavigationHeader() {
               Sign In
             </button>
           )}
+
           {role && (
-            <div className="flex items-center justify-between gap-3 p-3 rounded-xl glass-panel">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <IdentityAvatar
-                  identity={identity}
-                  name={identityName}
-                  testIdPrefix="nav-avatar-drawer"
-                />
-                <div className="min-w-0 text-left">
-                  <div className="text-xs font-semibold text-heading truncate">
-                    {identityName}
-                  </div>
-                  <div
-                    className="text-[10px] font-mono font-bold"
-                    style={{ color: "var(--accent-cyan)" }}
-                  >
-                    {roleLabelFor(role)}
+            <div className="space-y-2" data-testid="nav-drawer-account">
+              <button
+                type="button"
+                onClick={() => toggleAccountMenu("drawer")}
+                data-testid="nav-drawer-identity"
+                aria-haspopup="menu"
+                aria-expanded={accountMenu === "drawer"}
+                className="flex w-full items-center justify-between gap-3 rounded-xl glass-panel p-3 text-left"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <IdentityAvatar
+                    identity={identity}
+                    name={identityName}
+                    testIdPrefix="nav-avatar-drawer"
+                  />
+                  <div className="min-w-0 text-left">
+                    <div
+                      className="break-words text-xs font-semibold text-heading"
+                      data-testid="nav-drawer-name"
+                      title={identity?.email ?? identityName}
+                    >
+                      {identityName}
+                    </div>
+                    <div
+                      className="text-[10px] font-mono font-bold"
+                      style={{ color: "var(--accent-cyan)" }}
+                      data-testid="nav-drawer-role"
+                    >
+                      {roleLabelFor(role)}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={openProfile}
-                  data-testid="nav-profile-mobile"
-                  className="p-2 rounded-xl glass-panel text-heading hover:text-cyan-300"
-                  aria-label="Profile settings"
-                >
-                  <UserRound className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  data-testid="nav-sign-out-drawer"
-                  className="px-3 py-2 rounded-xl glass-panel text-xs font-mono font-bold text-rose-400 inline-flex items-center gap-1.5"
-                  aria-label="Sign out"
-                >
-                  <LogOut className="w-4 h-4" />
-                  Sign out
-                </button>
-              </div>
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-custom" />
+              </button>
+
+              <AccountMenu
+                variant="drawer"
+                open={accountMenu === "drawer"}
+                onClose={() => setAccountMenu(null)}
+                onSelect={editProfile}
+              />
+
+              <button
+                type="button"
+                onClick={handleSignOut}
+                data-testid="nav-sign-out-drawer"
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/30 px-3 py-2.5 text-xs font-mono font-bold text-rose-400 hover:bg-rose-500/10"
+                aria-label="Sign out"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign out
+              </button>
             </div>
           )}
+
           {role && (
             <div
               className="space-y-2 pt-2 border-t"
@@ -454,8 +434,11 @@ export function NavigationHeader() {
         </div>
       )}
 
-      {isProfileOpen && (
-        <ProfileSettingsDialog onClose={() => setIsProfileOpen(false)} />
+      {profileSection && (
+        <ProfileSettingsDialog
+          section={profileSection}
+          onClose={() => setProfileSection(null)}
+        />
       )}
     </header>
   );

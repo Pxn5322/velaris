@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module.js';
 import { PermissionsModule } from '../permissions/permissions.module.js';
 import { GovernanceController } from './governance.controller.js';
 import { GovernanceService } from './governance.service.js';
+import { TenantRolesService } from './tenant-roles.service.js';
 import { TenantUsersService } from './tenant-users.service.js';
 
 /**
@@ -17,6 +18,6 @@ import { TenantUsersService } from './tenant-users.service.js';
 @Module({
   imports: [PermissionsModule, AuditModule, AuthModule],
   controllers: [GovernanceController],
-  providers: [GovernanceService, TenantUsersService],
+  providers: [GovernanceService, TenantUsersService, TenantRolesService],
 })
 export class GovernanceModule {}

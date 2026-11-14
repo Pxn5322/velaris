@@ -35,12 +35,15 @@ import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { PERMISSIONS } from '../permissions/permission.codes.js';
 import {
   AddMemberDto,
+  CreateRoleDto,
   CreateTenantDto,
   SetMembershipRoleDto,
   SetMembershipStatusDto,
   SetTenantStatusDto,
+  UpdateRoleDto,
 } from './dto/governance.dto.js';
 import { GovernanceService } from './governance.service.js';
+import { TenantRolesService } from './tenant-roles.service.js';
 import {
   TenantUsersService,
   type TenantMemberView,
@@ -55,6 +58,7 @@ export class GovernanceController {
   constructor(
     private readonly governance: GovernanceService,
     private readonly users: TenantUsersService,
+    private readonly roles: TenantRolesService,
     private readonly audit: AuditService,
   ) {}
 
@@ -96,6 +100,73 @@ export class GovernanceController {
       metadata: { status: tenant.status },
     });
     return tenant;
+  }
+
+  /** System and custom roles available to one tenant. */
+  @Get(':tenantId/roles')
+  @RequirePermission(PERMISSIONS.ROLE_MANAGE)
+  async listRoles(@Param('tenantId', ParseUUIDPipe) tenantId: string) {
+    return this.roles.list(tenantId);
+  }
+
+  @Post(':tenantId/roles')
+  @RequirePermission(PERMISSIONS.ROLE_MANAGE)
+  async createRole(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Req() request: AuthedRequest,
+    @Body() createRoleDto: CreateRoleDto,
+  ) {
+    const role = await this.roles.create(tenantId, createRoleDto);
+    await this.audit.record({
+      action: 'role.created',
+      resourceType: 'role',
+      resourceId: role.id,
+      tenantId,
+      actorId: request.user?.subject,
+      metadata: {
+        code: role.code,
+        baseRoleCode: role.baseRoleCode,
+      },
+    });
+    return role;
+  }
+
+  @Patch(':tenantId/roles/:roleId')
+  @RequirePermission(PERMISSIONS.ROLE_MANAGE)
+  async updateRole(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('roleId', ParseUUIDPipe) roleId: string,
+    @Req() request: AuthedRequest,
+    @Body() updateRoleDto: UpdateRoleDto,
+  ) {
+    const role = await this.roles.update(tenantId, roleId, updateRoleDto);
+    await this.audit.record({
+      action: 'role.updated',
+      resourceType: 'role',
+      resourceId: role.id,
+      tenantId,
+      actorId: request.user?.subject,
+      metadata: { code: role.code, baseRoleCode: role.baseRoleCode },
+    });
+    return role;
+  }
+
+  @Delete(':tenantId/roles/:roleId')
+  @RequirePermission(PERMISSIONS.ROLE_MANAGE)
+  async deleteRole(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('roleId', ParseUUIDPipe) roleId: string,
+    @Req() request: AuthedRequest,
+  ) {
+    const result = await this.roles.remove(tenantId, roleId);
+    await this.audit.record({
+      action: 'role.deleted',
+      resourceType: 'role',
+      resourceId: roleId,
+      tenantId,
+      actorId: request.user?.subject,
+    });
+    return result;
   }
 
   @Put(':tenantId/memberships/:membershipId/roles')

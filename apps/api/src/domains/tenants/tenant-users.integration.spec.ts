@@ -36,6 +36,7 @@ import {
 import { GovernanceController } from './governance.controller.js';
 import { GovernanceService } from './governance.service.js';
 import { TenantUsersService } from './tenant-users.service.js';
+import { TenantRolesService } from './tenant-roles.service.js';
 
 const TENANT_ID = '12121212-1212-4212-8212-121212121212';
 const FOREIGN_MEMBERSHIP_ID = '56565656-5656-4656-8656-565656565656';
@@ -212,6 +213,7 @@ describe('Tenant user management routes (integration)', () => {
       providers: [
         { provide: GovernanceService, useValue: {} },
         TenantUsersService,
+        TenantRolesService,
         AuthorizationService,
         SupabaseAuthGuard,
         SupabaseTokenVerifier,

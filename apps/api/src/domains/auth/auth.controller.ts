@@ -21,6 +21,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  Patch,
   Post,
   Req,
   UnauthorizedException,
@@ -42,6 +43,7 @@ import {
 } from '../permissions/role-resolver.js';
 import { highestPrivilegeRole } from '../permissions/role-permissions.js';
 import { TokenRevocationService } from './token-revocation.service.js';
+import { ProfileService } from './profile.service.js';
 
 /** Express request carrying the identity SupabaseAuthGuard attached. */
 type SessionRequest = Request & {
@@ -57,6 +59,7 @@ export class AuthController {
     private readonly signupService: SignupService,
     private readonly audit: AuditService,
     private readonly revocations: TokenRevocationService,
+    private readonly profiles: ProfileService,
   ) {}
 
   /**
@@ -93,7 +96,39 @@ export class AuthController {
       identity.subject,
     );
     const role = await this.resolveRole(identity, tenantContext?.tenants ?? []);
-    return { identity, tenantContext, role };
+    const profile = await this.profiles.findForIdentity(identity);
+    return {
+      identity: {
+        ...identity,
+        ...(profile ? { displayName: profile.displayName } : {}),
+        ...(profile?.hasAvatarOverride
+          ? { avatarUrl: profile.avatarDataUrl ?? undefined }
+          : {}),
+      },
+      tenantContext,
+      role,
+    };
+  }
+
+  /** Update the caller's own display name and uploaded profile photo. */
+  @Patch('profile')
+  @UseGuards(SupabaseAuthGuard)
+  async updateProfile(
+    @Req() request: SessionRequest,
+    @Body() body: { displayName?: string; avatarDataUrl?: string | null },
+  ) {
+    const identity = request.user as AuthenticatedIdentity;
+    const profile = await this.profiles.update(identity, body);
+    await this.audit.record({
+      action: 'user.profile_updated',
+      resourceType: 'user',
+      actorId: identity.subject,
+      metadata: {
+        displayNameChanged: body.displayName !== undefined,
+        avatarChanged: body.avatarDataUrl !== undefined,
+      },
+    });
+    return profile;
   }
 
   /**

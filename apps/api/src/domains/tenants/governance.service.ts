@@ -28,6 +28,7 @@ import type {
   SetMembershipRoleDto,
   SetTenantStatusDto,
 } from './dto/governance.dto.js';
+import { CANONICAL_ROLES } from '../permissions/permission.codes.js';
 import { hasMembershipRole, isTenantAssignableRole } from './tenant-roles.js';
 
 /** Status values an administrator may set. DELETED has no API path. */
@@ -88,7 +89,23 @@ export class GovernanceService {
     input: SetMembershipRoleDto,
   ) {
     requireText(input.roleCode, 'roleCode');
-    if (!isTenantAssignableRole(input.roleCode)) {
+    if (
+      (CANONICAL_ROLES as readonly string[]).includes(input.roleCode) &&
+      !isTenantAssignableRole(input.roleCode)
+    ) {
+      throw new BadRequestException(
+        `Role code ${input.roleCode} cannot be assigned from a tenant route`,
+      );
+    }
+
+    const role = await this.prisma.role.findFirst({
+      where: { code: input.roleCode, OR: [{ tenantId: null }, { tenantId }] },
+    });
+    if (!role || role.code !== input.roleCode) {
+      throw new BadRequestException(`Unknown role code: ${input.roleCode}`);
+    }
+    const permissionProfile = role.baseRoleCode ?? role.code;
+    if (!isTenantAssignableRole(permissionProfile)) {
       throw new BadRequestException(
         `Role code ${input.roleCode} cannot be assigned from a tenant route`,
       );
@@ -113,14 +130,27 @@ export class GovernanceService {
     }
     const currentIsAdmin =
       membership.status === 'ACTIVE' &&
-      hasMembershipRole(membership, 'R-tenant-admin');
-    if (currentIsAdmin && input.roleCode !== 'R-tenant-admin') {
+      membership.roles.some(
+        (assignment) =>
+          (assignment.role.baseRoleCode ?? assignment.role.code) ===
+          'R-tenant-admin',
+      );
+    if (currentIsAdmin && permissionProfile !== 'R-tenant-admin') {
       const otherAdmins = await this.prisma.tenantMembership.count({
         where: {
           tenantId,
           status: 'ACTIVE',
           id: { not: membershipId },
-          roles: { some: { role: { code: 'R-tenant-admin' } } },
+          roles: {
+            some: {
+              role: {
+                OR: [
+                  { code: 'R-tenant-admin' },
+                  { baseRoleCode: 'R-tenant-admin' },
+                ],
+              },
+            },
+          },
         },
       });
       if (otherAdmins === 0) {
@@ -128,13 +158,6 @@ export class GovernanceService {
           'A tenant must keep at least one active administrator',
         );
       }
-    }
-
-    const role = await this.prisma.role.findFirst({
-      where: { code: input.roleCode, OR: [{ tenantId: null }, { tenantId }] },
-    });
-    if (!role) {
-      throw new BadRequestException(`Unknown role code: ${input.roleCode}`);
     }
 
     await this.prisma.membershipRole.deleteMany({ where: { membershipId } });

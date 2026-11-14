@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import {
   Bot,
   CheckCircle2,
@@ -13,8 +13,6 @@ import {
   History,
   Cpu,
   Activity,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import { TenantStudioKnowledge } from "./TenantStudioKnowledge";
@@ -26,7 +24,6 @@ import {
 export function TenantStudioView() {
   const [activeTab, setActiveTab] = useState<string>("instructions");
   const [groundingThreshold, setGroundingThreshold] = useState<number>(0.75);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const { theme } = useRole();
   const isLight = theme === "light";
 
@@ -42,16 +39,6 @@ export function TenantStudioView() {
     { id: "versions", label: "9. Versions", icon: History },
     { id: "observability", label: "10. Observability", icon: Cpu },
   ];
-
-  const scrollTabs = (direction: "left" | "right") => {
-    if (scrollRef.current) {
-      const amount = 200;
-      scrollRef.current.scrollBy({
-        left: direction === "left" ? -amount : amount,
-        behavior: "smooth",
-      });
-    }
-  };
 
   return (
     <div className="flex-1 p-4 md:p-8 overflow-y-auto space-y-6">
@@ -83,54 +70,30 @@ export function TenantStudioView() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => scrollTabs("left")}
-          className="flex-shrink-0 p-1.5 rounded-lg glass-panel hover:text-heading transition"
-          style={{ color: "var(--text-muted)" }}
-          aria-label="Scroll tabs left"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-
-        <div
-          ref={scrollRef}
-          className="flex-1 flex overflow-x-auto gap-1 p-1.5 glass-panel rounded-xl border border-slate-700/50"
-          style={{ scrollbarWidth: "thin" }}
-        >
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            const tcls = isActive
-              ? `${isLight ? "bg-blue-600/10 text-blue-700 border-blue-600" : "bg-blue-600/40 text-cyan-300 border-cyan-500/40"} shadow-sm`
-              : `${isLight ? "text-slate-600 hover:text-slate-900 hover:bg-slate-200" : "text-muted-custom hover:text-heading hover:bg-slate-800/40"}`;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={
-                  "flex-shrink-0 px-3 py-2 text-xs font-semibold rounded-lg flex items-center gap-1.5 whitespace-nowrap transition-all border " +
-                  tcls
-                }
-              >
-                <Icon
-                  className="w-3.5 h-3.5"
-                  style={{ color: isActive ? "inherit" : "var(--accent-cyan)" }}
-                />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <button
-          onClick={() => scrollTabs("right")}
-          className="flex-shrink-0 p-1.5 rounded-lg glass-panel hover:text-heading transition"
-          style={{ color: "var(--text-muted)" }}
-          aria-label="Scroll tabs right"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
+      <div className="glass-panel p-1.5 rounded-xl grid grid-cols-2 sm:flex sm:overflow-x-auto no-scrollbar gap-1 border border-slate-700/50">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          const tcls = isActive
+            ? `${isLight ? "bg-blue-600/10 text-blue-700 border-blue-600" : "bg-blue-600/40 text-cyan-300 border-cyan-500/40"} shadow-sm`
+            : `${isLight ? "text-slate-600 hover:text-slate-900 hover:bg-slate-200" : "text-muted-custom hover:text-heading hover:bg-slate-800/40"}`;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={
+                "px-3 py-2 text-xs font-semibold rounded-lg flex items-center justify-center sm:justify-start gap-1.5 whitespace-nowrap transition-all border " +
+                tcls
+              }
+            >
+              <Icon
+                className="w-3.5 h-3.5"
+                style={{ color: isActive ? "inherit" : "var(--accent-cyan)" }}
+              />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {activeTab === "instructions" && (
