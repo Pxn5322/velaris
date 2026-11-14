@@ -6,8 +6,8 @@ import { test, expect } from "@playwright/test";
  *
  * Eleven images: ten full-page layouts (dashboard, user directory, inbox and
  * audit at 1280×900 and 390×844, plus light-theme inbox and audit variants)
- * and one 320×844 header with a long display name. Time is fixed, API
- * responses are deterministic, and the WebGL particle canvas is hidden. The
+ * and one 320×844 drawer account block with a long display name. Time is
+ * fixed, API responses are deterministic, and the WebGL particle canvas is hidden. The
  * background grid and every layout surface remain visible, so spacing,
  * wrapping and hierarchy changes fail the check.
  */
@@ -399,20 +399,21 @@ test.describe("administrator visual layouts", () => {
     await expect(page.getByLabel("Toggle Navigation")).toBeVisible();
   });
 
-  test("long-name header at 320px", async ({ page }) => {
+  test("long-name mobile drawer at 320px", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 844 });
     await prepare(page, longNameSessionResponse);
     await page.goto("/admin");
+    await page.getByLabel("Toggle Navigation").click();
 
-    await expect(page.getByTestId("nav-identity-mobile-name")).toHaveText(
+    await expect(page.getByTestId("nav-drawer-name")).toHaveText(
       "Live Governance Administrator",
     );
-    await expect(page.getByTestId("nav-avatar-mobile")).toBeHidden();
+    await expect(page.getByTestId("nav-sign-out-drawer")).toBeVisible();
 
     await removeDynamicSurface(page);
     await page.waitForTimeout(250);
-    await expect(page.locator("header")).toHaveScreenshot(
-      "header-long-name-320.png",
+    await expect(page.getByTestId("nav-drawer-account")).toHaveScreenshot(
+      "drawer-long-name-320.png",
     );
   });
 });

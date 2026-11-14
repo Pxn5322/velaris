@@ -2,11 +2,12 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * Profile settings: a signed-in user sets their Supabase avatar_url.
+ * Profile editing from the identity menu.
  *
- * The API and Supabase Auth are intercepted, so the journey checks the
- * browser contract: the control sends `data.avatar_url` to Supabase, updates
- * the identity block immediately, and rejects unsafe URLs before any request.
+ * The API is intercepted, so the journey checks the browser contract:
+ * clicking the identity opens a two-item menu, the name dialog sends only
+ * displayName, and the photo dialog uploads a local image as a bounded data
+ * URL instead of asking for a remote URL.
  */
 
 const SESSION_KEY = "velaris.auth.session.v1";
@@ -22,6 +23,7 @@ const sessionResponse = {
     provider: "supabase",
     subject: "sub-e2e",
     email: "admin@acme.test",
+    displayName: "Acme Admin",
   },
   tenantContext: {
     userId: "user-1",
@@ -38,6 +40,11 @@ const sessionResponse = {
   role: "R-tenant-admin",
 };
 
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
 function json(body, status = 200) {
   return {
     status,
@@ -53,81 +60,126 @@ async function seedSession(page) {
   );
 }
 
-async function openProfile(page) {
+async function openAccountMenu(page) {
   await page.goto("/admin");
   await expect(page.getByTestId("nav-identity")).toContainText("Acme Admin");
-  await page.getByTestId("nav-profile").click();
-  await expect(page.getByTestId("profile-settings")).toBeVisible();
+  await page.getByTestId("nav-identity").click();
+  await expect(page.getByTestId("account-menu-desktop")).toBeVisible();
+}
+
+async function routeProfile(page, bodies) {
+  await page.route("**/auth/profile", (route) => {
+    if (route.request().method() !== "PATCH") {
+      return route.fulfill(json({ message: "Method not allowed" }, 405));
+    }
+    const body = route.request().postDataJSON();
+    bodies.push(body);
+    return route.fulfill(
+      json({
+        displayName: body.displayName ?? "Acme Admin",
+        avatarUrl: body.avatarDataUrl ?? null,
+      }),
+    );
+  });
 }
 
 test.describe("profile settings", () => {
-  test("saves and clears the Supabase avatar URL", async ({ page }) => {
-    let updateBody = null;
+  test("opens the account menu instead of a separate profile button", async ({
+    page,
+  }) => {
     await seedSession(page);
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/auth/v1/user*", async (route) => {
-      if (route.request().method() !== "PUT") {
-        return route.fulfill(json({ message: "Method not allowed" }, 405));
-      }
-      updateBody = route.request().postDataJSON();
-      return route.fulfill(json({ id: "sub-e2e" }));
-    });
-    await page.route("https://cdn.example.test/avatar.png", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "image/svg+xml",
-        body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1" />',
-      }),
-    );
 
-    await openProfile(page);
-    await page
-      .getByTestId("profile-avatar-url")
-      .fill("https://cdn.example.test/avatar.png");
+    await page.goto("/admin");
+    await expect(page.getByTestId("nav-profile")).toHaveCount(0);
+
+    await page.getByTestId("nav-identity").click();
+    await expect(page.getByTestId("account-menu-photo-desktop")).toBeVisible();
+    await expect(page.getByTestId("account-menu-name-desktop")).toBeVisible();
+  });
+
+  test("renames the account from the identity menu", async ({ page }) => {
+    const bodies = [];
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await routeProfile(page, bodies);
+
+    await openAccountMenu(page);
+    await page.getByTestId("account-menu-name-desktop").click();
+    await expect(page.getByTestId("profile-settings")).toHaveAttribute(
+      "data-section",
+      "name",
+    );
+    await page.getByTestId("profile-display-name").fill("Support Lead");
+    await page.getByTestId("profile-save").click();
+
+    await expect(page.getByTestId("profile-settings")).toBeHidden();
+    await expect(page.getByTestId("nav-identity")).toContainText(
+      "Support Lead",
+    );
+    expect(bodies).toEqual([{ displayName: "Support Lead" }]);
+  });
+
+  test("uploads and removes a local profile photo", async ({ page }) => {
+    const bodies = [];
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await routeProfile(page, bodies);
+
+    await openAccountMenu(page);
+    await page.getByTestId("account-menu-photo-desktop").click();
+    await page.getByTestId("profile-avatar-file").setInputFiles({
+      name: "avatar.png",
+      mimeType: "image/png",
+      buffer: PNG,
+    });
+    await expect(
+      page.getByTestId("profile-avatar-preview").locator("img"),
+    ).toBeVisible();
     await page.getByTestId("profile-save").click();
 
     await expect(page.getByTestId("profile-settings")).toBeHidden();
     await expect(page.getByTestId("nav-avatar-image")).toHaveAttribute(
       "src",
-      "https://cdn.example.test/avatar.png",
+      /^data:image\/webp;base64,/,
     );
-    expect(updateBody).toEqual({
-      data: { avatar_url: "https://cdn.example.test/avatar.png" },
-    });
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0].avatarDataUrl).toMatch(/^data:image\/webp;base64,/);
 
-    await page.getByTestId("nav-profile").click();
-    await page.getByTestId("profile-avatar-url").fill("");
-    await page.getByTestId("profile-save").click();
+    await page.getByTestId("nav-identity").click();
+    await page.getByTestId("account-menu-photo-desktop").click();
+    await page.getByTestId("profile-remove-photo").click();
 
     await expect(page.getByTestId("profile-settings")).toBeHidden();
     await expect(page.getByTestId("nav-avatar-initials")).toHaveText("AA");
-    expect(updateBody).toEqual({ data: { avatar_url: null } });
+    expect(bodies[1]).toEqual({ avatarDataUrl: null });
   });
 
-  test("rejects a non-https avatar URL before saving", async ({ page }) => {
-    let putCalls = 0;
+  test("rejects a non-image file before any request", async ({ page }) => {
+    const bodies = [];
     await seedSession(page);
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/auth/v1/user*", (route) => {
-      putCalls += 1;
-      return route.fulfill(json({ id: "sub-e2e" }));
+    await routeProfile(page, bodies);
+
+    await openAccountMenu(page);
+    await page.getByTestId("account-menu-photo-desktop").click();
+    await page.getByTestId("profile-avatar-file").setInputFiles({
+      name: "notes.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("not an image"),
     });
 
-    await openProfile(page);
-    await page
-      .getByTestId("profile-avatar-url")
-      .fill("http://cdn.example.test/avatar.png");
-    await page.getByTestId("profile-save").click();
-
     await expect(page.getByTestId("profile-error")).toHaveText(
-      "Avatar URL must start with https://.",
+      "Choose a PNG, JPEG or WebP image.",
     );
-    await expect(page.getByTestId("profile-settings")).toBeVisible();
-    await expect(page.getByTestId("nav-avatar-initials")).toHaveText("AA");
-    expect(putCalls).toBe(0);
+    expect(bodies).toHaveLength(0);
   });
 });

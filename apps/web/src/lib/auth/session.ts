@@ -178,59 +178,51 @@ export async function requestPasswordReset(email: string): Promise<void> {
   }
 }
 
-const MAX_AVATAR_URL_LENGTH = 2048;
+export interface ProfileUpdate {
+  displayName?: string;
+  /** Data URL from the photo picker, or null to remove it. */
+  avatarDataUrl?: string | null;
+}
 
-/**
- * Validate the user-owned avatar URL before it reaches Supabase metadata.
- * The API repeats this check, so a crafted request cannot bypass the UI.
- */
-export function normalizeAvatarUrl(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (trimmed.length > MAX_AVATAR_URL_LENGTH) {
-    throw new Error(
-      `Avatar URL must be ${MAX_AVATAR_URL_LENGTH.toLocaleString()} characters or fewer.`,
-    );
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    throw new Error("Enter a valid HTTPS image URL.");
-  }
-  if (parsed.protocol !== "https:") {
-    throw new Error("Avatar URL must start with https://.");
-  }
-  return trimmed;
+export interface SavedProfile {
+  displayName: string;
+  avatarUrl: string | null;
 }
 
 /**
- * Set or clear the caller's Supabase avatar_url. Supabase stores it in the
- * user metadata that the API reads for GET /auth/session.
+ * Save the caller's own display name or uploaded photo. The API verifies the
+ * bearer token and derives the user from the verified subject, so this call
+ * cannot update another account.
  */
-export async function updateAvatarUrl(value: string): Promise<string | null> {
-  const avatarUrl = normalizeAvatarUrl(value);
+export async function updateProfile(
+  input: ProfileUpdate,
+): Promise<SavedProfile> {
   const session = getSession();
-  if (!session || !isAuthConfigured()) {
-    throw new Error("Sign in again to update your profile photo.");
+  if (!session) {
+    throw new Error("Sign in again to update your profile.");
   }
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    method: "PUT",
+  const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+    method: "PATCH",
     headers: {
       "Content-Type": "application/json",
-      apikey: SUPABASE_PUBLISHABLE_KEY as string,
       Authorization: `Bearer ${session.accessToken}`,
     },
-    body: JSON.stringify({ data: { avatar_url: avatarUrl } }),
+    body: JSON.stringify(input),
   });
   if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as {
+      message?: string | string[];
+    } | null;
+    const detail = Array.isArray(body?.message)
+      ? body?.message[0]
+      : body?.message;
     throw new Error(
       response.status === 401 || response.status === 403
         ? "Your session has expired. Sign in again."
-        : "Your profile photo could not be saved. Try again.",
+        : detail || "Your profile could not be saved. Try again.",
     );
   }
-  return avatarUrl;
+  return (await response.json()) as SavedProfile;
 }
 
 /** Set a new password for the session delivered by a recovery link. */

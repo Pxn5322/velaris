@@ -100,33 +100,29 @@ async function openUserDirectory(page) {
 async function mobileHeaderLayout(page) {
   return page.evaluate(() => {
     const logo = document.querySelector('header a[href="/"]');
-    const identity = document.querySelector(
-      '[data-testid="nav-identity-mobile"]',
-    );
-    const name = document.querySelector(
-      '[data-testid="nav-identity-mobile-name"]',
-    );
-    const signOut = document.querySelector(
-      '[data-testid="nav-sign-out-mobile"]',
-    );
     const menu = document.querySelector('[aria-label="Toggle Navigation"]');
-    if (!logo || !identity || !name || !signOut || !menu) {
-      throw new Error("The mobile header controls are not rendered");
+    const identity = document.querySelector('[data-testid="nav-drawer-identity"]');
+    const signOut = document.querySelector('[data-testid="nav-sign-out-drawer"]');
+    if (!logo || !menu || !identity || !signOut) {
+      throw new Error("The mobile header or drawer controls are not rendered");
     }
     return {
       documentWidth: document.documentElement.scrollWidth,
       viewportWidth: window.innerWidth,
       logoRight: logo.getBoundingClientRect().right,
-      identityLeft: identity.getBoundingClientRect().left,
-      identityRight: identity.getBoundingClientRect().right,
-      nameWidth: name.getBoundingClientRect().width,
-      nameScrollWidth: name.scrollWidth,
-      signOutLeft: signOut.getBoundingClientRect().left,
-      signOutRight: signOut.getBoundingClientRect().right,
       menuLeft: menu.getBoundingClientRect().left,
       menuRight: menu.getBoundingClientRect().right,
+      identityBottom: identity.getBoundingClientRect().bottom,
+      signOutTop: signOut.getBoundingClientRect().top,
+      signOutLeft: signOut.getBoundingClientRect().left,
+      signOutRight: signOut.getBoundingClientRect().right,
     };
   });
+}
+
+async function openMobileDrawer(page) {
+  await page.getByLabel("Toggle Navigation").click();
+  await expect(page.getByTestId("nav-drawer-identity")).toBeVisible();
 }
 
 test.describe("tenant administrator user directory (F-03)", () => {
@@ -421,7 +417,7 @@ test.describe("tenant administrator user directory (F-03)", () => {
     );
   });
 
-  test("fits the identity and Sign out in the mobile header at 390px", async ({
+  test("keeps identity and Sign out only in the mobile drawer at 390px", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -430,32 +426,32 @@ test.describe("tenant administrator user directory (F-03)", () => {
 
     await page.goto("/admin");
 
-    await expect(page.getByTestId("nav-identity-mobile")).toBeVisible();
-    await expect(page.getByTestId("nav-identity-mobile")).toContainText(
-      "Acme Admin",
-    );
-    await expect(page.getByTestId("nav-identity-mobile")).toContainText(
-      "Tenant Admin",
-    );
-    await expect(page.getByTestId("nav-sign-out-mobile")).toBeVisible();
-    await expect(page.getByTestId("nav-avatar-mobile")).toBeVisible();
-    await expect(page.getByTestId("nav-sign-out-mobile")).toContainText(
-      "Sign out",
-    );
+    // The top bar has no profile detail or sign-out on a phone.
+    await expect(page.getByTestId("nav-identity-mobile")).toHaveCount(0);
+    await expect(page.getByTestId("nav-sign-out-mobile")).toHaveCount(0);
     await expect(page.getByTestId("nav-identity")).toBeHidden();
     await expect(page.getByTestId("nav-sign-out")).toBeHidden();
-    await expect(page.getByTestId("admin-sign-out")).toHaveCount(0);
+
+    await openMobileDrawer(page);
+    await expect(page.getByTestId("nav-drawer-identity")).toContainText(
+      "Acme Admin",
+    );
+    await expect(page.getByTestId("nav-drawer-identity")).toContainText(
+      "Tenant Admin",
+    );
+    await expect(page.getByTestId("nav-avatar-drawer")).toBeVisible();
+    await expect(page.getByTestId("nav-sign-out-drawer")).toContainText(
+      "Sign out",
+    );
 
     const layout = await mobileHeaderLayout(page);
-
     expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
-    expect(layout.identityLeft).toBeGreaterThanOrEqual(layout.logoRight);
-    expect(layout.identityRight).toBeLessThanOrEqual(layout.signOutLeft);
-    expect(layout.signOutRight).toBeLessThanOrEqual(layout.menuLeft);
     expect(layout.menuRight).toBeLessThanOrEqual(layout.viewportWidth);
+    // Sign out occupies its own row below the identity card.
+    expect(layout.signOutTop).toBeGreaterThanOrEqual(layout.identityBottom + 4);
   });
 
-  test("keeps the mobile header inside 320px with a long display name", async ({
+  test("keeps the 320px header and long-name drawer usable", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 320, height: 844 });
@@ -470,25 +466,23 @@ test.describe("tenant administrator user directory (F-03)", () => {
 
     await page.goto("/admin");
 
-    await expect(page.getByTestId("nav-identity-mobile")).toContainText(
+    await expect(page.getByTestId("nav-identity-mobile")).toHaveCount(0);
+    await expect(page.getByTestId("nav-sign-out-mobile")).toHaveCount(0);
+
+    await openMobileDrawer(page);
+    await expect(page.getByTestId("nav-drawer-name")).toHaveText(
       "Live Governance Administrator",
     );
-    await expect(page.getByTestId("nav-avatar-mobile")).toBeHidden();
-    await expect(page.getByTestId("nav-identity-mobile-name")).toHaveAttribute(
-      "title",
-      "admin@acme.test",
-    );
-    await expect(page.getByTestId("nav-sign-out-mobile")).toContainText(
+    await expect(page.getByTestId("nav-avatar-drawer")).toBeVisible();
+    await expect(page.getByTestId("nav-sign-out-drawer")).toContainText(
       "Sign out",
     );
 
     const layout = await mobileHeaderLayout(page);
-
-    expect(layout.identityLeft).toBeGreaterThanOrEqual(layout.logoRight);
-    expect(layout.identityRight).toBeLessThanOrEqual(layout.signOutLeft);
-    expect(layout.signOutRight).toBeLessThanOrEqual(layout.menuLeft);
     expect(layout.menuRight).toBeLessThanOrEqual(320);
-    expect(layout.nameScrollWidth).toBeGreaterThan(layout.nameWidth);
+    expect(layout.signOutLeft).toBeGreaterThanOrEqual(0);
+    expect(layout.signOutRight).toBeLessThanOrEqual(320);
+    expect(layout.signOutTop).toBeGreaterThanOrEqual(layout.identityBottom + 4);
   });
 
   test("keeps status and actions visible in the mobile user directory", async ({

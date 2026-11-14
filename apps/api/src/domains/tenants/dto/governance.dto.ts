@@ -33,3 +33,15 @@ export class AddMemberDto {
 export class SetMembershipStatusDto {
   status!: 'ACTIVE' | 'SUSPENDED';
 }
+
+export class CreateRoleDto {
+  code!: string;
+  name!: string;
+  /** Canonical permission profile inherited by this custom role. */
+  baseRoleCode!: string;
+}
+
+export class UpdateRoleDto {
+  name?: string;
+  baseRoleCode?: string;
+}

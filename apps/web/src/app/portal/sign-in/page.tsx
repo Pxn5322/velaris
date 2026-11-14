@@ -16,10 +16,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogIn } from "lucide-react";
-import { isAuthConfigured, signIn } from "@/lib/auth/session";
+import { isAuthConfigured, signIn, signOut } from "@/lib/auth/session";
+import { fetchSessionProfile } from "@/lib/auth/uiRole";
+import { useRole } from "@/context/RoleContext";
 
 export default function PortalSignInPage() {
   const router = useRouter();
+  const { setRole, setIdentity } = useRole();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +39,17 @@ export default function PortalSignInPage() {
     setError(null);
     try {
       await signIn(email.trim(), password);
+      // Read the server role before navigating; the provider on this public
+      // page still holds the signed-out state from before the login.
+      const profile = await fetchSessionProfile();
+      if (!profile.role) {
+        await signOut();
+        setError("This account has no portal access.");
+        setSubmitting(false);
+        return;
+      }
+      setRole(profile.role);
+      setIdentity(profile.identity);
       router.push("/portal/conversations");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Sign-in failed.");

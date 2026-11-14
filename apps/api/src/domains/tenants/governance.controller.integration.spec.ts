@@ -31,6 +31,7 @@ import { SupabaseTokenVerifier } from '../auth/supabase-token-verifier.service.j
 import { GovernanceController } from './governance.controller.js';
 import { GovernanceService } from './governance.service.js';
 import { TenantUsersService } from './tenant-users.service.js';
+import { TenantRolesService } from './tenant-roles.service.js';
 
 const ENTERPRISE_ORG_ID = 'org-1';
 const TENANT_ID = '12121212-1212-4212-8212-121212121212';
@@ -141,6 +142,7 @@ describe('Governance routes (integration)', () => {
         // The controller also serves the tenant user-management routes;
         // their own coverage lives in tenant-users.integration.spec.ts.
         TenantUsersService,
+        TenantRolesService,
         {
           provide: SupabaseAdminService,
           useValue: {

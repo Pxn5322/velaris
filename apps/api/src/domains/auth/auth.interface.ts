@@ -14,6 +14,8 @@ export interface AuthenticatedIdentity {
   provider: string;
   subject: string;
   email?: string;
+  /** Database display name, editable by the caller. */
+  displayName?: string;
   /**
    * Provider profile photo from Supabase user_metadata. The verifier accepts
    * only an absolute https URL, so the web client never renders a script or

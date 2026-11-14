@@ -37,6 +37,7 @@ const sessionResponse = {
       },
     ],
   },
+  role: "R-customer",
 };
 
 const conversations = [
@@ -86,15 +87,14 @@ async function seedSession(page) {
 }
 
 test.describe("customer portal (J-03)", () => {
-  test("signed out, the conversations view offers sign-in", async ({
+  test("redirects a signed-out visitor to the main sign-in", async ({
     page,
   }) => {
     await page.goto("/portal/conversations");
-    await expect(page.getByTestId("portal-signedout")).toBeVisible();
-    await expect(page.getByTestId("portal-signin-link")).toHaveAttribute(
-      "href",
-      "/portal/sign-in",
-    );
+    await expect(page).toHaveURL(/\?signin=1/, { timeout: 10_000 });
+    await expect(
+      page.getByRole("heading", { name: "Sign In to VELARIS" }),
+    ).toBeVisible();
   });
 
   test("sign-in refuses bad credentials with a visible error", async ({

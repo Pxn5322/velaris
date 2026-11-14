@@ -19,6 +19,7 @@ import { ROLE_RESOLVER } from '../permissions/role-resolver.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import { AuthController } from './auth.controller.js';
 import { SignupService } from './signup.service.js';
+import { ProfileService } from './profile.service.js';
 import { SupabaseAuthGuard } from './supabase-auth.guard.js';
 import { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
 import { TokenRevocationService } from './token-revocation.service.js';
@@ -129,6 +130,10 @@ describe('POST /auth/signout (integration)', () => {
           useValue: { resolveContext: async () => null },
         },
         { provide: SignupService, useValue: { signup: vi.fn() } },
+        {
+          provide: ProfileService,
+          useValue: { findForIdentity: async () => null, update: vi.fn() },
+        },
       ],
     }).compile();
     app = moduleRef.createNestApplication();
