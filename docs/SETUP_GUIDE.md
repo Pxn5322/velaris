@@ -90,6 +90,11 @@ Names below are proposed categories for the initial implementation. Add or remov
 | `LOG_LEVEL` | API/worker | no | environment config |
 | `E2E_LIVE_API_URL` | Playwright live registration journey (`npm run e2e:live`); when absent the spec skips, so the default suite stays offline | no | shell environment for the check; the single environment's API origin |
 | `E2E_LIVE_PASSWORD` | Password for the synthetic account the live registration journey creates (defaults to a documented test value) | yes | shell environment only; never commit a real password |
+| `SMOKE_ADMIN_EMAIL` | Existing enterprise administrator for `npm run smoke:admin`; defaults to the livecheck account `admin1@velaris.test` | no | shell environment or the git-ignored `.env.livecheck` |
+| `SMOKE_ADMIN_PASSWORD` | Password for the enterprise administrator; `ADMIN_USER_PASSWORD` is accepted as a fallback | yes | git-ignored `.env.livecheck`; never commit the value |
+| `SMOKE_TENANT_ADMIN_EMAIL` | Existing tenant administrator for the Dashboards check; `TENANT_ADMIN_EMAIL` is accepted as a fallback | no | shell environment or the git-ignored `.env.livecheck` |
+| `SMOKE_TENANT_ADMIN_PASSWORD` | Password for the tenant administrator; `TENANT_ADMIN_PASSWORD` is accepted as a fallback | yes | git-ignored `.env.livecheck`; never commit the value |
+| `SMOKE_ADMIN_API_URL`, `SMOKE_ADMIN_WEB_URL` | Optional hosted origins for `npm run smoke:admin`; the command defaults to the current Render and Vercel origins | no | shell environment |
 
 The deployed API uses the Supabase IPv4 session pooler because the direct database host has no IPv4 route. Use port 5432, username `postgres.<project-ref>` and `sslmode=verify-full`. Render runs `npm run start:prod --workspace apps/api` with `apps/api` as the working directory, so the deployed value is `sslrootcert=../../certs/supabase-root-2021.crt`. A command started at the repository root uses `sslrootcert=certs/supabase-root-2021.crt`. The committed certificate is the public Supabase Root 2021 CA. It is not a secret and expires on 2031-04-26. The pooler chain verifies fully with this root.
 
@@ -189,6 +194,13 @@ curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" "http
 # 5. Hosted smoke: web icon, session display name, avatar URL and fallback,
 #    cross-tenant 403, retention save and audit read-back
 npm run smoke:hosted
+# 5a. Hosted administrator smoke: enterprise and tenant sign-in, platform
+#     directory, tenant Dashboards, AI Governance CRUD and deployed UI.
+#     The synthetic provider is removed in a finally block and verified absent.
+npm run smoke:admin
+# Custom origins or API-only mode:
+# node --env-file=.env.livecheck scripts/hosted-admin-smoke.mjs \
+#   --url <api-origin> --web-url <web-origin> --skip-ui
 # Custom origins:
 # node --env-file=.env scripts/deployment-smoke.mjs \
 #   --url <api-origin> --web-url <web-origin>
@@ -209,6 +221,7 @@ E2E_LIVE_API_URL=https://velaris-api-aral.onrender.com E2E_BASE_URL=https://vela
 - [x] Liveness returned 200 and the protected route returned 401 on 2026-11-10.
 - [x] Hosted smoke passed on `a725bdd`: signup 201, login 200, own read 200, cross-tenant 403, retention save 200 and audit read 200. The audit row matched category `TRACES` and 45 days.
 - [x] Post-deploy smoke passed on 2026-11-13: `/icon.svg` returned 200 with `image/svg+xml`, `GET /auth/session` returned 200 and its display name matched the synthetic account, and the existing retention checks passed. A bad icon path returned 404 with `text/html` and exit 1, so the icon check fails closed. The smoke also set `avatar_url`, received it in a fresh session, cleared it, and received no `avatarUrl` (initials fallback). Cleanup left zero synthetic tenants and accounts.
+- [x] Hosted administrator smoke passed on 2026-11-15: `npm run smoke:admin` checked enterprise and tenant-admin sign-in, the platform directory, tenant Dashboards and provider CRUD. The synthetic provider cleanup reported `1 removed, 0 remaining`. The same command with `--skip-ui` passed in API-only mode. The check needs existing hosted accounts from `.env.livecheck` and is not a CI job.
 - [x] The retention panel has a ten-change recent history and links to the full filtered audit trail. Seven local retention journeys pass; the hosted panel was inspected on 2026-11-10 with a signed-in synthetic tenant, and `KNOWLEDGE 365` and `MEMORY 30` produced two history rows.
 - [x] `node scripts/load-profile.mjs --auth-signup` recorded a warm p95 of 1350.52 ms at concurrency 8 with 90/90 responses, zero errors and 9 req/s. The budget is 200 ms, so NFR-04 is not met. Report: `.agents/evidence-t6.03-load-hosted.json`.
 - [x] The same-region candidate run on 2026-11-10 measured p95 1094.14 ms and 994.47 ms at concurrency 8 with zero errors. Both are over the budget, so NFR-04 is still not met (section 6.4).
@@ -379,7 +392,7 @@ Both runs exceed the 200 ms budget. The API and database were in the same region
 - Monitoring: API error rate and p50/p95/p99 latency, queue depth/failures, provider availability, ingestion failures, AI evaluation/grounding/citation failures, cost, audit completeness and deployment health.
 - Release: run all gates, deploy to the single environment, smoke test, review telemetry, obtain human production approval, then use the provider's verified process.
 - Rollback: restore previous app artifact/config where safe; use forward fixes or tested restore for incompatible migrations. Agent rollback selects a prior immutable published version and preserves history.
-- Smoke tests: health endpoint; protected endpoint returns 401 without credentials; one allowed tenant-scoped read; cross-tenant read denied; session display name and avatar URL; initials fallback after avatar clear; AI provider/queue health; audit/trace sample present.
+- Smoke tests: health endpoint; protected endpoint returns 401 without credentials; one allowed tenant-scoped read; cross-tenant read denied; session display name and avatar URL; initials fallback after avatar clear; hosted administrator directory, Dashboards and provider CRUD; AI provider/queue health; audit/trace sample present.
 - Verify: T6.03 evidence is in `.agents/evidence-t6.03-hosted.md` and `docs/TESTING.md`; record the deployment ID, test outputs, owner approval and rollback rehearsal result. The same-region candidate evidence is in section 6.4 and `.agents/evidence-t6.04-inregion.md`.
 
 ## 8. Checklists and troubleshooting
