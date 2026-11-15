@@ -80,6 +80,30 @@ const conversations = [
   },
 ];
 
+const assignees = [
+  {
+    membershipId: "membership-1",
+    userId: "user-1",
+    displayName: "Avery Agent",
+    email: "agent@example.test",
+    roles: ["R-agent"],
+  },
+  {
+    membershipId: "membership-2",
+    userId: "user-2",
+    displayName: "Maya Chen",
+    email: "maya.chen@example.test",
+    roles: ["R-agent"],
+  },
+  {
+    membershipId: "membership-3",
+    userId: "user-3",
+    displayName: "Riley Admin",
+    email: "riley@example.test",
+    roles: ["R-tenant-admin"],
+  },
+];
+
 const timeline = {
   ...conversations[0],
   messages: [
@@ -215,6 +239,46 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
 
     await page.getByTestId("inbox-tab-all").click();
     await expect(page.getByTestId("inbox-ticket")).toHaveCount(2);
+  });
+
+  test("assigns a ticket to an eligible agent and shows the new assignee", async ({
+    page,
+  }) => {
+    let assignmentBody = null;
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
+    await page.route("**/tickets/assignees*", (route) =>
+      route.fulfill(json(assignees)),
+    );
+    await page.route("**/conversations?*", (route) =>
+      route.fulfill(json(conversations)),
+    );
+    await page.route("**/conversations/conv-1*", (route) =>
+      route.fulfill(json(timeline)),
+    );
+    await page.route("**/tickets/ticket-1*", (route) => {
+      assignmentBody = route.request().postDataJSON();
+      return route.fulfill(
+        json({ ...tickets[0], assigneeMembershipId: "membership-2", version: 1 }),
+      );
+    });
+
+    await page.goto("/inbox");
+    await page.getByTestId("inbox-ticket").first().click();
+    await expect(page.getByTestId("inbox-timeline")).toBeVisible();
+
+    await page.getByTestId("inbox-assignee").selectOption("membership-2");
+    await page.getByTestId("inbox-assign").click();
+
+    await expect(page.getByTestId("inbox-assignment")).toBeVisible();
+    await expect(page.getByTestId("inbox-copilot")).toContainText("Maya Chen");
+    expect(assignmentBody).toMatchObject({
+      assigneeMembershipId: "membership-2",
+      expectedVersion: 0,
+    });
   });
 
   test("renders the admin-v2.7 workspace and paginates the queue", async ({

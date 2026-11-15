@@ -269,23 +269,32 @@ async function main() {
     );
   }
 
-  const analytics = await api(
+  const dashboard = await api(
     apiUrl,
-    `/analytics/summary?tenantId=${encodeURIComponent(tenant.tenantId)}`,
+    `/analytics/tenant-dashboard?tenantId=${encodeURIComponent(tenant.tenantId)}`,
     tenantSession.accessToken,
   );
-  const analyticsBody = await readJson(analytics);
-  checks.dashboard = analytics.status;
-  checks.dashboardState = analyticsBody?.state;
-  checks.dashboardMetrics = Array.isArray(analyticsBody?.metrics)
-    ? analyticsBody.metrics.length
-    : 0;
-  if (
-    analytics.status !== 200 ||
-    !Array.isArray(analyticsBody?.metrics) ||
-    analyticsBody.metrics.length === 0
-  ) {
-    throw new Error(`tenant dashboard failed with HTTP ${analytics.status}`);
+  const dashboardBody = await readJson(dashboard);
+  checks.dashboard = dashboard.status;
+  checks.dashboardTokens = dashboardBody?.totalMonthlyTokens;
+  checks.dashboardActiveAgents = dashboardBody?.activeAgents;
+  checks.dashboardTickets = dashboardBody?.tickets?.total;
+  const statusCounts = [
+    "pendingCustomer",
+    "inProgress",
+    "resolved",
+    "closed",
+  ];
+  const dashboardValid =
+    dashboard.status === 200 &&
+    typeof dashboardBody?.totalMonthlyTokens === "number" &&
+    typeof dashboardBody?.activeAgents === "number" &&
+    typeof dashboardBody?.tickets?.total === "number" &&
+    statusCounts.every(
+      (key) => typeof dashboardBody?.tickets?.[key] === "number",
+    );
+  if (!dashboardValid) {
+    throw new Error(`tenant dashboard failed with HTTP ${dashboard.status}`);
   }
 
   if (!skipUi) {
@@ -421,6 +430,22 @@ async function checkTenantUi(browser, webUrl, email, password) {
       state: "visible",
       timeout: 30_000,
     });
+    await page.getByTestId("tenant-dashboard-tokens").waitFor({
+      state: "visible",
+      timeout: 30_000,
+    });
+    await page.getByTestId("tenant-dashboard-agents").waitFor({
+      state: "visible",
+    });
+    await page.getByTestId("tenant-dashboard-tickets").waitFor({
+      state: "visible",
+    });
+    if (
+      (await page.getByTestId("tenant-dashboard").getByRole("link").count()) !==
+      0
+    ) {
+      throw new Error("tenant dashboard still renders the link cards");
+    }
     if (
       (await page.getByRole("button", { name: "Dashboards" }).count()) === 0
     ) {

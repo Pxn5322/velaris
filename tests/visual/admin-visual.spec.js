@@ -215,7 +215,12 @@ const tickets = [
   status,
   priority,
   version: 1,
-  assigneeMembershipId: Number(index) < 2 ? "membership-1" : null,
+  assigneeMembershipId:
+    Number(index) === 0
+      ? "membership-3"
+      : Number(index) === 1
+        ? "membership-2"
+        : null,
   updatedAt: new Date(
     FIXED_TIME.getTime() - Number(index) * 7 * 60_000,
   ).toISOString(),
@@ -305,6 +310,25 @@ async function prepare(page, response = sessionResponse) {
     route.fulfill(json({ items: auditTraces, limit: 25, hasMore: false })),
   );
   await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
+  await page.route("**/tickets/assignees*", (route) =>
+    route.fulfill(
+      json(
+        members
+          .filter((member) =>
+            member.roles.some((role) =>
+              ["R-agent", "R-tenant-admin"].includes(role),
+            ),
+          )
+          .map((member) => ({
+            membershipId: member.membershipId,
+            userId: member.userId,
+            displayName: member.displayName,
+            email: member.email,
+            roles: member.roles,
+          })),
+      ),
+    ),
+  );
   await page.route("**/conversations?*", (route) =>
     route.fulfill(json(conversations)),
   );
@@ -374,6 +398,12 @@ test.describe("administrator visual layouts", () => {
     await page.getByTestId("inbox-ticket").first().click();
     await expect(page.getByTestId("inbox-timeline")).toBeVisible();
     await expect(page.getByTestId("inbox-profile")).toBeVisible();
+    await expect(page.getByTestId("inbox-assignee")).toContainText(
+      "Liam O'Connor",
+    );
+    await expect(page.getByTestId("inbox-assignee")).toHaveValue(
+      "membership-3",
+    );
 
     await removeDynamicSurface(page);
     await capture(page, "inbox-desktop.png", 1280, 900);

@@ -25,8 +25,11 @@ function prismaFake() {
     ticket: {
       count: vi.fn().mockResolvedValue(0),
       findMany: vi.fn().mockResolvedValue([]),
+      groupBy: vi.fn().mockResolvedValue([]),
     },
     aiTrace: { findMany: vi.fn().mockResolvedValue([]) },
+    aiAgent: { count: vi.fn().mockResolvedValue(0) },
+    $queryRaw: vi.fn().mockResolvedValue([{ total: 0n }]),
     auditEvent: { count: vi.fn().mockResolvedValue(0) },
     message: {
       aggregate: vi.fn().mockResolvedValue({ _max: { createdAt: null } }),
@@ -241,5 +244,64 @@ describe('AnalyticsService summary (T5.03)', () => {
       'ai_latency_p95_ms',
       'audit_event_count',
     ]);
+  });
+});
+
+describe('AnalyticsService tenant dashboard', () => {
+  it('returns monthly tokens, active agents and ticket status counts', async () => {
+    const { service: analytics, prisma } = service();
+    prisma.$queryRaw.mockResolvedValue([{ total: 12345n }]);
+    prisma.aiAgent.count.mockResolvedValue(12);
+    prisma.ticket.groupBy.mockResolvedValue([
+      { status: 'OPEN', _count: { _all: 2 } },
+      { status: 'PENDING_CUSTOMER', _count: { _all: 3 } },
+      { status: 'IN_PROGRESS', _count: { _all: 4 } },
+      { status: 'RESOLVED', _count: { _all: 5 } },
+      { status: 'CLOSED', _count: { _all: 6 } },
+    ]);
+
+    const dashboard = await analytics.tenantDashboard('tenant-a', NOW);
+
+    expect(dashboard).toMatchObject({
+      tenantId: 'tenant-a',
+      generatedAt: NOW.toISOString(),
+      month: {
+        from: '2026-11-01T00:00:00.000Z',
+        to: '2026-12-01T00:00:00.000Z',
+      },
+      totalMonthlyTokens: 12345,
+      activeAgents: 12,
+      tickets: {
+        total: 20,
+        open: 2,
+        pendingCustomer: 3,
+        inProgress: 4,
+        resolved: 5,
+        closed: 6,
+      },
+    });
+    expect(prisma.aiAgent.count).toHaveBeenCalledWith({
+      where: { tenantId: 'tenant-a', status: 'ACTIVE' },
+    });
+    expect(prisma.ticket.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: 'tenant-a' } }),
+    );
+  });
+
+  it('returns zeroes for a tenant with no usage or tickets', async () => {
+    const { service: analytics } = service();
+
+    const dashboard = await analytics.tenantDashboard('tenant-a', NOW);
+
+    expect(dashboard.totalMonthlyTokens).toBe(0);
+    expect(dashboard.activeAgents).toBe(0);
+    expect(dashboard.tickets).toEqual({
+      total: 0,
+      open: 0,
+      pendingCustomer: 0,
+      inProgress: 0,
+      resolved: 0,
+      closed: 0,
+    });
   });
 });

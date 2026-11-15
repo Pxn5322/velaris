@@ -54,6 +54,23 @@ export interface AnalyticsSummary {
   metrics: KpiValue[];
 }
 
+/** Tenant Dashboard cards (separate from the platform KPI summary). */
+export interface TenantDashboardSummary {
+  tenantId: string;
+  generatedAt: string;
+  month: { from: string; to: string };
+  totalMonthlyTokens: number;
+  activeAgents: number;
+  tickets: {
+    total: number;
+    open: number;
+    pendingCustomer: number;
+    inProgress: number;
+    resolved: number;
+    closed: number;
+  };
+}
+
 function ratio(numerator: number, denominator: number): number | null {
   if (denominator <= 0) {
     return null;
@@ -89,6 +106,84 @@ function nearestRankPercentile(
 @Injectable()
 export class AnalyticsService {
   constructor(@Inject(PRISMA_SERVICE) private readonly prisma: PrismaService) {}
+
+  /** Current-calendar-month token usage plus live agent and ticket counts. */
+  async tenantDashboard(
+    tenantId: string,
+    now: Date = new Date(),
+  ): Promise<TenantDashboardSummary> {
+    const monthStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
+    const monthEnd = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+    );
+
+    const [tokenRows, activeAgents, ticketGroups] = await Promise.all([
+      this.prisma.$queryRaw<{ total: bigint | number | string | null }[]>`
+        SELECT COALESCE(SUM(
+          CASE
+            WHEN usage_json ? 'totalTokens'
+              AND jsonb_typeof(usage_json->'totalTokens') = 'number'
+              THEN (usage_json->>'totalTokens')::numeric
+            ELSE
+              COALESCE(
+                CASE
+                  WHEN jsonb_typeof(usage_json->'inputTokens') = 'number'
+                    THEN (usage_json->>'inputTokens')::numeric
+                  ELSE 0
+                END,
+                0
+              ) +
+              COALESCE(
+                CASE
+                  WHEN jsonb_typeof(usage_json->'outputTokens') = 'number'
+                    THEN (usage_json->>'outputTokens')::numeric
+                  ELSE 0
+                END,
+                0
+              )
+          END
+        ), 0)::bigint AS total
+        FROM ai_traces
+        WHERE tenant_id = ${tenantId}::uuid
+          AND created_at >= ${monthStart}
+          AND created_at < ${monthEnd}
+      `,
+      this.prisma.aiAgent.count({
+        where: { tenantId, status: 'ACTIVE' },
+      }),
+      this.prisma.ticket.groupBy({
+        by: ['status'],
+        where: { tenantId },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const countFor = (status: string) =>
+      ticketGroups.find((group) => group.status === status)?._count._all ?? 0;
+    const open = countFor('OPEN');
+    const pendingCustomer = countFor('PENDING_CUSTOMER');
+    const inProgress = countFor('IN_PROGRESS');
+    const resolved = countFor('RESOLVED');
+    const closed = countFor('CLOSED');
+
+    return {
+      tenantId,
+      generatedAt: now.toISOString(),
+      month: { from: monthStart.toISOString(), to: monthEnd.toISOString() },
+      totalMonthlyTokens: Number(tokenRows[0]?.total ?? 0),
+      activeAgents,
+      tickets: {
+        total: open + pendingCustomer + inProgress + resolved + closed,
+        open,
+        pendingCustomer,
+        inProgress,
+        resolved,
+        closed,
+      },
+    };
+  }
 
   async summary(
     tenantId: string,

@@ -102,6 +102,25 @@ const summary = {
   ],
 };
 
+const tenantDashboard = {
+  tenantId: "tenant-a",
+  generatedAt: "2026-11-13T10:00:00.000Z",
+  month: {
+    from: "2026-11-01T00:00:00.000Z",
+    to: "2026-12-01T00:00:00.000Z",
+  },
+  totalMonthlyTokens: 4200000,
+  activeAgents: 12,
+  tickets: {
+    total: 20,
+    open: 2,
+    pendingCustomer: 3,
+    inProgress: 4,
+    resolved: 5,
+    closed: 6,
+  },
+};
+
 function json(body, status = 200) {
   return {
     status,
@@ -167,11 +186,16 @@ test.describe("administrator analytics audit stream", () => {
     page,
   }) => {
     let requestedUrl = null;
+    let dashboardUrl = null;
     await seedSession(page);
     await routeSession(page, tenantAdminSessionResponse);
     await page.route("**/audit/events*", (route) => {
       requestedUrl = new URL(route.request().url());
       return route.fulfill(json({ items: events, limit: 8, hasMore: false }));
+    });
+    await page.route("**/analytics/tenant-dashboard*", (route) => {
+      dashboardUrl = new URL(route.request().url());
+      return route.fulfill(json(tenantDashboard));
     });
 
     await page.goto("/admin");
@@ -192,6 +216,46 @@ test.describe("administrator analytics audit stream", () => {
     await expect(page.getByTestId("tenant-dashboard")).toContainText(
       "Organization Operational Overview",
     );
+    const dashboard = page.getByTestId("tenant-dashboard");
+    await expect(page.getByTestId("tenant-dashboard-tokens")).toContainText(
+      "TOTAL MONTHLY TOKENS",
+    );
+    await expect(page.getByTestId("tenant-dashboard-tokens")).toContainText(
+      "4.2M",
+    );
+    await expect(page.getByTestId("tenant-dashboard-agents")).toContainText(
+      "ACTIVE AGENTS",
+    );
+    await expect(page.getByTestId("tenant-dashboard-agents")).toContainText(
+      "12 Configured",
+    );
+    await expect(page.getByTestId("tenant-dashboard-tickets")).toContainText(
+      "TOTAL TICKETS",
+    );
+    await expect(page.getByTestId("tenant-dashboard-tickets")).toContainText(
+      "20",
+    );
+    await expect(
+      page.getByTestId("tenant-dashboard-status-pendingCustomer"),
+    ).toContainText("PENDING CUSTOMER");
+    await expect(
+      page.getByTestId("tenant-dashboard-status-inProgress"),
+    ).toContainText("IN PROGRESS");
+    await expect(
+      page.getByTestId("tenant-dashboard-status-resolved"),
+    ).toContainText("RESOLVED");
+    await expect(
+      page.getByTestId("tenant-dashboard-status-closed"),
+    ).toContainText("CLOSED");
+    await expect(dashboard.getByText("Support Inbox", { exact: true })).toHaveCount(
+      0,
+    );
+    await expect(dashboard.getByText("AI Studio", { exact: true })).toHaveCount(
+      0,
+    );
+    await expect(
+      dashboard.getByText("Audit Trail", { exact: true }),
+    ).toHaveCount(0);
     await expect(page.getByTestId("admin-audit-stream")).toBeVisible();
     await expect(page.getByTestId("admin-audit-stream-tenant")).toContainText(
       "Acme",
@@ -204,6 +268,8 @@ test.describe("administrator analytics audit stream", () => {
     expect(requestedUrl?.pathname).toBe("/audit/events");
     expect(requestedUrl?.searchParams.get("tenantId")).toBe("tenant-a");
     expect(requestedUrl?.searchParams.get("limit")).toBe("8");
+    expect(dashboardUrl?.pathname).toBe("/analytics/tenant-dashboard");
+    expect(dashboardUrl?.searchParams.get("tenantId")).toBe("tenant-a");
   });
 
   test("shows loading before the first audit page arrives", async ({

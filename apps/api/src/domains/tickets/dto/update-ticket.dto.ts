@@ -9,6 +9,7 @@ export class UpdateTicketDto {
   title?: string;
   status?: 'OPEN' | 'IN_PROGRESS' | 'PENDING_CUSTOMER' | 'RESOLVED' | 'CLOSED';
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-  assigneeMembershipId?: string;
+  /** NULL explicitly unassigns; omitted leaves the current assignee. */
+  assigneeMembershipId?: string | null;
   expectedVersion?: number;
 }

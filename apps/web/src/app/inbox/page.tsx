@@ -80,6 +80,14 @@ interface Customer {
   status: string;
 }
 
+interface Assignee {
+  membershipId: string;
+  userId: string;
+  displayName: string;
+  email: string;
+  roles: string[];
+}
+
 const PRIORITY_LABEL: Record<string, string> = {
   HIGH: "HIGH",
   MEDIUM: "MED",
@@ -139,6 +147,13 @@ export default function InboxPage() {
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [assignees, setAssignees] = useState<Assignee[]>([]);
+  const [assigneeState, setAssigneeState] = useState<
+    "loading" | "error" | "ready"
+  >("loading");
+  const [assigneeChoice, setAssigneeChoice] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -150,10 +165,27 @@ export default function InboxPage() {
         return;
       }
       setScope(tenants[0]);
-      const rows = await apiFetch<Ticket[]>(
-        `/tickets?tenantId=${encodeURIComponent(tenants[0].tenantId)}`,
-      );
+      const tenantQuery = `tenantId=${encodeURIComponent(tenants[0].tenantId)}`;
+      const [rows, assigneeRows] = await Promise.all([
+        apiFetch<Ticket[]>(`/tickets?${tenantQuery}`),
+        apiFetch<Assignee[]>(`/tickets/assignees?${tenantQuery}`).catch(
+          () => null,
+        ),
+      ]);
       setTickets(rows);
+      if (assigneeRows) {
+        setAssignees(
+          assigneeRows.filter(
+            (person) =>
+              typeof person?.membershipId === "string" &&
+              typeof person?.displayName === "string",
+          ),
+        );
+        setAssigneeState("ready");
+      } else {
+        setAssignees([]);
+        setAssigneeState("error");
+      }
       setPhase("ready");
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -214,6 +246,8 @@ export default function InboxPage() {
       setSendError(null);
       setReply("");
       setConversationId(null);
+      setAssigneeChoice(ticket.assigneeMembershipId ?? "");
+      setAssignmentError(null);
       setTimeline("loading");
       void loadProfile(ticket);
       if (!scope) {
@@ -280,6 +314,52 @@ export default function InboxPage() {
       }
     },
     [scope, load],
+  );
+
+  const changeAssignee = useCallback(
+    async (ticket: Ticket, membershipId: string) => {
+      if (!scope || assigning) return;
+      const nextAssignee = membershipId || null;
+      if (nextAssignee === ticket.assigneeMembershipId) return;
+      setAssigning(true);
+      setConflict(null);
+      setAssignmentError(null);
+      try {
+        const updated = await apiFetch<Ticket>(
+          `/tickets/${ticket.id}?tenantId=${encodeURIComponent(scope.tenantId)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              assigneeMembershipId: nextAssignee,
+              expectedVersion: ticket.version,
+            }),
+          },
+        );
+        setTickets((rows) =>
+          rows.map((row) => (row.id === updated.id ? updated : row)),
+        );
+        setSelected(updated);
+        setAssigneeChoice(updated.assigneeMembershipId ?? "");
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) {
+          setConflict(`${error.message} — the current state is shown below.`);
+          await load();
+          const fresh = await apiFetch<Ticket[]>(
+            `/tickets?tenantId=${encodeURIComponent(scope.tenantId)}`,
+          ).catch(() => []);
+          const current = fresh.find((row) => row.id === ticket.id) ?? null;
+          setSelected(current);
+          setAssigneeChoice(current?.assigneeMembershipId ?? "");
+        } else {
+          setAssignmentError(
+            error instanceof Error ? error.message : "Assignment failed.",
+          );
+        }
+      } finally {
+        setAssigning(false);
+      }
+    },
+    [scope, assigning, load],
   );
 
   const sendReply = useCallback(
@@ -362,6 +442,11 @@ export default function InboxPage() {
   );
   const shownFrom = visibleTickets.length === 0 ? 0 : startIndex + 1;
   const shownTo = Math.min(startIndex + rowsPerPage, visibleTickets.length);
+  const selectedAssignee = selected
+    ? (assignees.find(
+        (person) => person.membershipId === selected.assigneeMembershipId,
+      ) ?? null)
+    : null;
 
   const centerSpan =
     leftOpen && rightOpen
@@ -732,6 +817,97 @@ export default function InboxPage() {
                     ))}
                   </div>
 
+                  <div
+                    className="rounded-xl border border-[var(--card-border)] bg-[var(--pill-bg)] p-3 space-y-2"
+                    data-testid="inbox-assignment"
+                  >
+                    <label
+                      htmlFor="inbox-assignee"
+                      className="block text-[10px] font-mono font-bold uppercase tracking-wider text-muted-custom"
+                    >
+                      Assign ticket
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        id="inbox-assignee"
+                        value={assigneeChoice}
+                        onChange={(event) =>
+                          setAssigneeChoice(event.target.value)
+                        }
+                        disabled={assigning || assigneeState !== "ready"}
+                        data-testid="inbox-assignee"
+                        className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-xs text-heading focus:outline-none focus:border-blue-600 disabled:opacity-60"
+                        style={{
+                          background: "var(--input-bg)",
+                          borderColor: "var(--input-border)",
+                        }}
+                      >
+                        <option value="">Unassigned</option>
+                        {assignees.map((person) => (
+                          <option
+                            key={person.membershipId}
+                            value={person.membershipId}
+                          >
+                            {person.displayName}
+                            {person.roles.includes("R-tenant-admin")
+                              ? " · admin"
+                              : ""}
+                          </option>
+                        ))}
+                        {selected.assigneeMembershipId &&
+                          !assignees.some(
+                            (person) =>
+                              person.membershipId ===
+                              selected.assigneeMembershipId,
+                          ) && (
+                            <option value={selected.assigneeMembershipId}>
+                              Current assignee
+                            </option>
+                          )}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void changeAssignee(selected, assigneeChoice)
+                        }
+                        disabled={
+                          assigning ||
+                          assigneeState !== "ready" ||
+                          assigneeChoice ===
+                            (selected.assigneeMembershipId ?? "")
+                        }
+                        data-testid="inbox-assign"
+                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {assigning
+                          ? "Saving…"
+                          : assigneeChoice
+                            ? "Assign"
+                            : "Unassign"}
+                      </button>
+                    </div>
+                    {assigneeState === "error" && (
+                      <p
+                        className="text-[10px] font-mono text-[var(--accent-rose)]"
+                        data-testid="inbox-assignee-error"
+                      >
+                        Assignee list unavailable.
+                      </p>
+                    )}
+                    {assignmentError && (
+                      <p
+                        className="text-xs font-bold text-[var(--accent-rose)]"
+                        data-testid="inbox-assignment-error"
+                      >
+                        {assignmentError}
+                      </p>
+                    )}
+                    <p className="text-[10px] font-mono text-muted-custom">
+                      Only active agents and tenant administrators can receive
+                      tickets.
+                    </p>
+                  </div>
+
                   <div>
                     <h3 className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted-custom mb-2">
                       Timeline
@@ -931,9 +1107,20 @@ export default function InboxPage() {
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-muted-custom">Assigned</span>
-                    <span className="text-heading font-bold">
-                      {selected.assigneeMembershipId ? "Yes" : "Unassigned"}
+                    <span className="text-muted-custom">Assigned to</span>
+                    <span
+                      className="max-w-[60%] truncate text-heading font-bold"
+                      title={
+                        selectedAssignee?.displayName ??
+                        (selected.assigneeMembershipId
+                          ? "Assigned member"
+                          : "Unassigned")
+                      }
+                    >
+                      {selectedAssignee?.displayName ??
+                        (selected.assigneeMembershipId
+                          ? "Assigned member"
+                          : "Unassigned")}
                     </span>
                   </div>
                 </div>

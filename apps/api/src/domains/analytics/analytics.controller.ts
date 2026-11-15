@@ -37,6 +37,16 @@ export class AnalyticsController {
     private readonly tenants: TenantsService,
   ) {}
 
+  @Get('tenant-dashboard')
+  @RequirePermission(PERMISSIONS.ANALYTICS_READ)
+  async tenantDashboard(
+    @Query('tenantId') tenantId: string,
+    @Req() request: AuthedRequest,
+  ) {
+    await this.requireTenantScope(request, tenantId);
+    return this.analytics.tenantDashboard(tenantId);
+  }
+
   @Get('summary')
   @RequirePermission(PERMISSIONS.ANALYTICS_READ)
   async summary(
