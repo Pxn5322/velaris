@@ -60,8 +60,11 @@ function prismaFake() {
     ticket: {
       count: vi.fn().mockResolvedValue(0),
       findMany: vi.fn().mockResolvedValue([]),
+      groupBy: vi.fn().mockResolvedValue([]),
     },
     aiTrace: { findMany: vi.fn().mockResolvedValue([]) },
+    aiAgent: { count: vi.fn().mockResolvedValue(0) },
+    $queryRaw: vi.fn().mockResolvedValue([{ total: 0n }]),
     auditEvent: { count: vi.fn().mockResolvedValue(0) },
     message: {
       aggregate: vi.fn().mockResolvedValue({ _max: { createdAt: null } }),
@@ -205,5 +208,36 @@ describe('Analytics summary route (integration)', () => {
         where: expect.objectContaining({ tenantId: 'tenant-a' }),
       }),
     );
+  });
+
+  it('returns tenant dashboard tokens, agents and ticket counts', async () => {
+    role = 'R-tenant-admin';
+    prisma.$queryRaw.mockResolvedValue([{ total: 4200000n }]);
+    prisma.aiAgent.count.mockResolvedValue(12);
+    prisma.ticket.groupBy.mockResolvedValue([
+      { status: 'OPEN', _count: { _all: 2 } },
+      { status: 'PENDING_CUSTOMER', _count: { _all: 3 } },
+      { status: 'IN_PROGRESS', _count: { _all: 4 } },
+      { status: 'RESOLVED', _count: { _all: 5 } },
+      { status: 'CLOSED', _count: { _all: 6 } },
+    ]);
+
+    const res = await request(app.getHttpServer())
+      .get('/analytics/tenant-dashboard?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      tenantId: 'tenant-a',
+      totalMonthlyTokens: 4200000,
+      activeAgents: 12,
+      tickets: {
+        total: 20,
+        pendingCustomer: 3,
+        inProgress: 4,
+        resolved: 5,
+        closed: 6,
+      },
+    });
   });
 });

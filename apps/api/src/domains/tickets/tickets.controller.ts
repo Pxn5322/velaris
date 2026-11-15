@@ -102,6 +102,20 @@ export class TicketsController {
       : rows;
   }
 
+  /** Eligible assignees are visible to agents and tenant administrators. */
+  @Get('assignees')
+  @RequirePermission(PERMISSIONS.TICKET_READ)
+  async listAssignees(
+    @Query('tenantId') tenantId: string,
+    @Req() request: AuthedRequest,
+  ) {
+    await this.requireTenantScope(request, tenantId);
+    if (request.role === 'R-customer') {
+      throw new ForbiddenException('Customers cannot list ticket assignees');
+    }
+    return this.ticketsService.listAssignees(tenantId);
+  }
+
   @Get(':id')
   @RequirePermission(PERMISSIONS.TICKET_READ)
   async findOne(
@@ -135,14 +149,23 @@ export class TicketsController {
       id,
       updateTicketDto,
       tenantId,
+      request.user?.subject ?? null,
     );
     await this.audit.record({
-      action: 'ticket.updated',
+      action:
+        updateTicketDto.assigneeMembershipId !== undefined
+          ? 'ticket.assigned'
+          : 'ticket.updated',
       resourceType: 'ticket',
       resourceId: id,
       tenantId,
       actorId: request.user?.subject,
-      metadata: { title: updated.title },
+      metadata: {
+        title: updated.title,
+        ...(updateTicketDto.assigneeMembershipId !== undefined
+          ? { assigneeMembershipId: updated.assigneeMembershipId }
+          : {}),
+      },
     });
     return updated;
   }

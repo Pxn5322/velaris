@@ -80,6 +80,7 @@ model Tenant {
   evaluationRuns         EvaluationRun[]
   toolDefinitions        AiToolDefinition[]
   toolApprovals          ToolApprovalRequest[]
+  ticketAssignments      TicketAssignment[]
 
   @@unique([slug])
   @@map("tenants")
@@ -350,11 +351,34 @@ model Ticket {
   tenant              Tenant        @relation(fields: [tenantId], references: [id])
   customer            Customer      @relation(fields: [customerId], references: [id])
   primaryConversation Conversation? @relation(fields: [primaryConversationId], references: [id])
+  assignments         TicketAssignment[]
 
   @@index([tenantId, status])
   @@index([tenantId, assigneeMembershipId, status])
   @@index([tenantId, updatedAt(sort: Desc)])
   @@map("tickets")
+}
+
+/// E-ticket-assignment: append-only history of assignee changes (F-05).
+/// The current assignee stays on tickets; this row preserves who moved the
+/// ticket, from whom and to whom, including unassignment (to_membership_id
+/// NULL). Membership ids are intentionally not foreign keys: history must
+/// survive a membership deletion.
+model TicketAssignment {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  ticketId         String   @map("ticket_id") @db.Uuid
+  fromMembershipId String?  @map("from_membership_id") @db.Uuid
+  toMembershipId   String?  @map("to_membership_id") @db.Uuid
+  actorId          String?  @map("actor_id") @db.Uuid
+  reason           String?
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, ticketId, createdAt])
+  @@map("ticket_assignments")
 }
 
 /// Ingestion state for a knowledge source (AC-F07-1 happy path and

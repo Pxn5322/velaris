@@ -46,12 +46,27 @@ type TicketRow = {
   closedAt: Date | null;
 };
 
-type MembershipRow = { id: string; tenantId: string; status: string };
+type MembershipRow = {
+  id: string;
+  tenantId: string;
+  userId?: string;
+  status: string;
+  roles?: { role: { code: string; baseRoleCode: string | null } }[];
+};
+
+type AssignmentRow = {
+  tenantId: string;
+  ticketId: string;
+  fromMembershipId: string | null;
+  toMembershipId: string | null;
+  actorId: string | null;
+};
 
 function fakePrisma(tickets: TicketRow[], memberships: MembershipRow[] = []) {
   const store = [...tickets];
+  const assignments: AssignmentRow[] = [];
   let counter = 0;
-  return {
+  const client = {
     ticket: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
         const row = store.find((r) => r.id === where.id);
@@ -110,13 +125,54 @@ function fakePrisma(tickets: TicketRow[], memberships: MembershipRow[] = []) {
       }),
     },
     tenantMembership: {
-      findUnique: vi.fn(
-        async ({ where }: { where: { id: string } }) =>
-          memberships.find((m) => m.id === where.id) ?? null,
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
+        const membership = memberships.find((m) => m.id === where.id);
+        return membership
+          ? {
+              ...membership,
+              roles: membership.roles ?? [
+                { role: { code: 'R-agent', baseRoleCode: null } },
+              ],
+            }
+          : null;
+      }),
+      findMany: vi.fn(async ({ where }: { where: { tenantId: string } }) =>
+        memberships
+          .filter(
+            (m) =>
+              m.tenantId === where.tenantId &&
+              m.status === 'ACTIVE' &&
+              (m.roles ?? [{ role: { code: 'R-agent' } }]).some(
+                ({ role }) => role.code === 'R-agent',
+              ),
+          )
+          .map((m) => ({
+            id: m.id,
+            userId: m.userId ?? 'user-' + m.id,
+            user: {
+              displayName: 'Agent ' + m.id,
+              emailNormalized: m.id + '@acme.test',
+            },
+            roles: m.roles ?? [
+              { role: { code: 'R-agent', baseRoleCode: null } },
+            ],
+          })),
       ),
     },
+    ticketAssignment: {
+      create: vi.fn(async ({ data }: { data: AssignmentRow }) => {
+        assignments.push(data);
+        return data;
+      }),
+    },
     _store: store,
+    _assignments: assignments,
   };
+  return Object.assign(client, {
+    $transaction: vi.fn(async (callback: (tx: typeof client) => unknown) =>
+      callback(client),
+    ),
+  });
 }
 
 function ticketRow(id: string, overrides: Partial<TicketRow> = {}): TicketRow {
@@ -327,6 +383,97 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
         tenantA.id,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('records assignment history, including unassignment', async () => {
+    prisma = fakePrisma(
+      [ticketRow('t-1')],
+      [{ id: 'mem-a', tenantId: tenantA.id, status: 'ACTIVE' }],
+    );
+    service = new TicketsService(prisma as unknown as PrismaService);
+
+    await service.update(
+      't-1',
+      { assigneeMembershipId: 'mem-a' },
+      tenantA.id,
+      'actor-1',
+    );
+    await service.update(
+      't-1',
+      { assigneeMembershipId: null },
+      tenantA.id,
+      'actor-1',
+    );
+
+    expect(prisma._assignments).toEqual([
+      expect.objectContaining({
+        tenantId: tenantA.id,
+        ticketId: 't-1',
+        fromMembershipId: null,
+        toMembershipId: 'mem-a',
+        actorId: 'actor-1',
+      }),
+      expect.objectContaining({
+        tenantId: tenantA.id,
+        ticketId: 't-1',
+        fromMembershipId: 'mem-a',
+        toMembershipId: null,
+        actorId: 'actor-1',
+      }),
+    ]);
+  });
+
+  it('rejects assigning a customer membership', async () => {
+    prisma = fakePrisma(
+      [ticketRow('t-1')],
+      [
+        {
+          id: 'mem-customer',
+          tenantId: tenantA.id,
+          status: 'ACTIVE',
+          roles: [{ role: { code: 'R-customer', baseRoleCode: null } }],
+        },
+      ],
+    );
+    service = new TicketsService(prisma as unknown as PrismaService);
+
+    await expect(
+      service.update(
+        't-1',
+        { assigneeMembershipId: 'mem-customer' },
+        tenantA.id,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('lists active agent memberships for assignment', async () => {
+    prisma = fakePrisma(
+      [],
+      [
+        {
+          id: 'mem-a',
+          tenantId: tenantA.id,
+          userId: 'user-a',
+          status: 'ACTIVE',
+        },
+        {
+          id: 'mem-customer',
+          tenantId: tenantA.id,
+          status: 'ACTIVE',
+          roles: [{ role: { code: 'R-customer', baseRoleCode: null } }],
+        },
+      ],
+    );
+    service = new TicketsService(prisma as unknown as PrismaService);
+
+    const assignees = await service.listAssignees(tenantA.id);
+    expect(assignees).toEqual([
+      expect.objectContaining({
+        membershipId: 'mem-a',
+        userId: 'user-a',
+        displayName: 'Agent mem-a',
+      }),
+    ]);
   });
 
   it('update changes the title (AC-F05-1 field write)', async () => {

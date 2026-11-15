@@ -73,11 +73,14 @@ type FakeTicket = Record<string, unknown>;
 
 function fakeTicketPrisma(tickets: FakeTicket[]) {
   const store = [...tickets];
+  const assignments: FakeTicket[] = [];
   let counter = 0;
-  return {
+  const client = {
     ticket: {
-      findUnique: async ({ where }: { where: { id: string } }) =>
-        store.find((r) => r.id === where.id) ?? null,
+      findUnique: async ({ where }: { where: { id: string } }) => {
+        const row = store.find((r) => r.id === where.id);
+        return row ? { ...row } : null;
+      },
       findMany: async ({ where }: { where: { tenantId: string } }) =>
         store.filter((r) => r.tenantId === where.tenantId),
       create: async ({ data }: { data: FakeTicket }) => {
@@ -117,7 +120,34 @@ function fakeTicketPrisma(tickets: FakeTicket[]) {
       },
       delete: async () => ({}),
     },
-    tenantMembership: { findUnique: async () => null },
+    tenantMembership: {
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        where.id === 'membership-agent'
+          ? {
+              id: 'membership-agent',
+              tenantId: 'tenant-a',
+              status: 'ACTIVE',
+              roles: [{ role: { code: 'R-agent', baseRoleCode: null } }],
+            }
+          : null,
+      findMany: async () => [
+        {
+          id: 'membership-agent',
+          userId: 'user-agent',
+          user: {
+            displayName: 'Avery Agent',
+            emailNormalized: 'avery@example.test',
+          },
+          roles: [{ role: { code: 'R-agent' } }],
+        },
+      ],
+    },
+    ticketAssignment: {
+      create: async ({ data }: { data: FakeTicket }) => {
+        assignments.push(data);
+        return data;
+      },
+    },
     customer: {
       // The identity email maps to customer-1 inside tenant A (scope resolver).
       findFirst: async ({
@@ -131,7 +161,12 @@ function fakeTicketPrisma(tickets: FakeTicket[]) {
           : null,
     },
     _store: store,
+    _assignments: assignments,
   };
+  return Object.assign(client, {
+    $transaction: async (callback: (tx: typeof client) => unknown) =>
+      callback(client),
+  });
 }
 
 function seededTicket(overrides: FakeTicket = {}): FakeTicket {
@@ -249,6 +284,35 @@ describe('Tickets routes (integration)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
+  });
+
+  it('lists eligible assignees for an agent', async () => {
+    role = 'R-agent';
+
+    const res = await request(app.getHttpServer())
+      .get('/tickets/assignees?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([
+      {
+        membershipId: 'membership-agent',
+        userId: 'user-agent',
+        displayName: 'Avery Agent',
+        email: 'avery@example.test',
+        roles: ['R-agent'],
+      },
+    ]);
+  });
+
+  it('denies the assignee list to a customer', async () => {
+    role = 'R-customer';
+
+    const res = await request(app.getHttpServer())
+      .get('/tickets/assignees?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(403);
   });
 
   it('denies tenant A credentials on tenant B by guessed ID (AC-F04-3)', async () => {
@@ -410,6 +474,40 @@ describe('Tickets routes (integration)', () => {
         resourceId: 'aaaaaaaa-0000-4000-8000-000000000003',
         tenantId: 'tenant-a',
         actorId: 'sub-123',
+      }),
+    );
+  });
+
+  it('assigns a ticket, records history and audits the assignment', async () => {
+    role = 'R-agent';
+    prismaFake._store.push(
+      seededTicket({ id: 'aaaaaaaa-0000-4000-8000-000000000010' }),
+    );
+
+    const res = await request(app.getHttpServer())
+      .patch('/tickets/aaaaaaaa-0000-4000-8000-000000000010?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ assigneeMembershipId: 'membership-agent', expectedVersion: 0 });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      assigneeMembershipId: 'membership-agent',
+      version: 1,
+    });
+    expect(prismaFake._assignments).toEqual([
+      expect.objectContaining({
+        tenantId: 'tenant-a',
+        ticketId: 'aaaaaaaa-0000-4000-8000-000000000010',
+        fromMembershipId: null,
+        toMembershipId: 'membership-agent',
+        actorId: 'sub-123',
+      }),
+    ]);
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'ticket.assigned',
+        resourceId: 'aaaaaaaa-0000-4000-8000-000000000010',
+        metadata: { title: 'Seeded', assigneeMembershipId: 'membership-agent' },
       }),
     );
   });

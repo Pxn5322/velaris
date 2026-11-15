@@ -12,7 +12,9 @@
  *   the UPDATE ... WHERE, so a lost update is 409, never silent
  *   (AC-F05-2)
  * - an assignee must be an ACTIVE membership of the same tenant
- *   (AC-F05-1)
+ *   with an agent or tenant-administrator role (AC-F05-1)
+ * - every assignee change appends a ticket_assignments row in the same
+ *   transaction as the ticket update
  */
 
 import {
@@ -36,6 +38,17 @@ import {
 /** TicketPriority values from prisma/schema.prisma. */
 const TICKET_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
 type TicketPriority = (typeof TICKET_PRIORITIES)[number];
+
+/** Roles that can receive support tickets. Custom roles inherit one of these. */
+const ASSIGNABLE_ROLE_CODES = ['R-agent', 'R-tenant-admin'] as const;
+
+export interface TicketAssignee {
+  membershipId: string;
+  userId: string;
+  displayName: string;
+  email: string;
+  roles: string[];
+}
 
 @Injectable()
 export class TicketsService {
@@ -70,7 +83,47 @@ export class TicketsService {
     return this.requireTicket(id, tenantId);
   }
 
-  async update(id: string, updateTicketDto: UpdateTicketDto, tenantId: string) {
+  /** Active agents and tenant administrators who can receive tickets. */
+  async listAssignees(tenantId: string): Promise<TicketAssignee[]> {
+    const rows = await this.prisma.tenantMembership.findMany({
+      where: {
+        tenantId,
+        status: 'ACTIVE',
+        roles: {
+          some: {
+            role: {
+              OR: [
+                { code: { in: [...ASSIGNABLE_ROLE_CODES] } },
+                { baseRoleCode: { in: [...ASSIGNABLE_ROLE_CODES] } },
+              ],
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        userId: true,
+        user: { select: { displayName: true, emailNormalized: true } },
+        roles: { select: { role: { select: { code: true } } } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return rows.map((row) => ({
+      membershipId: row.id,
+      userId: row.userId,
+      displayName: row.user.displayName,
+      email: row.user.emailNormalized,
+      roles: row.roles.map((membershipRole) => membershipRole.role.code),
+    }));
+  }
+
+  async update(
+    id: string,
+    updateTicketDto: UpdateTicketDto,
+    tenantId: string,
+    actorId: string | null = null,
+  ) {
     const current = await this.requireTicket(id, tenantId);
 
     if (updateTicketDto.status !== undefined) {
@@ -107,11 +160,12 @@ export class TicketsService {
           current.version,
       );
     }
-    if (updateTicketDto.assigneeMembershipId !== undefined) {
-      await this.assertAssignableMembership(
-        updateTicketDto.assigneeMembershipId,
-        tenantId,
-      );
+    const requestedAssignee = updateTicketDto.assigneeMembershipId;
+    const assignmentChanged =
+      requestedAssignee !== undefined &&
+      requestedAssignee !== current.assigneeMembershipId;
+    if (assignmentChanged && requestedAssignee !== null) {
+      await this.assertAssignableMembership(requestedAssignee, tenantId);
     }
 
     const data: Record<string, unknown> = { version: current.version + 1 };
@@ -138,23 +192,36 @@ export class TicketsService {
       }
     }
 
-    // The WHERE pins id, tenant and the version that was just read, so a
-    // concurrent writer makes count 0 instead of a silent lost update.
-    const result = await this.prisma.ticket.updateMany({
-      where: { id, tenantId, version: current.version },
-      data,
+    return this.prisma.$transaction(async (tx) => {
+      // The WHERE pins id, tenant and the version that was just read, so a
+      // concurrent writer makes count 0 instead of a silent lost update.
+      const result = await tx.ticket.updateMany({
+        where: { id, tenantId, version: current.version },
+        data,
+      });
+      if (result.count === 0) {
+        throw new ConflictException(
+          'Ticket was modified concurrently; re-read it and retry',
+        );
+      }
+      if (assignmentChanged) {
+        await tx.ticketAssignment.create({
+          data: {
+            tenantId,
+            ticketId: id,
+            fromMembershipId: current.assigneeMembershipId,
+            toMembershipId: updateTicketDto.assigneeMembershipId ?? null,
+            actorId,
+          },
+        });
+      }
+      // The guarded write above proved the row exists in this tenant.
+      const written = await tx.ticket.findUnique({ where: { id } });
+      if (!written) {
+        throw new NotFoundException('Ticket with ID ' + id + ' not found');
+      }
+      return written;
     });
-    if (result.count === 0) {
-      throw new ConflictException(
-        'Ticket was modified concurrently; re-read it and retry',
-      );
-    }
-    // The guarded write above proved the row exists in this tenant.
-    const written = await this.prisma.ticket.findUnique({ where: { id } });
-    if (!written) {
-      throw new NotFoundException('Ticket with ID ' + id + ' not found');
-    }
-    return written;
   }
 
   async remove(id: string, tenantId: string): Promise<{ success: boolean }> {
@@ -175,14 +242,20 @@ export class TicketsService {
     return ticket;
   }
 
-  /** The assignee must be an ACTIVE membership of this same tenant. */
+  /** The assignee must be an ACTIVE agent/admin membership of this tenant. */
   private async assertAssignableMembership(
     assigneeMembershipId: string,
     tenantId: string,
   ) {
     const membership = await this.prisma.tenantMembership.findUnique({
       where: { id: assigneeMembershipId },
-      select: { tenantId: true, status: true },
+      select: {
+        tenantId: true,
+        status: true,
+        roles: {
+          select: { role: { select: { code: true, baseRoleCode: true } } },
+        },
+      },
     });
     if (
       !membership ||
@@ -191,6 +264,21 @@ export class TicketsService {
     ) {
       throw new BadRequestException(
         'assigneeMembershipId must be an ACTIVE membership in this tenant',
+      );
+    }
+    const canReceiveTickets = membership.roles.some((membershipRole) => {
+      const role = membershipRole.role;
+      return (
+        (ASSIGNABLE_ROLE_CODES as readonly string[]).includes(role.code) ||
+        (role.baseRoleCode !== null &&
+          (ASSIGNABLE_ROLE_CODES as readonly string[]).includes(
+            role.baseRoleCode,
+          ))
+      );
+    });
+    if (!canReceiveTickets) {
+      throw new BadRequestException(
+        'assigneeMembershipId must hold an agent or tenant administrator role',
       );
     }
   }
