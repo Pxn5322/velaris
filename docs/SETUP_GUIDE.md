@@ -221,7 +221,7 @@ E2E_LIVE_API_URL=https://velaris-api-aral.onrender.com E2E_BASE_URL=https://vela
 - [x] Liveness returned 200 and the protected route returned 401 on 2026-11-10.
 - [x] Hosted smoke passed on `a725bdd`: signup 201, login 200, own read 200, cross-tenant 403, retention save 200 and audit read 200. The audit row matched category `TRACES` and 45 days.
 - [x] Post-deploy smoke passed on 2026-11-13: `/icon.svg` returned 200 with `image/svg+xml`, `GET /auth/session` returned 200 and its display name matched the synthetic account, and the existing retention checks passed. A bad icon path returned 404 with `text/html` and exit 1, so the icon check fails closed. The smoke also set `avatar_url`, received it in a fresh session, cleared it, and received no `avatarUrl` (initials fallback). Cleanup left zero synthetic tenants and accounts.
-- [x] Hosted administrator smoke passed on 2026-11-15: `npm run smoke:admin` checked enterprise and tenant-admin sign-in, the platform directory, tenant Dashboards and provider CRUD. The synthetic provider cleanup reported `1 removed, 0 remaining`. The same command with `--skip-ui` passed in API-only mode. The check needs existing hosted accounts from `.env.livecheck` and is not a CI job.
+- [x] Hosted administrator smoke passed on 2026-11-15 for deployed commit `78a27ab`: `npm run smoke:admin` checked enterprise and tenant-admin sign-in, the platform directory, the three-card tenant dashboard and provider CRUD. Enterprise sign-in returned 200 with `R-enterprise-admin`; the directory returned 200 with 18 rows across 13 tenants. Provider list/create/update/delete returned 200/201/200/200, and cleanup reported `1 removed, 0 remaining`. Tenant sign-in returned 200 with `R-tenant-admin`; `GET /analytics/tenant-dashboard` returned 200 with 0 tokens, 0 active agents and 2 tickets. The deployed UI check passed. The check needs existing hosted accounts from `.env.livecheck` and is not a CI job.
 
 **Manual hosted administrator workflow (2026-11-15).** `.github/workflows/hosted-admin-smoke.yml` runs only from Actions -> Hosted admin smoke -> Run workflow. It runs the same script against the selected API and web origins and uploads `hosted-admin-smoke.json`. Add these repository secrets before dispatch:
 
@@ -295,7 +295,7 @@ The single development environment becomes production only through this controll
 - [ ] Watch error rate, p95 latency, queue depth and audit/trace presence for the agreed observation window.
 - [ ] Keep the previous artifacts until the owner signs the release. Roll back by redeploying them; migrations are additive.
 
-### 6.3 Current hosted deployment (2026-11-10)
+### 6.3 Current hosted deployment (2026-11-15)
 The single environment runs on two providers. Section 6.1 records the smoke checks, including the authorized tenant read, and the checks that remain open.
 
 | Component | Provider | Public origin | Identifier |
@@ -359,10 +359,13 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 | Render deployment | `dep-dbpetitbedkc738i7plg` live; rollback to `dep-dbpet2s9v7es73bn764g` and forward passed |
 | Vercel administrator follow-up | `dpl_8nryBidzt3M3M7YNNFXL6a11pqcA` READY and promoted for `763fb0d`; production alias assigned |
 | Render administrator follow-up | `dep-dbso14qjnfac73cg4k10` live at 2026-11-15T09:53:14Z for `763fb0d`; previous deploy deactivated |
+| Vercel dashboard/assignment follow-up | `dpl_3pckPzvZACRog7gXrEAarJZ18UKb` READY, promoted and assigned the production alias for `78a27ab` |
+| Render dashboard/assignment follow-up | `dep-dbstl167bikc73ffs95g` live at 2026-11-15T16:16:51Z for `78a27ab`; previous deploy deactivated |
 | Hosted enterprise smoke | Sign-in 200 with `R-enterprise-admin`; platform directory 200 with 18 rows across 13 tenants; every row carried `tenantName`; deployed Tenant column and icon actions rendered; Add System User absent |
 | Hosted AI provider CRUD | List 200, create 201, update 200, delete 200; the synthetic provider was removed and no provider credentials were stored |
 | Hosted tenant dashboard | Tenant-admin sign-in 200 with `R-tenant-admin`; `GET /analytics/summary` 200 with six metrics and state `STALE`; deployed Dashboards tab rendered and AI Governance tab absent |
-| Hosted migration status | 12 of 12 migrations applied; database schema up to date |
+| Hosted tenant dashboard follow-up | Tenant-admin sign-in 200 with `R-tenant-admin`; `GET /analytics/tenant-dashboard` 200 with 0 tokens, 0 active agents and 2 tickets; the three cards rendered with no link cards and no AI Governance tab |
+| Hosted migration status | 13 migrations applied; database schema up to date |
 | CORS allowlist | Preflight from `https://velaris-web-bice.vercel.app` returned 204 with `access-control-allow-origin` |
 | Authorized retention read | 90/90 200, zero errors, p95 1350.52 ms at concurrency 8; over the 200 ms budget |
 | Database TLS | `verify-full` with Supabase Root 2021 CA; hosted smoke passed |
