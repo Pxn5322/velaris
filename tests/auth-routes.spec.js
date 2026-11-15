@@ -63,7 +63,6 @@ test.describe("session and role route gates", () => {
   test("redirects signed-out typed URLs to sign-in", async ({ page }) => {
     for (const path of [
       "/inbox",
-      "/workspace",
       "/portal",
       "/portal/conversations",
       "/not-a-real-workspace",
@@ -84,8 +83,10 @@ test.describe("session and role route gates", () => {
     await page.route("**/conversations*", (route) => route.fulfill(json([])));
 
     await page.goto("/inbox");
-    await expect(page.getByRole("link", { name: "Agent Workspace" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Support Inbox" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Agent Workspace" }),
+    ).toHaveCount(0);
     await expect(page.getByRole("link", { name: "AI Studio" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Analytics" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Audit" })).toHaveCount(0);
@@ -110,9 +111,9 @@ test.describe("session and role route gates", () => {
     await expect(page.getByRole("link", { name: "Support Inbox" })).toHaveCount(
       0,
     );
-    await expect(page.getByRole("link", { name: "Agent Workspace" })).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByRole("link", { name: "Agent Workspace" }),
+    ).toHaveCount(0);
 
     await page.goto("/inbox");
     await expect(page).toHaveURL(/\?signin=1/, { timeout: 10_000 });

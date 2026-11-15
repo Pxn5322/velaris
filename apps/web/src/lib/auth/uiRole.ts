@@ -98,14 +98,14 @@ export function adminScopeForRole(role: UserRole | null): {
 
 /** Default app view for each UI role (kept in one place for nav + auth). */
 export function viewForRole(role: UserRole): string {
-  if (role === "AGENT") return "agent";
+  if (role === "AGENT") return "inbox";
   if (role === "USER") return "portal";
   return "admin";
 }
 
 /** Route for each UI role after sign-in. */
 export function routeForRole(role: UserRole): string {
-  if (role === "AGENT") return "/workspace";
+  if (role === "AGENT") return "/inbox";
   if (role === "USER") return "/portal";
   return "/admin";
 }

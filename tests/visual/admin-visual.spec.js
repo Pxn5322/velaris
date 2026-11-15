@@ -287,6 +287,17 @@ async function prepare(page, response = sessionResponse) {
   await page.route("**/tenants/*/users*", (route) =>
     route.fulfill(json(members)),
   );
+  await page.route("**/tenants/users*", (route) =>
+    route.fulfill(
+      json(
+        members.map((member) => ({
+          ...member,
+          tenantId: "tenant-a",
+          tenantName: "Acme",
+        })),
+      ),
+    ),
+  );
   await page.route("**/audit/events*", (route) =>
     route.fulfill(json({ items: auditEvents, limit: 8, hasMore: false })),
   );

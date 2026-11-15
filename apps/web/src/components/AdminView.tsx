@@ -8,6 +8,8 @@ import { RetentionSettings } from "@/components/RetentionSettings";
 import { TenantUsersPanel } from "@/components/TenantUsersPanel";
 import { RolesPanel } from "@/components/RolesPanel";
 import { AdminAuditStream } from "@/components/analytics/AdminAuditStream";
+import { AiGovernancePanel } from "@/components/AiGovernancePanel";
+import { TenantDashboard } from "@/components/TenantDashboard";
 
 export function AdminView() {
   const [activeTab, setActiveTab] = useState<
@@ -33,12 +35,12 @@ export function AdminView() {
         </div>
       </div>
 
-      <div className="glass-panel p-1.5 rounded-xl grid grid-cols-2 sm:flex sm:overflow-x-auto no-scrollbar gap-1 border border-slate-700/50">
+      <div className="glass-panel p-1.5 rounded-xl grid grid-cols-2 sm:flex sm:flex-wrap gap-1 border border-slate-700/50">
         {(
           [
             {
               id: "analytics",
-              label: scope.platformWide ? "Platform Analytics" : "Audit Feed",
+              label: scope.platformWide ? "Platform Analytics" : "Dashboards",
               icon: Activity,
             },
             { id: "users", label: "User Directory", icon: Users },
@@ -46,33 +48,40 @@ export function AdminView() {
             { id: "ai-gov", label: "AI Governance", icon: Cpu },
             { id: "settings", label: "System Settings", icon: Settings },
           ] as const
-        ).map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          const acls = isActive
-            ? `${isLight ? "bg-blue-600/10 text-blue-700 border-blue-600" : "bg-blue-600/40 text-cyan-300 border-cyan-500/40"} shadow-sm`
-            : `${isLight ? "text-slate-600 hover:text-slate-900 hover:bg-slate-200" : "text-muted-custom hover:text-heading hover:bg-slate-800/40"}`;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={
-                "px-3 py-2 text-xs font-semibold rounded-lg flex items-center justify-center sm:justify-start gap-1.5 whitespace-nowrap transition-all border " +
-                (tab.id === "settings" ? "col-span-2 sm:col-span-1 " : "") +
-                acls
-              }
-            >
-              <Icon
-                className="w-3.5 h-3.5"
-                style={{ color: isActive ? "inherit" : "var(--accent-cyan)" }}
-              />
-              {tab.label}
-            </button>
-          );
-        })}
+        )
+          .filter((tab) => tab.id !== "ai-gov" || scope.platformWide)
+          .map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            const acls = isActive
+              ? `${isLight ? "bg-blue-600/10 text-blue-700 border-blue-600" : "bg-blue-600/40 text-cyan-300 border-cyan-500/40"} shadow-sm`
+              : `${isLight ? "text-slate-600 hover:text-slate-900 hover:bg-slate-200" : "text-muted-custom hover:text-heading hover:bg-slate-800/40"}`;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={
+                  "px-3 py-2 text-xs font-semibold rounded-lg flex items-center justify-center sm:justify-start gap-1.5 whitespace-nowrap transition-all border " +
+                  (tab.id === "settings" ? "col-span-2 sm:col-span-1 " : "") +
+                  acls
+                }
+              >
+                <Icon
+                  className="w-3.5 h-3.5"
+                  style={{ color: isActive ? "inherit" : "var(--accent-cyan)" }}
+                />
+                {tab.label}
+              </button>
+            );
+          })}
       </div>
 
-      {activeTab === "analytics" && !scope.platformWide && <AdminAuditStream />}
+      {activeTab === "analytics" && !scope.platformWide && (
+        <>
+          <TenantDashboard />
+          <AdminAuditStream />
+        </>
+      )}
 
       {activeTab === "analytics" && scope.platformWide && (
         <>
@@ -156,15 +165,20 @@ export function AdminView() {
         </>
       )}
 
-      {activeTab === "users" && <TenantUsersPanel />}
+      {activeTab === "users" && (
+        <TenantUsersPanel platformWide={scope.platformWide} />
+      )}
 
       {activeTab === "roles" && <RolesPanel />}
+
+      {activeTab === "ai-gov" && <AiGovernancePanel />}
 
       {activeTab === "settings" && <RetentionSettings />}
 
       {activeTab !== "analytics" &&
         activeTab !== "users" &&
         activeTab !== "roles" &&
+        activeTab !== "ai-gov" &&
         activeTab !== "settings" && (
           <div className="glass-panel p-8 rounded-2xl text-center space-y-3 border border-slate-700/50">
             <Shield

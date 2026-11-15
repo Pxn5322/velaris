@@ -79,6 +79,29 @@ const events = [
   },
 ];
 
+const summary = {
+  tenantId: "tenant-a",
+  range: {
+    from: "2026-11-01T00:00:00.000Z",
+    to: "2026-11-30T23:59:59.000Z",
+  },
+  generatedAt: "2026-11-13T10:00:00.000Z",
+  state: "OK",
+  staleAfterMinutes: 60,
+  lastEventAt: "2026-11-13T09:42:00.000Z",
+  metrics: [
+    {
+      code: "ai_resolution_rate",
+      label: "AI resolution rate",
+      unit: "ratio",
+      definitionVersion: "1",
+      formula: "ai resolved / eligible",
+      value: 0.75,
+      sample: 4,
+    },
+  ],
+};
+
 function json(body, status = 200) {
   return {
     status,
@@ -111,6 +134,9 @@ test.describe("administrator analytics audit stream", () => {
       requestedUrl = new URL(route.request().url());
       return route.fulfill(json({ items: events, limit: 8, hasMore: false }));
     });
+    await page.route("**/analytics/summary*", (route) =>
+      route.fulfill(json(summary)),
+    );
 
     await page.goto("/admin");
 
@@ -154,12 +180,18 @@ test.describe("administrator analytics audit stream", () => {
       page.getByRole("heading", { name: "Tenant Control Center" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Audit Feed", exact: true }),
+      page.getByRole("button", { name: "Dashboards", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Platform Analytics", exact: true }),
     ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "AI Governance", exact: true }),
+    ).toHaveCount(0);
     await expect(page.getByText("Total Active Tenants")).toHaveCount(0);
+    await expect(page.getByTestId("tenant-dashboard")).toContainText(
+      "Organization Operational Overview",
+    );
     await expect(page.getByTestId("admin-audit-stream")).toBeVisible();
     await expect(page.getByTestId("admin-audit-stream-tenant")).toContainText(
       "Acme",

@@ -18,6 +18,7 @@
 
 import {
   BadRequestException,
+  ConflictException,
   NotFoundException,
   PayloadTooLargeException,
 } from '@nestjs/common';
@@ -65,7 +66,7 @@ function fakePrisma(rows: SourceRow[] = []) {
           where,
         }: {
           where: {
-            id?: string;
+            id?: string | { not: string };
             tenantId?: string;
             sourceType?: string;
             contentHash?: string;
@@ -74,7 +75,10 @@ function fakePrisma(rows: SourceRow[] = []) {
         }) =>
           store.find(
             (row) =>
-              (where.id === undefined || row.id === where.id) &&
+              (where.id === undefined ||
+                (typeof where.id === 'string'
+                  ? row.id === where.id
+                  : row.id !== where.id.not)) &&
               (where.tenantId === undefined ||
                 row.tenantId === where.tenantId) &&
               (where.sourceType === undefined ||
@@ -378,6 +382,62 @@ describe('KnowledgeService (T3.02)', () => {
       prisma._store.push(sourceRow({ id: 'src-gone', deletedAt: new Date() }));
       await expect(
         service.findOne('src-gone', 'tenant-a'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('update and delete (Knowledge CRUD)', () => {
+    it('updates the reference, clears failure and restarts ingestion', async () => {
+      prisma._store.push(
+        sourceRow({
+          id: 'src-edit',
+          status: 'FAILED',
+          errorCode: 'FETCH_FAILED',
+          sourceUri: 'https://old.example.test/page',
+        }),
+      );
+
+      const updated = await service.update('src-edit', 'tenant-a', {
+        sourceUri: 'https://new.example.test/page',
+      });
+
+      expect(updated.sourceUri).toBe('https://new.example.test/page');
+      expect(updated.status).toBe('PENDING');
+      expect(updated.errorCode).toBeNull();
+      expect(updated.contentHash).not.toBe('sha256:abc');
+    });
+
+    it('refuses an update that duplicates another source', async () => {
+      const first = await service.create(
+        'tenant-a',
+        { sourceType: 'WEBSITE', sourceUri: 'https://example.test/docs' },
+        'user-1',
+      );
+      const second = await service.create(
+        'tenant-a',
+        {
+          sourceType: 'WEBSITE',
+          sourceUri: 'https://second.example.test/page',
+        },
+        'user-1',
+      );
+
+      await expect(
+        service.update(second.source.id, 'tenant-a', {
+          sourceUri: String(first.source.sourceUri),
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('soft-deletes a source and hides it from later reads', async () => {
+      prisma._store.push(sourceRow({ id: 'src-delete' }));
+
+      await expect(service.remove('src-delete', 'tenant-a')).resolves.toEqual({
+        id: 'src-delete',
+        deleted: true,
+      });
+      await expect(
+        service.findOne('src-delete', 'tenant-a'),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });

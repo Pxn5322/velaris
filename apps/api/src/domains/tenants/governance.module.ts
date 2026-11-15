@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { PermissionsModule } from '../permissions/permissions.module.js';
+import { AiProvidersController } from './ai-providers.controller.js';
+import { AiProvidersService } from './ai-providers.service.js';
 import { GovernanceController } from './governance.controller.js';
 import { GovernanceService } from './governance.service.js';
 import { TenantRolesService } from './tenant-roles.service.js';
@@ -17,7 +19,12 @@ import { TenantUsersService } from './tenant-users.service.js';
  */
 @Module({
   imports: [PermissionsModule, AuditModule, AuthModule],
-  controllers: [GovernanceController],
-  providers: [GovernanceService, TenantUsersService, TenantRolesService],
+  controllers: [GovernanceController, AiProvidersController],
+  providers: [
+    GovernanceService,
+    TenantUsersService,
+    TenantRolesService,
+    AiProvidersService,
+  ],
 })
 export class GovernanceModule {}

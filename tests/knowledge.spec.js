@@ -225,4 +225,91 @@ test.describe("knowledge sources tab (T3.05, AC-F07)", () => {
       "https://docs.example.test/runbook",
     );
   });
+
+  test("creates, updates and deletes a knowledge source", async ({ page }) => {
+    const calls = [];
+    let current = [readySource];
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/knowledge-sources**", (route) => {
+      const request = route.request();
+      const method = request.method();
+      const body =
+        method === "GET" || method === "DELETE" ? null : request.postDataJSON();
+      calls.push({ method, body });
+      if (method === "GET") return route.fulfill(json(current));
+      if (method === "POST") {
+        const created = {
+          id: "src-created",
+          tenantId: "tenant-a",
+          sourceType: body.sourceType,
+          sourceUri: body.sourceUri ?? null,
+          objectKey: body.objectKey ?? null,
+          status: "PENDING",
+          contentHash: "c".repeat(64),
+          provenanceJson: body.content ? { content: body.content } : {},
+          errorCode: null,
+          createdAt: "2026-11-15T10:00:00.000Z",
+          updatedAt: "2026-11-15T10:00:00.000Z",
+        };
+        current = [created, ...current];
+        return route.fulfill(json(created, 201));
+      }
+      if (method === "PATCH") {
+        const id = request.url().split("/knowledge-sources/")[1].split("?")[0];
+        const updated = {
+          ...current.find((row) => row.id === id),
+          ...body,
+          provenanceJson: body.content ? { content: body.content } : {},
+          status: "PENDING",
+          updatedAt: "2026-11-15T10:05:00.000Z",
+        };
+        current = current.map((row) => (row.id === id ? updated : row));
+        return route.fulfill(json(updated));
+      }
+      const id = request.url().split("/knowledge-sources/")[1].split("?")[0];
+      current = current.filter((row) => row.id !== id);
+      return route.fulfill(json({ id, deleted: true }));
+    });
+
+    await openKnowledgeTab(page);
+    await page.getByTestId("knowledge-create-open").click();
+    await page.getByTestId("knowledge-form-type").selectOption("MANUAL");
+    await page
+      .getByTestId("knowledge-form-content")
+      .fill("Escalate billing disputes to the finance queue.");
+    await page.getByTestId("knowledge-form-submit").click();
+
+    await expect(page.getByTestId("knowledge-notice")).toContainText(
+      "Knowledge source added",
+    );
+    await expect(page.getByTestId("knowledge-source")).toHaveCount(2);
+    expect(calls.find((call) => call.method === "POST")?.body).toMatchObject({
+      sourceType: "MANUAL",
+      content: "Escalate billing disputes to the finance queue.",
+    });
+
+    await page
+      .getByTestId("knowledge-source")
+      .filter({ hasText: "Escalate billing disputes" })
+      .click();
+    await page.getByTestId("knowledge-edit-source").click();
+    await page
+      .getByTestId("knowledge-form-content")
+      .fill("Escalate billing disputes to the finance and legal queues.");
+    await page.getByTestId("knowledge-form-submit").click();
+    await expect(page.getByTestId("knowledge-notice")).toContainText(
+      "Knowledge source updated",
+    );
+    expect(calls.find((call) => call.method === "PATCH")?.body).toMatchObject({
+      content: "Escalate billing disputes to the finance and legal queues.",
+    });
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByTestId("knowledge-delete-source").click();
+    await expect(page.getByTestId("knowledge-source")).toHaveCount(1);
+    expect(calls.some((call) => call.method === "DELETE")).toBe(true);
+  });
 });

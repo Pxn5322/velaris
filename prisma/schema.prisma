@@ -747,6 +747,32 @@ model WebhookDelivery {
   @@map("webhook_deliveries")
 }
 
+/// Platform AI gateway provider configuration (AI Governance). The credential
+/// itself never enters the database: api_key_ref names an environment
+/// variable, and the browser only ever receives that name. Exactly one row
+/// should be the default; the service enforces that in a transaction.
+enum AiProviderStatus {
+  ACTIVE
+  PAUSED
+}
+
+model AiModelProvider {
+  id        String           @id @default(uuid()) @db.Uuid
+  name      String           @db.VarChar(80)
+  provider  String           @db.VarChar(40)
+  model     String           @db.VarChar(128)
+  baseUrl   String?          @map("base_url")
+  apiKeyRef String           @map("api_key_ref") @db.VarChar(64)
+  isDefault Boolean          @default(false) @map("is_default")
+  status    AiProviderStatus @default(ACTIVE)
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  @@unique([name])
+  @@index([isDefault])
+  @@map("ai_model_providers")
+}
+
 enum IntegrationEndpointStatus {
   ACTIVE
   PAUSED
