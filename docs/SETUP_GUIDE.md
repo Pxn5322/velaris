@@ -222,6 +222,19 @@ E2E_LIVE_API_URL=https://velaris-api-aral.onrender.com E2E_BASE_URL=https://vela
 - [x] Hosted smoke passed on `a725bdd`: signup 201, login 200, own read 200, cross-tenant 403, retention save 200 and audit read 200. The audit row matched category `TRACES` and 45 days.
 - [x] Post-deploy smoke passed on 2026-11-13: `/icon.svg` returned 200 with `image/svg+xml`, `GET /auth/session` returned 200 and its display name matched the synthetic account, and the existing retention checks passed. A bad icon path returned 404 with `text/html` and exit 1, so the icon check fails closed. The smoke also set `avatar_url`, received it in a fresh session, cleared it, and received no `avatarUrl` (initials fallback). Cleanup left zero synthetic tenants and accounts.
 - [x] Hosted administrator smoke passed on 2026-11-15: `npm run smoke:admin` checked enterprise and tenant-admin sign-in, the platform directory, tenant Dashboards and provider CRUD. The synthetic provider cleanup reported `1 removed, 0 remaining`. The same command with `--skip-ui` passed in API-only mode. The check needs existing hosted accounts from `.env.livecheck` and is not a CI job.
+
+**Manual hosted administrator workflow (2026-11-15).** `.github/workflows/hosted-admin-smoke.yml` runs only from Actions -> Hosted admin smoke -> Run workflow. It runs the same script against the selected API and web origins and uploads `hosted-admin-smoke.json`. Add these repository secrets before dispatch:
+
+| Secret | Required | Purpose |
+| --- | --- | --- |
+| `SUPABASE_URL` | yes | Supabase project URL used for password sign-in |
+| `SUPABASE_PUBLISHABLE_KEY` | yes | Public Supabase key used for password sign-in |
+| `SMOKE_ADMIN_PASSWORD` | yes | Existing enterprise administrator password |
+| `SMOKE_TENANT_ADMIN_EMAIL` | yes | Existing tenant administrator email |
+| `SMOKE_TENANT_ADMIN_PASSWORD` | yes | Existing tenant administrator password |
+| `SMOKE_ADMIN_EMAIL` | no | Enterprise email; the script defaults to `admin1@velaris.test` |
+
+The workflow stops before any hosted action when a required secret is missing and names the missing secret in the log. It never prints a value. On 2026-11-15 the repository reported zero Actions secrets, so the workflow has not run yet; add the secrets before the first dispatch. The workflow is manual, not a push or pull-request check.
 - [x] The retention panel has a ten-change recent history and links to the full filtered audit trail. Seven local retention journeys pass; the hosted panel was inspected on 2026-11-10 with a signed-in synthetic tenant, and `KNOWLEDGE 365` and `MEMORY 30` produced two history rows.
 - [x] `node scripts/load-profile.mjs --auth-signup` recorded a warm p95 of 1350.52 ms at concurrency 8 with 90/90 responses, zero errors and 9 req/s. The budget is 200 ms, so NFR-04 is not met. Report: `.agents/evidence-t6.03-load-hosted.json`.
 - [x] The same-region candidate run on 2026-11-10 measured p95 1094.14 ms and 994.47 ms at concurrency 8 with zero errors. Both are over the budget, so NFR-04 is still not met (section 6.4).
