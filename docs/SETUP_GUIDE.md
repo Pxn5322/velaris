@@ -7,7 +7,7 @@ depends_on: [ARCHITECTURE, SECURITY, DATABASE]
 ---
 # Setup Guide — VELARIS
 
-Last verified: **2026-11-13** for the hosted deployment and post-deploy smoke in sections 4, 6, 6.1, 6.3 and 6.4. Other sections remain proposed examples until they are rerun on a clean machine. Record the operator and date when a step is rerun.
+Last verified: **2026-11-15** for the hosted deployment and post-deploy smoke in sections 4, 6, 6.1, 6.3 and 6.4. Other sections remain proposed examples until they are rerun on a clean machine. Record the operator and date when a step is rerun.
 
 ## Supabase setup decisions (required before database foundation)
 - Create separate Supabase projects/environments for development, staging and production as appropriate to budget and risk.
@@ -331,6 +331,12 @@ The single environment runs on two providers. Section 6.1 records the smoke chec
 | Vercel deployment | `dpl_32vtLnQUS1vW5nq1fpnioXGxdXSq` READY; aliases assigned; rollback to `dpl_CbaTyj8hZZ5mxP3ri3y152TrRFGD` and forward passed |
 | Vercel T6.07 deployment | `dpl_DgWjALjWD12Y6aasX8moiRJK31U2` READY for `ea086f3`; aliases assigned |
 | Render deployment | `dep-dbpetitbedkc738i7plg` live; rollback to `dep-dbpet2s9v7es73bn764g` and forward passed |
+| Vercel administrator follow-up | `dpl_8nryBidzt3M3M7YNNFXL6a11pqcA` READY and promoted for `763fb0d`; production alias assigned |
+| Render administrator follow-up | `dep-dbso14qjnfac73cg4k10` live at 2026-11-15T09:53:14Z for `763fb0d`; previous deploy deactivated |
+| Hosted enterprise smoke | Sign-in 200 with `R-enterprise-admin`; platform directory 200 with 18 rows across 13 tenants; every row carried `tenantName`; deployed Tenant column and icon actions rendered; Add System User absent |
+| Hosted AI provider CRUD | List 200, create 201, update 200, delete 200; the synthetic provider was removed and no provider credentials were stored |
+| Hosted tenant dashboard | Tenant-admin sign-in 200 with `R-tenant-admin`; `GET /analytics/summary` 200 with six metrics and state `STALE`; deployed Dashboards tab rendered and AI Governance tab absent |
+| Hosted migration status | 12 of 12 migrations applied; database schema up to date |
 | CORS allowlist | Preflight from `https://velaris-web-bice.vercel.app` returned 204 with `access-control-allow-origin` |
 | Authorized retention read | 90/90 200, zero errors, p95 1350.52 ms at concurrency 8; over the 200 ms budget |
 | Database TLS | `verify-full` with Supabase Root 2021 CA; hosted smoke passed |
