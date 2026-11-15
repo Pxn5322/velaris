@@ -1,0 +1,105 @@
+name: Hosted admin smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: Hosted API origin
+        required: true
+        default: https://velaris-api-aral.onrender.com
+        type: string
+      web_url:
+        description: Hosted web origin
+        required: true
+        default: https://velaris-web-bice.vercel.app
+        type: string
+      skip_ui:
+        description: Skip the browser checks
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-admin-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Hosted administrator smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        if: ${{ !inputs.skip_ui }}
+        run: npx playwright install --with-deps chromium
+
+      # Fail before any hosted action when a required repository secret is
+      # absent. The error names only the missing secret, never its value.
+      - name: Check required repository secrets
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
+          SMOKE_TENANT_ADMIN_EMAIL: ${{ secrets.SMOKE_TENANT_ADMIN_EMAIL }}
+          SMOKE_TENANT_ADMIN_PASSWORD: ${{ secrets.SMOKE_TENANT_ADMIN_PASSWORD }}
+        run: |
+          missing=0
+          for name in \
+            SUPABASE_URL \
+            SUPABASE_PUBLISHABLE_KEY \
+            SMOKE_ADMIN_PASSWORD \
+            SMOKE_TENANT_ADMIN_EMAIL \
+            SMOKE_TENANT_ADMIN_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name repository secret is not set"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Add the missing repository secrets under Settings, Secrets and variables, Actions."
+            exit 1
+          fi
+
+      # The script creates one synthetic provider and removes it in a finally
+      # block. The JSON report contains status codes and row counts only.
+      - name: Run hosted administrator smoke
+        shell: bash
+        env:
+          API_URL: ${{ inputs.api_url }}
+          WEB_URL: ${{ inputs.web_url }}
+          SKIP_UI: ${{ inputs.skip_ui }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          SMOKE_ADMIN_EMAIL: ${{ secrets.SMOKE_ADMIN_EMAIL }}
+          SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
+          SMOKE_TENANT_ADMIN_EMAIL: ${{ secrets.SMOKE_TENANT_ADMIN_EMAIL }}
+          SMOKE_TENANT_ADMIN_PASSWORD: ${{ secrets.SMOKE_TENANT_ADMIN_PASSWORD }}
+        run: |
+          set -o pipefail
+          args=(--url "$API_URL" --web-url "$WEB_URL")
+          if [ "$SKIP_UI" = "true" ]; then
+            args+=(--skip-ui)
+          fi
+          node scripts/hosted-admin-smoke.mjs "${args[@]}" | tee hosted-admin-smoke.json
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: hosted-admin-smoke
+          path: hosted-admin-smoke.json
+          if-no-files-found: ignore
+          retention-days: 30
