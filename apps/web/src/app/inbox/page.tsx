@@ -285,12 +285,31 @@ export default function InboxPage() {
   const sendReply = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (!scope || !conversationId || !reply.trim() || sending) return;
+      if (!scope || !selected || !reply.trim() || sending) return;
       setSending(true);
       setSendError(null);
       try {
+        // A ticket may have no conversation yet. Start one for the ticket's
+        // customer so the composer always has a destination, then send the
+        // agent reply into it.
+        let activeConversationId = conversationId;
+        if (!activeConversationId) {
+          const created = await apiFetch<Conversation>(
+            `/conversations?tenantId=${encodeURIComponent(scope.tenantId)}`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                customerId: selected.customerId,
+                channel: "WEB",
+              }),
+            },
+          );
+          activeConversationId = created.id;
+          setConversationId(created.id);
+          setTimeline("ready");
+        }
         const message = await apiFetch<Message>(
-          `/conversations/${conversationId}/messages?tenantId=${encodeURIComponent(scope.tenantId)}`,
+          `/conversations/${activeConversationId}/messages?tenantId=${encodeURIComponent(scope.tenantId)}`,
           {
             method: "POST",
             body: JSON.stringify({
@@ -314,7 +333,7 @@ export default function InboxPage() {
         setSending(false);
       }
     },
-    [scope, conversationId, reply, sending],
+    [scope, selected, conversationId, reply, sending],
   );
 
   const visibleTickets = tickets.filter((ticket) => {
@@ -727,7 +746,8 @@ export default function InboxPage() {
                         className="text-sm text-muted-custom"
                         data-testid="inbox-timeline-empty"
                       >
-                        No conversation for this customer yet.
+                        No conversation for this customer yet. Send the first
+                        reply below to start one.
                       </p>
                     )}
                     {timeline === "error" && (
@@ -776,7 +796,7 @@ export default function InboxPage() {
                   </div>
                 </div>
 
-                {timeline === "ready" && conversationId && (
+                {
                   <form
                     onSubmit={sendReply}
                     className="pt-4 mt-4 border-t border-[var(--card-border)] space-y-2"
@@ -803,7 +823,12 @@ export default function InboxPage() {
                         type="text"
                         value={reply}
                         onChange={(event) => setReply(event.target.value)}
-                        placeholder="Type agent response..."
+                        placeholder={
+                          timeline === "loading"
+                            ? "Loading conversation…"
+                            : "Type agent response..."
+                        }
+                        disabled={timeline === "loading" || sending}
                         aria-label="Reply message"
                         data-testid="inbox-reply"
                         className="w-full rounded-xl border px-3.5 py-2 text-xs text-heading focus:outline-none focus:border-blue-600"
@@ -814,7 +839,9 @@ export default function InboxPage() {
                       />
                       <button
                         type="submit"
-                        disabled={!reply.trim() || sending}
+                        disabled={
+                          !reply.trim() || sending || timeline === "loading"
+                        }
                         data-testid="inbox-send"
                         className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shrink-0 flex items-center gap-1.5 hover:bg-blue-700 transition-colors disabled:opacity-50"
                       >
@@ -826,7 +853,7 @@ export default function InboxPage() {
                       Replies are sent as customer-visible messages.
                     </p>
                   </form>
-                )}
+                }
               </>
             )}
           </div>

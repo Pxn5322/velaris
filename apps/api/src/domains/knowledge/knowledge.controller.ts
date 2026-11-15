@@ -20,11 +20,13 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Inject,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -41,6 +43,7 @@ import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { PERMISSIONS } from '../permissions/permission.codes.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import { CreateKnowledgeSourceDto } from './dto/create-knowledge-source.dto.js';
+import { UpdateKnowledgeSourceDto } from './dto/update-knowledge-source.dto.js';
 import { INGESTION_QUEUE, type IngestionQueue } from './ingestion-queue.js';
 import { KnowledgeService } from './knowledge.service.js';
 
@@ -117,6 +120,67 @@ export class KnowledgeController {
   ) {
     await this.requireTenantScope(request, tenantId);
     return this.knowledge.findOne(id, tenantId);
+  }
+
+  @Patch(':id')
+  @RequirePermission(PERMISSIONS.KNOWLEDGE_MANAGE)
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('tenantId') tenantId: string,
+    @Req() request: AuthedRequest,
+    @Body() updateSourceDto: UpdateKnowledgeSourceDto,
+  ) {
+    await this.requireTenantScope(request, tenantId);
+    const actorId = (request.user as AuthenticatedIdentity).subject;
+    const source = await this.knowledge.update(id, tenantId, updateSourceDto);
+    await this.audit.record({
+      action: 'knowledge.source_updated',
+      resourceType: 'knowledge_source',
+      resourceId: source.id,
+      tenantId,
+      actorId,
+      metadata: { sourceType: source.sourceType, status: source.status },
+    });
+    this.enqueueIngestion(tenantId, source.id, actorId);
+    return source;
+  }
+
+  @Delete(':id')
+  @RequirePermission(PERMISSIONS.KNOWLEDGE_MANAGE)
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('tenantId') tenantId: string,
+    @Req() request: AuthedRequest,
+  ) {
+    await this.requireTenantScope(request, tenantId);
+    const actorId = (request.user as AuthenticatedIdentity).subject;
+    const result = await this.knowledge.remove(id, tenantId);
+    await this.audit.record({
+      action: 'knowledge.source_deleted',
+      resourceType: 'knowledge_source',
+      resourceId: id,
+      tenantId,
+      actorId,
+    });
+    return result;
+  }
+
+  /** Queue one ingestion run with the job metadata contract (ARCHITECTURE.md). */
+  private enqueueIngestion(
+    tenantId: string,
+    sourceId: string,
+    actorId: string,
+  ): void {
+    this.queue.enqueue({
+      schemaVersion: 1,
+      jobId: randomUUID(),
+      idempotencyKey: `ingest:${sourceId}`,
+      correlationId: currentCorrelationId() ?? randomUUID(),
+      tenantId,
+      sourceId,
+      actorId,
+      enqueuedAt: new Date().toISOString(),
+    });
   }
 
   /**

@@ -51,6 +51,9 @@ export interface TenantMemberView {
   displayName: string;
   status: string;
   roles: string[];
+  /** Included by the platform-wide directory. */
+  tenantId?: string;
+  tenantName?: string;
 }
 
 export interface AddMemberResult extends TenantMemberView {
@@ -91,6 +94,33 @@ export class TenantUsersService {
       displayName: membership.user.displayName,
       status: membership.status,
       roles: membership.roles.map((assignment) => assignment.role.code),
+    }));
+  }
+
+  /**
+   * Every user membership on the platform, grouped by tenant for the platform
+   * administrator's User Directory. The route requires
+   * TENANT_MANAGE_PLATFORM; tenant administrators keep `list`, which can only
+   * read their own tenant.
+   */
+  async listAll(): Promise<TenantMemberView[]> {
+    const memberships = await this.prisma.tenantMembership.findMany({
+      include: {
+        user: true,
+        tenant: true,
+        roles: { include: { role: true } },
+      },
+      orderBy: [{ tenant: { name: 'asc' } }, { createdAt: 'asc' }],
+    });
+    return memberships.map((membership) => ({
+      membershipId: membership.id,
+      userId: membership.userId,
+      email: membership.user.emailNormalized,
+      displayName: membership.user.displayName,
+      status: membership.status,
+      roles: membership.roles.map((assignment) => assignment.role.code),
+      tenantId: membership.tenantId,
+      tenantName: membership.tenant.name,
     }));
   }
 

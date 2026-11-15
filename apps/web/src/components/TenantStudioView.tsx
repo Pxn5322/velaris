@@ -70,7 +70,7 @@ export function TenantStudioView() {
         </div>
       </div>
 
-      <div className="glass-panel p-1.5 rounded-xl grid grid-cols-2 sm:flex sm:overflow-x-auto no-scrollbar gap-1 border border-slate-700/50">
+      <div className="glass-panel p-1.5 rounded-xl grid grid-cols-2 sm:flex sm:flex-wrap gap-1 border border-slate-700/50">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;

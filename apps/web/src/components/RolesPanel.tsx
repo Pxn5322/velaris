@@ -201,18 +201,31 @@ export function RolesPanel() {
             Define role permissions, policy scopes, and enforcement levels
           </p>
         </div>
-        <button
-          type="button"
-          data-testid="role-create-open"
-          onClick={() => {
-            setCreating((open) => !open);
-            setEditingId(null);
-            setError(null);
-          }}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-blue-600 bg-blue-600/10 px-4 py-2 text-xs font-mono font-bold text-cyan-300 hover:bg-blue-600/20"
-        >
-          <Plus className="h-3.5 w-3.5" /> Create New Custom Role
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => tenantId && void load(tenantId)}
+            disabled={loading || !tenantId}
+            data-testid="roles-refresh"
+            aria-label="Refresh roles"
+            title="Refresh roles"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--card-border)] px-3 py-2 text-xs font-mono font-bold text-heading hover:border-cyan-500/40 disabled:opacity-60"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          </button>
+          <button
+            type="button"
+            data-testid="role-create-open"
+            onClick={() => {
+              setCreating((open) => !open);
+              setEditingId(null);
+              setError(null);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-blue-600 bg-blue-600/10 px-4 py-2 text-xs font-mono font-bold text-cyan-300 hover:bg-blue-600/20"
+          >
+            <Plus className="h-3.5 w-3.5" /> Create New Custom Role
+          </button>
+        </div>
       </div>
 
       {notice && (
@@ -430,11 +443,6 @@ export function RolesPanel() {
         <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
         Custom roles inherit a canonical permission profile. System role
         permissions are fixed.
-        <RefreshCw
-          className="h-3.5 w-3.5 cursor-pointer"
-          onClick={() => tenantId && void load(tenantId)}
-          aria-label="Reload roles"
-        />
         <Lock className="h-3.5 w-3.5" />
       </div>
     </section>

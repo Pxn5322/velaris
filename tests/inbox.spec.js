@@ -302,6 +302,63 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     });
   });
 
+  test("offers the composer when a ticket has no conversation yet", async ({
+    page,
+  }) => {
+    let createdConversation = null;
+    let posted = null;
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
+    await page.route("**/conversations?*", (route) => {
+      if (route.request().method() === "POST") {
+        createdConversation = route.request().postDataJSON();
+        return route.fulfill(
+          json(
+            {
+              id: "conv-new",
+              customerId: createdConversation.customerId,
+              status: "OPEN",
+              channel: createdConversation.channel,
+            },
+            201,
+          ),
+        );
+      }
+      return route.fulfill(json([]));
+    });
+    await page.route("**/conversations/conv-new**", (route) => {
+      posted = route.request().postDataJSON();
+      return route.fulfill(
+        json({
+          id: "msg-new",
+          body: posted.body,
+          authorType: "AGENT",
+          visibility: posted.visibility,
+          createdAt: "2026-11-15T10:00:00Z",
+        }),
+      );
+    });
+
+    await page.goto("/inbox");
+    await page.getByTestId("inbox-ticket").first().click();
+    await expect(page.getByTestId("inbox-timeline-empty")).toBeVisible();
+    await expect(page.getByTestId("inbox-reply")).toBeVisible();
+    await page.getByTestId("inbox-reply").fill("Starting from this ticket.");
+    await page.getByTestId("inbox-send").click();
+
+    await expect(page.getByTestId("inbox-timeline")).toContainText(
+      "Starting from this ticket.",
+    );
+    expect(createdConversation).toMatchObject({ channel: "WEB" });
+    expect(posted).toMatchObject({
+      body: "Starting from this ticket.",
+      visibility: "CUSTOMER_VISIBLE",
+    });
+  });
+
   test("passes WCAG contrast in the light theme", async ({ page }) => {
     await seedSession(page);
     await page.route("**/auth/session*", (route) =>

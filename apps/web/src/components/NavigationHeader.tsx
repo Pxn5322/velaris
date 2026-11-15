@@ -6,7 +6,6 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Shield,
-  Layers,
   Bot,
   BarChart3,
   ClipboardList,
@@ -153,13 +152,6 @@ export function NavigationHeader() {
       viewId: "audit",
       label: "Audit",
       icon: ClipboardList,
-    },
-    {
-      roleMatch: ["AGENT"],
-      href: "/workspace",
-      viewId: "agent",
-      label: "Agent Workspace",
-      icon: Layers,
     },
     {
       roleMatch: ["AGENT", "ADMIN", "ENTERPRISE"],

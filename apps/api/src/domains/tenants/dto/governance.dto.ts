@@ -45,3 +45,24 @@ export class UpdateRoleDto {
   name?: string;
   baseRoleCode?: string;
 }
+
+/** AI model gateway provider (platform AI Governance). */
+export class CreateModelProviderDto {
+  name!: string;
+  provider!: string;
+  model!: string;
+  baseUrl?: string;
+  apiKeyRef!: string;
+  isDefault?: boolean;
+  status?: 'ACTIVE' | 'PAUSED';
+}
+
+export class UpdateModelProviderDto {
+  name?: string;
+  provider?: string;
+  model?: string;
+  baseUrl?: string | null;
+  apiKeyRef?: string;
+  isDefault?: boolean;
+  status?: 'ACTIVE' | 'PAUSED';
+}

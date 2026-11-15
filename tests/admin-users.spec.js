@@ -126,6 +126,55 @@ async function openMobileDrawer(page) {
 }
 
 test.describe("tenant administrator user directory (F-03)", () => {
+  test("shows every tenant's users to the platform administrator", async ({
+    page,
+  }) => {
+    let listUrl = null;
+    await seedSession(page);
+    await routeSession(page, {
+      ...sessionResponse,
+      role: "R-enterprise-admin",
+    });
+    await page.route("**/audit/events*", (route) =>
+      route.fulfill(json({ items: [], limit: 8, hasMore: false })),
+    );
+    await page.route("**/tenants/users*", (route) => {
+      listUrl = new URL(route.request().url());
+      return route.fulfill(
+        json([
+          {
+            ...members[0],
+            tenantId: "tenant-a",
+            tenantName: "Acme",
+          },
+          {
+            membershipId: "membership-globex",
+            userId: "user-globex",
+            email: "owner@globex.test",
+            displayName: "Globex Owner",
+            status: "ACTIVE",
+            roles: ["R-tenant-admin"],
+            tenantId: "tenant-b",
+            tenantName: "Globex",
+          },
+        ]),
+      );
+    });
+
+    await openUserDirectory(page);
+
+    expect(listUrl?.pathname).toBe("/tenants/users");
+    await expect(page.getByTestId("tenant-user-row")).toHaveCount(2);
+    await expect(
+      page.getByTestId("tenant-users-panel").getByText("Globex", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.getByText("owner@globex.test")).toBeVisible();
+    await expect(page.getByTestId("tenant-invite-card")).toHaveCount(0);
+    await expect(page.getByText("Add System User")).toHaveCount(0);
+  });
+
   test("lists only members of the signed-in tenant", async ({ page }) => {
     let listUrl = null;
     await seedSession(page);
@@ -150,6 +199,10 @@ test.describe("tenant administrator user directory (F-03)", () => {
       page
         .getByTestId("tenant-users-panel")
         .getByText("Only members of the selected tenant"),
+    ).toBeVisible();
+    await expect(page.getByText("Add System User")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Edit role" }).first(),
     ).toBeVisible();
 
     // The tenant id comes from GET /auth/session, not from the URL or input.

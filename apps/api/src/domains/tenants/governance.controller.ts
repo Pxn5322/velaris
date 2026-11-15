@@ -102,6 +102,17 @@ export class GovernanceController {
     return tenant;
   }
 
+  /**
+   * Platform-wide user directory. Unlike :tenantId/users this is not scoped
+   * to one tenant, so it needs the platform governance permission. The
+   * platform administrator uses it to see every user in every workspace.
+   */
+  @Get('users')
+  @RequirePermission(PERMISSIONS.TENANT_MANAGE_PLATFORM)
+  async listAllUsers(): Promise<TenantMemberView[]> {
+    return this.users.listAll();
+  }
+
   /** System and custom roles available to one tenant. */
   @Get(':tenantId/roles')
   @RequirePermission(PERMISSIONS.ROLE_MANAGE)

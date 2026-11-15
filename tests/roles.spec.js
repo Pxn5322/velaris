@@ -123,6 +123,8 @@ test.describe("Roles & RBAC", () => {
     await page.getByRole("button", { name: "Roles & RBAC" }).click();
     await expect(page.getByTestId("roles-panel")).toBeVisible();
     await expect(page.getByTestId("role-card")).toHaveCount(2);
+    await expect(page.getByTestId("roles-refresh")).toBeVisible();
+    await expect(page.getByTestId("role-create-open")).toBeVisible();
     await expect(
       page.getByTestId("role-card").filter({ hasText: "Support agent" }),
     ).not.toContainText("Edit");

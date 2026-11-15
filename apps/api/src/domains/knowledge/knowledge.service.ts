@@ -27,6 +27,7 @@
 import { createHash } from 'node:crypto';
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
@@ -43,6 +44,7 @@ import {
   type CreateKnowledgeSourceDto,
   type KnowledgeSourceTypeValue,
 } from './dto/create-knowledge-source.dto.js';
+import type { UpdateKnowledgeSourceDto } from './dto/update-knowledge-source.dto.js';
 
 /** Inline content limit: refuse oversized bodies with 413 (API-08). */
 const MAX_INLINE_CONTENT_BYTES = 64 * 1024;
@@ -93,6 +95,8 @@ export class KnowledgeService {
         data: {
           tenantId,
           sourceType,
+          sourceUri: optionalText(input.sourceUri) ?? null,
+          objectKey: optionalText(input.objectKey) ?? null,
           contentHash,
           status: 'PENDING',
           provenanceJson: provenanceOf(input),
@@ -144,6 +148,94 @@ export class KnowledgeService {
       throw new NotFoundException(`Knowledge source with ID ${id} not found`);
     }
     return source;
+  }
+
+  /**
+   * Update a source reference and restart ingestion. The merged reference is
+   * validated exactly like a create, and a duplicate content hash in the same
+   * tenant is refused instead of surfacing a database error.
+   */
+  async update(
+    id: string,
+    tenantId: string,
+    input: UpdateKnowledgeSourceDto,
+  ): Promise<KnowledgeSource> {
+    const existing = await this.findOne(id, tenantId);
+    const provenance = (existing.provenanceJson ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const sourceType = input.sourceType
+      ? requireSourceType(input.sourceType)
+      : (existing.sourceType as KnowledgeSourceTypeValue);
+    const merged: CreateKnowledgeSourceDto = {
+      sourceType,
+      sourceUri:
+        input.sourceUri !== undefined
+          ? optionalText(input.sourceUri)
+          : (existing.sourceUri ??
+            (typeof provenance.sourceUri === 'string'
+              ? provenance.sourceUri
+              : undefined)),
+      objectKey:
+        input.objectKey !== undefined
+          ? optionalText(input.objectKey)
+          : (existing.objectKey ??
+            (typeof provenance.objectKey === 'string'
+              ? provenance.objectKey
+              : undefined)),
+      content:
+        input.content !== undefined
+          ? optionalText(input.content)
+          : typeof provenance.content === 'string'
+            ? provenance.content
+            : undefined,
+      contentHash: input.contentHash,
+    };
+    this.validateReference(sourceType, merged);
+    const contentHash = resolveContentHash(sourceType, merged);
+
+    const duplicate = await this.prisma.knowledgeSource.findFirst({
+      where: {
+        tenantId,
+        sourceType,
+        contentHash,
+        deletedAt: null,
+        id: { not: id },
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      throw new ConflictException(
+        'An identical knowledge source already exists in this tenant',
+      );
+    }
+
+    return this.prisma.knowledgeSource.update({
+      where: { id },
+      data: {
+        sourceType,
+        sourceUri: merged.sourceUri ?? null,
+        objectKey: merged.objectKey ?? null,
+        contentHash,
+        provenanceJson: provenanceOf(merged),
+        status: 'PENDING',
+        errorCode: null,
+      },
+    });
+  }
+
+  /** Soft-delete a source; retention keeps audit references intact. */
+  async remove(
+    id: string,
+    tenantId: string,
+  ): Promise<{ id: string; deleted: true }> {
+    await this.findOne(id, tenantId);
+    await this.prisma.knowledgeSource.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    return { id, deleted: true };
   }
 
   /** Reference rules per source type; every failure is 400 or 413. */
