@@ -12,6 +12,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
+import type { AuditEvent } from '@prisma/client';
 import {
   PRISMA_SERVICE,
   type PrismaService,
@@ -24,9 +25,16 @@ export interface AuditEventView {
   id: string;
   tenantId: string | null;
   actorId: string | null;
+  /** Resolved from the local user row; null when the actor is unknown. */
+  actorName: string | null;
+  actorEmail: string | null;
+  /** Human role names for the actor in this tenant. */
+  actorRoles: string[];
   action: string;
   resourceType: string;
   resourceId: string | null;
+  /** Human label for the affected row, when one can be resolved. */
+  resourceLabel: string | null;
   requestId: string | null;
   metadata: unknown;
   createdAt: string;
@@ -98,21 +106,244 @@ export class AuditQueryService {
       orderBy: { createdAt: 'desc' },
       take: options.limit,
     });
+    const [actors, resourceLabels] = await Promise.all([
+      this.actorDetails(rows, tenantId),
+      this.resourceLabels(rows, tenantId),
+    ]);
     return {
-      items: rows.map((row) => ({
-        id: row.id,
-        tenantId: row.tenantId,
-        actorId: row.actorId,
-        action: row.action,
-        resourceType: row.resourceType,
-        resourceId: row.resourceId,
-        requestId: row.requestId,
-        metadata: row.metadataJson,
-        createdAt: row.createdAt.toISOString(),
-      })),
+      items: rows.map((row) => {
+        const actor = row.actorId ? actors.get(row.actorId) : undefined;
+        const label = row.resourceId
+          ? resourceLabels.get(row.resourceType + ':' + row.resourceId)
+          : undefined;
+        return {
+          id: row.id,
+          tenantId: row.tenantId,
+          actorId: row.actorId,
+          actorName: actor?.displayName || actor?.email || null,
+          actorEmail: actor?.email ?? null,
+          actorRoles: actor?.roles ?? [],
+          action: row.action,
+          resourceType: row.resourceType,
+          resourceId: row.resourceId,
+          resourceLabel: label ?? null,
+          requestId: row.requestId,
+          metadata: row.metadataJson,
+          createdAt: row.createdAt.toISOString(),
+        };
+      }),
       limit: options.limit,
       hasMore: rows.length === options.limit,
     };
+  }
+
+  /**
+   * Audit rows store the identity-provider subject, not users.id. One lookup
+   * for the page resolves the display name, email and tenant role names, so
+   * the browser never has to query the directory itself.
+   */
+  private async actorDetails(rows: AuditEvent[], tenantId: string) {
+    const ids = [
+      ...new Set(
+        rows
+          .map((row) => row.actorId)
+          .filter(
+            (id): id is string =>
+              typeof id === 'string' && id.length > 0 && isUuid(id),
+          ),
+      ),
+    ];
+    const actors = new Map<
+      string,
+      { displayName: string; email: string; roles: string[] }
+    >();
+    if (ids.length === 0) return actors;
+
+    const users = await this.prisma.user.findMany({
+      where: { provider: 'supabase', externalSubject: { in: ids } },
+      select: {
+        externalSubject: true,
+        displayName: true,
+        emailNormalized: true,
+        memberships: {
+          select: {
+            tenantId: true,
+            roles: { select: { role: { select: { name: true } } } },
+          },
+        },
+      },
+    });
+    for (const user of users) {
+      const tenantRoles = user.memberships
+        .filter((membership) => membership.tenantId === tenantId)
+        .flatMap((membership) =>
+          membership.roles.map((assignment) => assignment.role.name),
+        );
+      const roles =
+        tenantRoles.length > 0
+          ? tenantRoles
+          : user.memberships.flatMap((membership) =>
+              membership.roles.map((assignment) => assignment.role.name),
+            );
+      actors.set(user.externalSubject, {
+        displayName: user.displayName,
+        email: user.emailNormalized,
+        roles: [...new Set(roles)],
+      });
+    }
+    return actors;
+  }
+
+  /** Resolve human labels for the resource types the governance views show. */
+  private async resourceLabels(rows: AuditEvent[], tenantId: string) {
+    const idsByType = new Map<string, string[]>();
+    for (const row of rows) {
+      if (!row.resourceId || !isUuid(row.resourceId)) continue;
+      const ids = idsByType.get(row.resourceType) ?? [];
+      if (!ids.includes(row.resourceId)) ids.push(row.resourceId);
+      idsByType.set(row.resourceType, ids);
+    }
+
+    const labels = new Map<string, string>();
+    await Promise.all(
+      [...idsByType.entries()].map(async ([type, ids]) => {
+        const found = await this.lookupResourceLabels(type, ids, tenantId);
+        for (const [id, label] of found) {
+          labels.set(type + ':' + id, label);
+        }
+      }),
+    );
+    return labels;
+  }
+
+  private async lookupResourceLabels(
+    type: string,
+    ids: string[],
+    tenantId: string,
+  ): Promise<Map<string, string>> {
+    const labels = new Map<string, string>();
+    switch (type) {
+      case 'user': {
+        const rows = await this.prisma.user.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, displayName: true, emailNormalized: true },
+        });
+        for (const row of rows) {
+          addLabel(labels, row.id, row.displayName || row.emailNormalized);
+        }
+        break;
+      }
+      case 'membership': {
+        const rows = await this.prisma.tenantMembership.findMany({
+          where: { id: { in: ids }, tenantId },
+          select: {
+            id: true,
+            user: { select: { displayName: true, emailNormalized: true } },
+          },
+        });
+        for (const row of rows) {
+          addLabel(
+            labels,
+            row.id,
+            row.user.displayName || row.user.emailNormalized,
+          );
+        }
+        break;
+      }
+      case 'tenant': {
+        const rows = await this.prisma.tenant.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, name: true },
+        });
+        for (const row of rows) addLabel(labels, row.id, row.name);
+        break;
+      }
+      case 'role': {
+        const rows = await this.prisma.role.findMany({
+          where: { id: { in: ids }, OR: [{ tenantId: null }, { tenantId }] },
+          select: { id: true, name: true },
+        });
+        for (const row of rows) addLabel(labels, row.id, row.name);
+        break;
+      }
+      case 'ticket': {
+        const rows = await this.prisma.ticket.findMany({
+          where: { id: { in: ids }, tenantId },
+          select: { id: true, title: true },
+        });
+        for (const row of rows) addLabel(labels, row.id, row.title);
+        break;
+      }
+      case 'conversation': {
+        const rows = await this.prisma.conversation.findMany({
+          where: { id: { in: ids }, tenantId },
+          select: { id: true, customer: { select: { displayName: true } } },
+        });
+        for (const row of rows) {
+          addLabel(labels, row.id, 'with ' + row.customer.displayName);
+        }
+        break;
+      }
+      case 'message': {
+        const rows = await this.prisma.message.findMany({
+          where: { id: { in: ids }, tenantId },
+          select: { id: true, body: true },
+        });
+        for (const row of rows) {
+          const body = row.body.replace(/\s+/g, ' ').trim();
+          addLabel(
+            labels,
+            row.id,
+            body.length > 60 ? body.slice(0, 57) + '...' : body,
+          );
+        }
+        break;
+      }
+      case 'ai_agent': {
+        const rows = await this.prisma.aiAgent.findMany({
+          where: { id: { in: ids }, tenantId },
+          select: { id: true, name: true },
+        });
+        for (const row of rows) addLabel(labels, row.id, row.name);
+        break;
+      }
+      case 'ai_model_provider': {
+        const rows = await this.prisma.aiModelProvider.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, name: true },
+        });
+        for (const row of rows) addLabel(labels, row.id, row.name);
+        break;
+      }
+      case 'webhook_endpoint': {
+        const rows = await this.prisma.integrationEndpoint.findMany({
+          where: { id: { in: ids }, tenantId },
+          select: { id: true, displayName: true },
+        });
+        for (const row of rows) addLabel(labels, row.id, row.displayName);
+        break;
+      }
+      case 'knowledge_source': {
+        const rows = await this.prisma.knowledgeSource.findMany({
+          where: { id: { in: ids }, tenantId },
+          select: {
+            id: true,
+            sourceType: true,
+            sourceUri: true,
+            objectKey: true,
+          },
+        });
+        for (const row of rows) {
+          addLabel(
+            labels,
+            row.id,
+            row.sourceUri ?? row.objectKey ?? row.sourceType,
+          );
+        }
+        break;
+      }
+    }
+    return labels;
   }
 
   async listTraces(
@@ -144,4 +375,20 @@ export class AuditQueryService {
       hasMore: rows.length === options.limit,
     };
   }
+}
+
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID.test(value);
+}
+
+function addLabel(
+  labels: Map<string, string>,
+  id: string,
+  label: string | null | undefined,
+): void {
+  const text = label?.trim();
+  if (text) labels.set(id, text);
 }

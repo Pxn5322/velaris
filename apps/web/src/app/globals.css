@@ -44,7 +44,7 @@
   --text-main: #1e293b;
   --text-muted: #475569;
   --input-bg: #ffffff;
-  --input-border: #cbd5e1;
+  --input-border: #64748b;
   --grid-line: rgba(15, 23, 42, 0.08);
   --glow-color: rgba(2, 132, 199, 0.12);
   --accent-cyan: #0e7490;
@@ -54,6 +54,76 @@
   --pill-bg: rgba(2, 132, 199, 0.08);
   --pill-border: rgba(2, 132, 199, 0.3);
   --accent-purple: #2563eb;
+}
+
+/*
+ * Light-theme contrast corrections for the fixed Tailwind palette used by
+ * the older panels. Those classes were chosen for the dark canvas; on the
+ * light surface the 300/400 shades drop below WCAG AA. The tokens above
+ * already carry the accessible equivalents, so map the fixed shades to them
+ * without touching each component. Interactive borders and placeholder text
+ * also meet the 3:1 non-text threshold.
+ */
+:root[data-theme="light"] .text-slate-300 {
+  color: #334155 !important;
+}
+:root[data-theme="light"] .text-slate-400 {
+  color: #475569 !important;
+}
+:root[data-theme="light"] .text-red-200,
+:root[data-theme="light"] .text-red-300,
+:root[data-theme="light"] .text-red-400 {
+  color: #b91c1c !important;
+}
+:root[data-theme="light"] .text-rose-300,
+:root[data-theme="light"] .text-rose-400 {
+  color: #9f1239 !important;
+}
+:root[data-theme="light"] .text-emerald-300,
+:root[data-theme="light"] .text-emerald-400,
+:root[data-theme="light"] .text-emerald-500 {
+  color: #047857 !important;
+}
+:root[data-theme="light"] .text-cyan-300 {
+  color: #0e7490 !important;
+}
+:root[data-theme="light"] .text-amber-200,
+:root[data-theme="light"] .text-amber-300,
+:root[data-theme="light"] .text-amber-400 {
+  color: #92400e !important;
+}
+:root[data-theme="light"] .text-purple-300 {
+  color: #6b21a8 !important;
+}
+:root[data-theme="light"] .text-blue-300 {
+  color: #1d4ed8 !important;
+}
+:root[data-theme="light"] .text-brand-cyan,
+:root[data-theme="light"] .hover\:text-brand-cyan:hover {
+  color: #0369a1 !important;
+}
+:root[data-theme="light"] .text-brand-emerald {
+  color: #047857 !important;
+}
+:root[data-theme="light"] .from-brand-cyan {
+  --tw-gradient-from: #0369a1 var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(3 105 161 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops:
+    var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+:root[data-theme="light"] .to-brand-cyan,
+:root[data-theme="light"] .hover\:to-brand-cyan:hover {
+  --tw-gradient-to: #0369a1 var(--tw-gradient-to-position) !important;
+}
+:root[data-theme="light"] .to-cyan-500,
+:root[data-theme="light"] .hover\:to-cyan-500:hover,
+:root[data-theme="light"] .to-cyan-600 {
+  --tw-gradient-to: #0e7490 var(--tw-gradient-to-position) !important;
+}
+:root[data-theme="light"] input::placeholder,
+:root[data-theme="light"] textarea::placeholder {
+  color: #64748b;
+  opacity: 1;
 }
 
 html,

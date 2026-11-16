@@ -180,9 +180,13 @@ const auditEvent = {
   id: "event-1",
   tenantId: "tenant-a",
   actorId: "user-1",
+  actorName: "Maya Chen",
+  actorEmail: "maya.chen@acme.test",
+  actorRoles: ["Support Agent"],
   action: "ticket.updated",
   resourceType: "ticket",
   resourceId: "ticket-1",
+  resourceLabel: "Refund not received after cancellation",
   requestId: "req-abc",
   metadata: {},
   createdAt: "2026-11-03T08:00:00.000Z",
@@ -431,6 +435,12 @@ test.describe("analytics and governance views (T5.04, AC-F12 / AC-F11-3)", () =>
     await page.getByRole("button", { name: "Toggle Theme" }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
     await expect(page.getByTestId("audit-event")).toHaveCount(1);
+    await expect(page.getByTestId("audit-event")).toContainText(
+      "actor Maya Chen",
+    );
+    await expect(page.getByTestId("audit-event-roles")).toContainText(
+      "Support Agent",
+    );
 
     await expectNoSeriousA11yViolations(page, "audit trail light theme");
   });
@@ -459,7 +469,7 @@ test.describe("analytics and governance views (T5.04, AC-F12 / AC-F11-3)", () =>
     await page.goto("/audit");
 
     await expect(page.getByTestId("audit-event-retention")).toContainText(
-      "MEMORY · 7 days · actor user-1",
+      "MEMORY · 7 days · actor Maya Chen",
     );
 
     await page.getByTestId("audit-retention-filter").click();

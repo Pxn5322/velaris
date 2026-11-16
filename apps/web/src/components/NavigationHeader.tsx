@@ -106,7 +106,10 @@ export function NavigationHeader() {
     setAccountMenu(null);
     setProfileSection(null);
     await endSession();
-    router.replace("/?signin=1");
+    // A hard replace wins the race with the route guard, which otherwise
+    // reacts to the cleared session and appends ?signin=1 before the client
+    // navigation commits. The local session is already revoked.
+    window.location.replace("/");
   };
 
   const openSignIn = () => {

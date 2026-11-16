@@ -53,9 +53,13 @@ const events = [
   {
     id: "event-1",
     actorId: "user-1",
+    actorName: "Maya Chen",
+    actorEmail: "maya.chen@acme.test",
+    actorRoles: ["Support Agent"],
     action: "ticket.updated",
     resourceType: "ticket",
     resourceId: "ticket-1",
+    resourceLabel: "Refund not received after cancellation",
     requestId: "req-abc",
     createdAt: "2026-11-13T09:42:00.000Z",
   },
@@ -71,9 +75,12 @@ const events = [
   {
     id: "event-3",
     actorId: "user-2",
+    actorName: "Ravi Patel",
+    actorRoles: ["Tenant Administrator"],
     action: "membership.role_changed",
     resourceType: "membership",
     resourceId: "membership-4",
+    resourceLabel: "Priya Raman",
     requestId: "req-def",
     createdAt: "2026-11-12T16:20:00.000Z",
   },
@@ -171,7 +178,12 @@ test.describe("administrator analytics audit stream", () => {
 
     const rows = page.getByTestId("admin-audit-event");
     await expect(rows.first()).toContainText("ticket.updated");
-    await expect(rows.first()).toContainText("ticket-1");
+    await expect(rows.first()).toContainText(
+      "Refund not received after cancellation",
+    );
+    await expect(rows.first()).toContainText("actor Maya Chen");
+    await expect(rows.first()).toContainText("Role: Support Agent");
+    await expect(rows.first()).not.toContainText("user-1");
     await expect(rows.first()).toContainText("request req-abc");
     await expect(rows.nth(1)).toContainText("retention.policy_changed");
     await expect(rows.nth(1)).toContainText("request none recorded");
@@ -247,9 +259,9 @@ test.describe("administrator analytics audit stream", () => {
     await expect(
       page.getByTestId("tenant-dashboard-status-closed"),
     ).toContainText("CLOSED");
-    await expect(dashboard.getByText("Support Inbox", { exact: true })).toHaveCount(
-      0,
-    );
+    await expect(
+      dashboard.getByText("Support Inbox", { exact: true }),
+    ).toHaveCount(0);
     await expect(dashboard.getByText("AI Studio", { exact: true })).toHaveCount(
       0,
     );

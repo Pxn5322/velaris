@@ -1,3 +1,11 @@
+/** One browser attachment carried inside the message metadata. */
+export interface SendMessageAttachmentDto {
+  name: string;
+  type: string;
+  size: number;
+  dataUrl: string;
+}
+
 /**
  * Send-message body (T2.03). visibility defaults to CUSTOMER_VISIBLE;
  * INTERNAL requires note.internal.write (controller) and can never be
@@ -8,4 +16,6 @@ export class SendMessageDto {
   body!: string;
   visibility?: 'CUSTOMER_VISIBLE' | 'INTERNAL';
   idempotencyKey?: string;
+  /** Optional small files; stored with the message, not in object storage. */
+  attachments?: SendMessageAttachmentDto[];
 }

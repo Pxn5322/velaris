@@ -24,6 +24,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 
@@ -65,7 +66,21 @@ export interface SendMessageInput {
   authorType: string;
   visibility?: string;
   idempotencyKey?: string;
+  attachments?: unknown;
 }
+
+interface StoredAttachment {
+  name: string;
+  type: string;
+  size: number;
+  dataUrl: string;
+}
+
+const MAX_ATTACHMENTS = 3;
+const MAX_ATTACHMENT_BYTES = 512 * 1024;
+const MAX_ATTACHMENT_TOTAL_BYTES = 1024 * 1024;
+const ATTACHMENT_DATA_URL =
+  /^data:(image\/(?:png|jpeg|webp)|application\/pdf|text\/plain);base64,([A-Za-z0-9+/]+={0,2})$/;
 
 @Injectable()
 export class ConversationsService {
@@ -181,7 +196,15 @@ export class ConversationsService {
     input: SendMessageInput,
   ) {
     await this.requireConversation(conversationId, tenantId);
-    requireText(input.body, 'body');
+    const attachments = normalizeAttachments(input.attachments);
+    const text = typeof input.body === 'string' ? input.body.trim() : '';
+    if (!text && attachments.length === 0) {
+      throw new BadRequestException('body is required');
+    }
+    const body =
+      text ||
+      'Attached: ' +
+        attachments.map((attachment) => attachment.name).join(', ');
 
     if (
       input.visibility !== undefined &&
@@ -222,8 +245,15 @@ export class ConversationsService {
           conversationId,
           authorType: input.authorType as MessageAuthorType,
           visibility,
-          body: input.body,
+          body,
           idempotencyKey: input.idempotencyKey ?? null,
+          ...(attachments.length > 0
+            ? {
+                metadataJson: {
+                  attachments,
+                } as unknown as Prisma.InputJsonValue,
+              }
+            : {}),
         },
       });
     } catch (error) {
@@ -273,6 +303,65 @@ export class ConversationsService {
     }
     return conversation;
   }
+}
+
+function normalizeAttachments(value: unknown): StoredAttachment[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new BadRequestException('attachments must be an array');
+  }
+  if (value.length > MAX_ATTACHMENTS) {
+    throw new BadRequestException(
+      `At most ${MAX_ATTACHMENTS} files can be attached to one message`,
+    );
+  }
+
+  let totalBytes = 0;
+  return value.map((candidate) => {
+    const attachment = candidate as Partial<StoredAttachment>;
+    const rawName =
+      typeof attachment.name === 'string' ? attachment.name.trim() : '';
+    const name = rawName
+      .split(/[\\/]/)
+      .pop()
+      ?.split('')
+      .filter((character) => {
+        const code = character.charCodeAt(0);
+        return code >= 32 && code !== 127;
+      })
+      .join('')
+      .slice(0, 120);
+    if (!name) {
+      throw new BadRequestException('Each attachment needs a file name');
+    }
+    const dataUrl =
+      typeof attachment.dataUrl === 'string' ? attachment.dataUrl : '';
+    const match = ATTACHMENT_DATA_URL.exec(dataUrl);
+    if (!match) {
+      throw new BadRequestException(
+        'Attachments must be PNG, JPEG, WebP, PDF or plain text',
+      );
+    }
+    const [, type, base64] = match;
+    if (attachment.type !== type) {
+      throw new BadRequestException(
+        'The attachment type does not match its data',
+      );
+    }
+    const size = Buffer.from(base64, 'base64').length;
+    if (size === 0 || size > MAX_ATTACHMENT_BYTES) {
+      throw new BadRequestException(
+        'Each attachment must be 512 KB or smaller',
+      );
+    }
+    totalBytes += size;
+    if (totalBytes > MAX_ATTACHMENT_TOTAL_BYTES) {
+      throw new BadRequestException(
+        'Attachments must total 1 MB or smaller per message',
+      );
+    }
+    return { name, type, size, dataUrl };
+  });
 }
 
 function isConversationStatus(value: unknown): value is ConversationStatus {

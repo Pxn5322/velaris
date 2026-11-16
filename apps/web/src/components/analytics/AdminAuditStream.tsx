@@ -36,9 +36,13 @@ interface AuthSessionResponse {
 interface AuditEventRow {
   id: string;
   actorId: string | null;
+  actorName?: string | null;
+  actorEmail?: string | null;
+  actorRoles?: string[];
   action: string;
   resourceType: string;
   resourceId: string | null;
+  resourceLabel?: string | null;
   requestId: string | null;
   createdAt: string;
 }
@@ -250,40 +254,65 @@ export function AdminAuditStream() {
             className="space-y-2 h-64 overflow-y-auto font-mono text-xs pr-2"
             aria-live="polite"
           >
-            {events.map((event) => (
-              <div
-                key={event.id}
-                data-testid="admin-audit-event"
-                className="p-3 rounded-xl border space-y-1"
-                style={{ borderColor: "var(--card-border)" }}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span
-                    className="text-xs font-mono font-bold"
-                    style={{ color: "var(--accent-cyan)" }}
-                  >
-                    {event.action}
-                  </span>
-                  <span
-                    className="text-[10px] font-mono"
+            {events.map((event) => {
+              const actor =
+                event.actorName ?? event.actorEmail ?? event.actorId ?? null;
+              const resource = event.resourceLabel ?? event.resourceId;
+              const actorEmail =
+                event.actorName && event.actorEmail ? event.actorEmail : null;
+              return (
+                <div
+                  key={event.id}
+                  data-testid="admin-audit-event"
+                  className="p-3 rounded-xl border space-y-1"
+                  style={{ borderColor: "var(--card-border)" }}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span
+                      className="text-xs font-mono font-bold"
+                      style={{ color: "var(--accent-cyan)" }}
+                    >
+                      {event.action}
+                    </span>
+                    <span
+                      className="text-[10px] font-mono"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      {shortInstant(event.createdAt)}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-heading break-words">
+                    {event.resourceType}
+                    {resource ? ` · ${resource}` : ""}
+                    {` · actor ${actor ?? "none recorded"}`}
+                  </p>
+                  {actorEmail && (
+                    <p
+                      data-testid="admin-audit-event-actor-email"
+                      className="text-[10px] font-mono break-all"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      {actorEmail}
+                    </p>
+                  )}
+                  {(event.actorRoles?.length ?? 0) > 0 && (
+                    <p
+                      data-testid="admin-audit-event-roles"
+                      className="text-[10px] font-mono"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      Role: {event.actorRoles?.join(", ")}
+                    </p>
+                  )}
+                  <p
+                    className="text-[10px] font-mono break-all"
                     style={{ color: "var(--text-muted)" }}
                   >
-                    {shortInstant(event.createdAt)}
-                  </span>
+                    request {event.requestId ?? "none recorded"}
+                  </p>
                 </div>
-                <p className="text-[11px] text-heading break-words">
-                  {event.resourceType}
-                  {event.resourceId ? ` · ${event.resourceId}` : ""}
-                  {` · actor ${event.actorId ?? "none recorded"}`}
-                </p>
-                <p
-                  className="text-[10px] font-mono break-all"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  request {event.requestId ?? "none recorded"}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div
             className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-[10px] font-mono"

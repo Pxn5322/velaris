@@ -535,6 +535,33 @@ describe('Conversations routes (integration)', () => {
     );
   });
 
+  it('R-agent sends a small attachment inside the message metadata', async () => {
+    role = 'R-agent';
+    const dataUrl =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    const size = Buffer.from(dataUrl.split(',')[1], 'base64').length;
+    const res = await request(app.getHttpServer())
+      .post(
+        '/conversations/cccccccc-0000-4000-8000-000000000001/messages?tenantId=tenant-a',
+      )
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        body: 'See the screenshot',
+        attachments: [{ name: 'screen.png', type: 'image/png', size, dataUrl }],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.metadataJson).toEqual({
+      attachments: [{ name: 'screen.png', type: 'image/png', size, dataUrl }],
+    });
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'message.created',
+        metadata: expect.objectContaining({ attachmentCount: 1 }),
+      }),
+    );
+  });
+
   it('R-agent opens a conversation and it is audited (AC-F05-1)', async () => {
     role = 'R-agent';
     const res = await request(app.getHttpServer())
