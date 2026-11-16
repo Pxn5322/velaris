@@ -141,21 +141,31 @@ async function main() {
   );
   const directoryBody = await readJson(directory);
   checks.directory = directory.status;
-  checks.directoryRows = Array.isArray(directoryBody)
-    ? directoryBody.length
-    : 0;
+  const directoryRows = Array.isArray(directoryBody) ? directoryBody : [];
+  checks.directoryRows = directoryRows.length;
   checks.directoryTenants = new Set(
-    (Array.isArray(directoryBody) ? directoryBody : [])
-      .map((row) => row.tenantName)
-      .filter(Boolean),
+    directoryRows.map((row) => row.tenantName).filter(Boolean),
   ).size;
   const directoryNamed =
-    Array.isArray(directoryBody) &&
-    directoryBody.length > 0 &&
-    directoryBody.every((row) => typeof row.tenantName === "string");
+    directoryRows.length > 0 &&
+    directoryRows.every((row) => typeof row.tenantName === "string");
   if (directory.status !== 200 || !directoryNamed) {
     throw new Error(`platform directory failed with HTTP ${directory.status}`);
   }
+  const avatarFieldPresent = directoryRows.every((row) =>
+    Object.prototype.hasOwnProperty.call(row, "avatarDataUrl"),
+  );
+  const photoRows = directoryRows.filter(
+    (row) =>
+      typeof row.avatarDataUrl === "string" &&
+      row.avatarDataUrl.startsWith("data:image/"),
+  );
+  checks.directoryAvatarField = avatarFieldPresent;
+  checks.directoryAvatars = photoRows.length;
+  if (!avatarFieldPresent || photoRows.length === 0 || !photoRows[0].email) {
+    throw new Error("platform directory did not return a usable profile photo");
+  }
+  const photoEmail = photoRows[0].email;
 
   const providerList = await api(
     apiUrl,
@@ -167,6 +177,20 @@ async function main() {
   checks.providerRows = Array.isArray(providerBody) ? providerBody.length : 0;
   if (providerList.status !== 200 || !Array.isArray(providerBody)) {
     throw new Error(`provider list failed with HTTP ${providerList.status}`);
+  }
+  const groqProvider = providerBody.find((row) => row.provider === "groq");
+  const defaultProviders = providerBody.filter((row) => row.isDefault);
+  checks.groqProvider = Boolean(groqProvider);
+  checks.groqModel = groqProvider?.model ?? null;
+  checks.defaultProviders = defaultProviders.length;
+  if (
+    !groqProvider ||
+    groqProvider.status !== "ACTIVE" ||
+    groqProvider.isDefault !== true ||
+    !groqProvider.model ||
+    defaultProviders.length !== 1
+  ) {
+    throw new Error("Groq is not the single active default provider");
   }
 
   const providerName = `${PROVIDER_PREFIX} ${Date.now()}-${randomBytes(3).toString("hex")}`;
@@ -269,6 +293,35 @@ async function main() {
     );
   }
 
+  const audit = await api(
+    apiUrl,
+    `/audit/events?tenantId=${encodeURIComponent(tenant.tenantId)}&limit=25`,
+    tenantSession.accessToken,
+  );
+  const auditBody = await readJson(audit);
+  const auditEvents = Array.isArray(auditBody?.items) ? auditBody.items : [];
+  const auditActors = auditEvents.filter(
+    (row) => row.actorName || row.actorEmail,
+  ).length;
+  const auditRoles = auditEvents.filter(
+    (row) => Array.isArray(row.actorRoles) && row.actorRoles.length > 0,
+  ).length;
+  const auditLabels = auditEvents.filter((row) => row.resourceLabel).length;
+  checks.audit = audit.status;
+  checks.auditEvents = auditEvents.length;
+  checks.auditActorLabels = auditActors;
+  checks.auditRoleLabels = auditRoles;
+  checks.auditResourceLabels = auditLabels;
+  if (
+    audit.status !== 200 ||
+    auditEvents.length === 0 ||
+    auditActors === 0 ||
+    auditRoles === 0 ||
+    auditLabels === 0
+  ) {
+    throw new Error("audit labels are incomplete");
+  }
+
   const dashboard = await api(
     apiUrl,
     `/analytics/tenant-dashboard?tenantId=${encodeURIComponent(tenant.tenantId)}`,
@@ -279,12 +332,7 @@ async function main() {
   checks.dashboardTokens = dashboardBody?.totalMonthlyTokens;
   checks.dashboardActiveAgents = dashboardBody?.activeAgents;
   checks.dashboardTickets = dashboardBody?.tickets?.total;
-  const statusCounts = [
-    "pendingCustomer",
-    "inProgress",
-    "resolved",
-    "closed",
-  ];
+  const statusCounts = ["pendingCustomer", "inProgress", "resolved", "closed"];
   const dashboardValid =
     dashboard.status === 200 &&
     typeof dashboardBody?.totalMonthlyTokens === "number" &&
@@ -300,9 +348,27 @@ async function main() {
   if (!skipUi) {
     const browser = await chromium.launch({ headless: true });
     try {
-      await checkEnterpriseUi(browser, webUrl, adminEmail, adminPassword);
-      await checkTenantUi(browser, webUrl, tenantEmail, tenantPassword);
+      const enterprise = await checkEnterpriseUi(
+        browser,
+        webUrl,
+        adminEmail,
+        adminPassword,
+        photoEmail,
+        groqProvider.model,
+      );
+      const tenantUi = await checkTenantUi(
+        browser,
+        webUrl,
+        tenantEmail,
+        tenantPassword,
+      );
       checks.ui = "pass";
+      checks.uiDirectoryAvatar = enterprise.directoryAvatar;
+      checks.uiGroqProvider = enterprise.groqProvider;
+      checks.uiAuditLabels = enterprise.auditLabels;
+      checks.uiAuditTrailLabels = enterprise.auditTrailLabels;
+      checks.uiSignOut = enterprise.signOut;
+      checks.uiAttachment = tenantUi.attachment;
     } finally {
       await browser.close().catch(() => undefined);
     }
@@ -381,7 +447,14 @@ async function loginThroughUi(page, webUrl, email, password) {
   await page.waitForURL(/\/admin$/, { timeout: 60_000 });
 }
 
-async function checkEnterpriseUi(browser, webUrl, email, password) {
+async function checkEnterpriseUi(
+  browser,
+  webUrl,
+  email,
+  password,
+  photoEmail,
+  groqModel,
+) {
   const context = await browser.newContext();
   const page = await context.newPage();
   try {
@@ -407,6 +480,16 @@ async function checkEnterpriseUi(browser, webUrl, email, password) {
     if ((await page.getByRole("button", { name: "Edit role" }).count()) === 0) {
       throw new Error("directory did not render icon-only role actions");
     }
+    await page.getByTestId("tenant-users-search").fill(photoEmail);
+    await page.getByTestId("tenant-user-avatar-image").first().waitFor({
+      state: "visible",
+      timeout: 10_000,
+    });
+    await page.getByTestId("tenant-users-search").fill("");
+    await page.getByTestId("tenant-user-avatar-initials").first().waitFor({
+      state: "visible",
+      timeout: 10_000,
+    });
 
     await page.getByRole("button", { name: "AI Governance" }).click();
     await page.getByTestId("ai-governance-panel").waitFor({
@@ -416,6 +499,73 @@ async function checkEnterpriseUi(browser, webUrl, email, password) {
     await page.getByTestId("ai-provider-create-open").waitFor({
       state: "visible",
     });
+    await page
+      .getByText(`groq / ${groqModel}`, { exact: true })
+      .first()
+      .waitFor({ state: "visible", timeout: 10_000 });
+
+    await page.getByRole("button", { name: "Platform Analytics" }).click();
+    await page.getByTestId("admin-audit-stream").waitFor({
+      state: "visible",
+      timeout: 30_000,
+    });
+    await page.getByTestId("admin-audit-event").first().waitFor({
+      state: "visible",
+      timeout: 30_000,
+    });
+    if ((await page.getByTestId("admin-audit-event-roles").count()) === 0) {
+      throw new Error("audit stream did not render role labels");
+    }
+    const firstAuditText = await page
+      .getByTestId("admin-audit-event")
+      .first()
+      .innerText();
+    if (/actor [0-9a-f]{8}-[0-9a-f-]{27,}/i.test(firstAuditText)) {
+      throw new Error("audit stream rendered a raw actor id");
+    }
+
+    await page.goto(`${webUrl}/audit`, { waitUntil: "domcontentloaded" });
+    await page.getByTestId("audit-events-list").waitFor({
+      state: "visible",
+      timeout: 30_000,
+    });
+    if ((await page.getByTestId("audit-event-roles").count()) === 0) {
+      throw new Error("audit trail did not render role labels");
+    }
+    const firstTrailText = await page
+      .getByTestId("audit-event")
+      .first()
+      .innerText();
+    if (/actor [0-9a-f]{8}-[0-9a-f-]{27,}/i.test(firstTrailText)) {
+      throw new Error("audit trail rendered a raw actor id");
+    }
+
+    await page.getByTestId("nav-sign-out").click();
+    await page.waitForURL(
+      (url) => url.origin === new URL(webUrl).origin && url.pathname === "/",
+      { timeout: 30_000 },
+    );
+    await page
+      .getByRole("heading", {
+        level: 1,
+        name: /Intelligent Customer Operations/i,
+      })
+      .waitFor({ state: "visible", timeout: 30_000 });
+    if (
+      await page
+        .getByTestId("sign-in-email")
+        .isVisible()
+        .catch(() => false)
+    ) {
+      throw new Error("sign-out opened the sign-in modal");
+    }
+    return {
+      directoryAvatar: "pass",
+      groqProvider: "pass",
+      auditLabels: "pass",
+      auditTrailLabels: "pass",
+      signOut: "pass",
+    };
   } finally {
     await context.close().catch(() => undefined);
   }
@@ -456,6 +606,49 @@ async function checkTenantUi(browser, webUrl, email, password) {
     ) {
       throw new Error("tenant admin can see the platform AI Governance tab");
     }
+
+    await page.goto(`${webUrl}/inbox`, { waitUntil: "domcontentloaded" });
+    await page.getByTestId("inbox").waitFor({
+      state: "visible",
+      timeout: 30_000,
+    });
+    await page.getByTestId("inbox-ticket").first().waitFor({
+      state: "visible",
+      timeout: 30_000,
+    });
+    await page.getByTestId("inbox-ticket").first().click();
+    await page.getByTestId("inbox-attach").waitFor({ state: "visible" });
+    await page.getByTestId("inbox-timeline").waitFor({
+      state: "visible",
+      timeout: 30_000,
+    });
+    const existingAttachment = page
+      .getByTestId("inbox-timeline")
+      .getByText("hosted-smoke.txt");
+    if ((await existingAttachment.count()) > 0) {
+      return { attachment: "pass-existing" };
+    }
+    await page.getByTestId("inbox-attach-input").setInputFiles({
+      name: "hosted-smoke.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Hosted inbox attachment smoke."),
+    });
+    await page
+      .getByTestId("inbox-attachment-list")
+      .getByText("hosted-smoke.txt")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    const marker = "Hosted smoke attachment";
+    await page.getByTestId("inbox-reply").fill(marker);
+    await page.getByTestId("inbox-send").click();
+    await page
+      .getByTestId("inbox-timeline")
+      .getByText(marker)
+      .waitFor({ state: "visible", timeout: 30_000 });
+    await page
+      .getByTestId("inbox-timeline")
+      .getByText("hosted-smoke.txt")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    return { attachment: "pass" };
   } finally {
     await context.close().catch(() => undefined);
   }
