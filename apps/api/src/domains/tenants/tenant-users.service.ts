@@ -49,6 +49,8 @@ export interface TenantMemberView {
   userId: string;
   email: string;
   displayName: string;
+  /** Uploaded profile photo as a bounded data URL, or null. */
+  avatarDataUrl: string | null;
   status: string;
   roles: string[];
   /** Included by the platform-wide directory. */
@@ -92,6 +94,7 @@ export class TenantUsersService {
       userId: membership.userId,
       email: membership.user.emailNormalized,
       displayName: membership.user.displayName,
+      avatarDataUrl: membership.user.avatarDataUrl || null,
       status: membership.status,
       roles: membership.roles.map((assignment) => assignment.role.code),
     }));
@@ -117,6 +120,7 @@ export class TenantUsersService {
       userId: membership.userId,
       email: membership.user.emailNormalized,
       displayName: membership.user.displayName,
+      avatarDataUrl: membership.user.avatarDataUrl || null,
       status: membership.status,
       roles: membership.roles.map((assignment) => assignment.role.code),
       tenantId: membership.tenantId,
@@ -176,6 +180,7 @@ export class TenantUsersService {
       userId: identity.userId,
       email,
       displayName: email,
+      avatarDataUrl: null,
       status: membership.status,
       roles: [input.roleCode],
       invited: identity.invited,

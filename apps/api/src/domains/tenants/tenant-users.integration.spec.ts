@@ -62,6 +62,7 @@ function fakePrisma() {
             id: 'user-1',
             emailNormalized: 'agent@acme.test',
             displayName: 'agent@acme.test',
+            avatarDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
           },
           roles: [{ role: { code: 'R-agent' } }],
         },
@@ -98,6 +99,7 @@ function fakePrisma() {
                   id: 'user-1',
                   emailNormalized: 'agent@acme.test',
                   displayName: 'agent@acme.test',
+                  avatarDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
                 },
                 roles: store.memberRoles,
               };
@@ -268,6 +270,7 @@ describe('Tenant user management routes (integration)', () => {
         userId: 'user-1',
         email: 'agent@acme.test',
         displayName: 'agent@acme.test',
+        avatarDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
         status: 'ACTIVE',
         roles: ['R-agent'],
       },

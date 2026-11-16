@@ -243,6 +243,7 @@ export class ConversationsController {
         authorType,
         visibility: sendMessageDto.visibility,
         idempotencyKey: sendMessageDto.idempotencyKey,
+        attachments: sendMessageDto.attachments,
       },
     );
     await this.audit.record({
@@ -251,7 +252,11 @@ export class ConversationsController {
       resourceId: message.id,
       tenantId,
       actorId: request.user?.subject,
-      metadata: { conversationId, visibility: message.visibility },
+      metadata: {
+        conversationId,
+        visibility: message.visibility,
+        attachmentCount: sendMessageDto.attachments?.length ?? 0,
+      },
     });
 
     // API-13: only a customer message asks the runtime for an answer.

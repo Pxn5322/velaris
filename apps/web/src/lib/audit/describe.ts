@@ -9,6 +9,8 @@
 export interface AuditEventLike {
   action: string;
   actorId: string | null;
+  actorName?: string | null;
+  actorEmail?: string | null;
   metadata?: Record<string, unknown> | null;
   createdAt: string;
 }
@@ -34,6 +36,7 @@ export function retentionDetail(event: AuditEventLike): string | null {
     typeof metadata.retentionDays === "number"
       ? `${metadata.retentionDays} days`
       : "unknown window";
-  const actor = event.actorId ? `actor ${event.actorId}` : "unknown actor";
+  const actorName = event.actorName || event.actorEmail || event.actorId;
+  const actor = actorName ? `actor ${actorName}` : "unknown actor";
   return `${category} · ${days} · ${actor}`;
 }

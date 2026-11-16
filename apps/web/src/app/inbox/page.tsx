@@ -19,7 +19,13 @@
  * context on the right.
  */
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -32,6 +38,7 @@ import {
   Search,
   Send,
   User,
+  X,
 } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { getSession } from "@/lib/auth/session";
@@ -63,6 +70,14 @@ interface Message {
   authorType: string;
   visibility: string;
   createdAt: string;
+  metadataJson?: { attachments?: MessageAttachment[] } | null;
+}
+
+interface MessageAttachment {
+  name: string;
+  type: string;
+  size: number;
+  dataUrl: string;
 }
 
 interface Conversation {
@@ -100,6 +115,48 @@ const PRIORITY_BADGE: Record<string, string> = {
     "bg-[var(--pill-bg)] text-[var(--accent-cyan)] border-[var(--accent-cyan)]",
   LOW: "bg-[var(--pill-bg)] text-muted-custom border-[var(--card-border)]",
 };
+
+const ATTACHMENT_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "application/pdf",
+  "text/plain",
+];
+const MAX_ATTACHMENTS = 3;
+const MAX_ATTACHMENT_BYTES = 512 * 1024;
+const MAX_ATTACHMENT_TOTAL_BYTES = 1024 * 1024;
+
+function formatBytes(bytes: number): string {
+  return bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function readDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error("The selected file could not be read."));
+    reader.onerror = () =>
+      reject(new Error("The selected file could not be read."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function attachmentsOf(message: Message): MessageAttachment[] {
+  const rows = message.metadataJson?.attachments;
+  return Array.isArray(rows)
+    ? rows.filter(
+        (row): row is MessageAttachment =>
+          typeof row?.name === "string" &&
+          typeof row?.type === "string" &&
+          typeof row?.dataUrl === "string",
+      )
+    : [];
+}
 
 /** Compact "4m ago" label for the queue cards. */
 function timeAgo(iso: string): string {
@@ -145,6 +202,9 @@ export default function InboxPage() {
   const [profileState, setProfileState] = useState<ProfileState>("idle");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [reply, setReply] = useState("");
+  const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [assignees, setAssignees] = useState<Assignee[]>([]);
@@ -365,7 +425,14 @@ export default function InboxPage() {
   const sendReply = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (!scope || !selected || !reply.trim() || sending) return;
+      if (
+        !scope ||
+        !selected ||
+        (!reply.trim() && attachments.length === 0) ||
+        sending
+      ) {
+        return;
+      }
       setSending(true);
       setSendError(null);
       try {
@@ -393,8 +460,11 @@ export default function InboxPage() {
           {
             method: "POST",
             body: JSON.stringify({
-              body: reply.trim(),
+              body:
+                reply.trim() ||
+                `Attached: ${attachments.map((file) => file.name).join(", ")}`,
               visibility: "CUSTOMER_VISIBLE",
+              ...(attachments.length > 0 ? { attachments } : {}),
               idempotencyKey: `inbox-${Date.now()}-${Math.random()
                 .toString(36)
                 .slice(2)}`,
@@ -403,6 +473,7 @@ export default function InboxPage() {
         );
         setMessages((rows) => [...rows, message]);
         setReply("");
+        setAttachments([]);
       } catch (error) {
         setSendError(
           error instanceof Error
@@ -413,8 +484,58 @@ export default function InboxPage() {
         setSending(false);
       }
     },
-    [scope, selected, conversationId, reply, sending],
+    [scope, selected, conversationId, reply, attachments, sending],
   );
+
+  const chooseAttachments = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const selectedFiles = Array.from(files);
+    setSendError(null);
+    if (attachments.length + selectedFiles.length > MAX_ATTACHMENTS) {
+      setSendError(`Attach at most ${MAX_ATTACHMENTS} files per message.`);
+      return;
+    }
+    const invalid = selectedFiles.find(
+      (file) =>
+        !ATTACHMENT_TYPES.includes(file.type) ||
+        file.size === 0 ||
+        file.size > MAX_ATTACHMENT_BYTES,
+    );
+    if (invalid) {
+      setSendError("Use PNG, JPEG, WebP, PDF or text files of 512 KB or less.");
+      return;
+    }
+    const total = [...attachments, ...selectedFiles].reduce(
+      (sum, file) => sum + file.size,
+      0,
+    );
+    if (total > MAX_ATTACHMENT_TOTAL_BYTES) {
+      setSendError("Attachments must total 1 MB or less per message.");
+      return;
+    }
+
+    setAttachmentBusy(true);
+    try {
+      const rows = await Promise.all(
+        selectedFiles.map(async (file) => ({
+          name: file.name.slice(0, 120),
+          type: file.type,
+          size: file.size,
+          dataUrl: await readDataUrl(file),
+        })),
+      );
+      setAttachments((current) => [...current, ...rows]);
+    } catch (error) {
+      setSendError(
+        error instanceof Error
+          ? error.message
+          : "The selected file could not be read.",
+      );
+    } finally {
+      setAttachmentBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const visibleTickets = tickets.filter((ticket) => {
     if (
@@ -942,6 +1063,7 @@ export default function InboxPage() {
                         {messages.map((message) => {
                           const fromCustomer =
                             message.authorType === "CUSTOMER";
+                          const files = attachmentsOf(message);
                           return (
                             <li
                               key={message.id}
@@ -964,6 +1086,35 @@ export default function InboxPage() {
                                 )}
                               </span>
                               <p className="text-heading">{message.body}</p>
+                              {files.length > 0 && (
+                                <div
+                                  className="mt-2 flex flex-wrap gap-2"
+                                  data-testid="inbox-message-attachments"
+                                >
+                                  {files.map((file, index) =>
+                                    file.type.startsWith("image/") ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        key={`${file.name}-${index}`}
+                                        src={file.dataUrl}
+                                        alt={`Attached ${file.name}`}
+                                        data-testid="inbox-attachment-image"
+                                        className="max-h-36 rounded-lg border border-[var(--card-border)] object-cover"
+                                      />
+                                    ) : (
+                                      <a
+                                        key={`${file.name}-${index}`}
+                                        href={file.dataUrl}
+                                        download={file.name}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--card-border)] bg-[var(--pill-bg)] px-2.5 py-1.5 font-mono text-[10px] font-bold text-[var(--accent-cyan)] hover:border-[var(--accent-cyan)]"
+                                      >
+                                        <Paperclip className="h-3 w-3" />
+                                        {file.name} · {formatBytes(file.size)}
+                                      </a>
+                                    ),
+                                  )}
+                                </div>
+                              )}
                             </li>
                           );
                         })}
@@ -985,16 +1136,61 @@ export default function InboxPage() {
                         {sendError}
                       </p>
                     )}
+                    {attachments.length > 0 && (
+                      <div
+                        className="flex flex-wrap gap-2"
+                        data-testid="inbox-attachment-list"
+                      >
+                        {attachments.map((file) => (
+                          <span
+                            key={file.name + file.size}
+                            className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[var(--card-border)] bg-[var(--pill-bg)] px-2.5 py-1.5 font-mono text-[10px] text-heading"
+                          >
+                            <Paperclip className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{file.name}</span>
+                            <span className="shrink-0 text-muted-custom">
+                              {formatBytes(file.size)}
+                            </span>
+                            <button
+                              type="button"
+                              aria-label={`Remove ${file.name}`}
+                              onClick={() =>
+                                setAttachments((current) =>
+                                  current.filter((row) => row !== file),
+                                )
+                              }
+                              className="shrink-0 rounded p-0.5 hover:bg-rose-500/15"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        disabled
-                        title="Attachments are not available in this view"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={attachmentBusy || sending}
+                        title="Attach a file (PNG, JPEG, WebP, PDF or text; 512 KB)"
                         aria-label="Attach a file"
-                        className="p-2.5 rounded-xl glass-panel text-muted-custom opacity-60 cursor-not-allowed shrink-0"
+                        data-testid="inbox-attach"
+                        className="p-2.5 rounded-xl glass-panel text-muted-custom hover:text-[var(--accent-cyan)] disabled:opacity-60 shrink-0"
                       >
                         <Paperclip className="w-4 h-4" />
                       </button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        accept="image/png,image/jpeg,image/webp,application/pdf,text/plain"
+                        aria-label="Choose files to attach"
+                        onChange={(event) =>
+                          void chooseAttachments(event.target.files)
+                        }
+                        data-testid="inbox-attach-input"
+                        className="sr-only"
+                      />
                       <input
                         type="text"
                         value={reply}
@@ -1016,7 +1212,9 @@ export default function InboxPage() {
                       <button
                         type="submit"
                         disabled={
-                          !reply.trim() || sending || timeline === "loading"
+                          (!reply.trim() && attachments.length === 0) ||
+                          sending ||
+                          timeline === "loading"
                         }
                         data-testid="inbox-send"
                         className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shrink-0 flex items-center gap-1.5 hover:bg-blue-700 transition-colors disabled:opacity-50"

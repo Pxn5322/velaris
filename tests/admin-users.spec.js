@@ -18,6 +18,8 @@ import { test, expect } from "@playwright/test";
  */
 
 const SESSION_KEY = "velaris.auth.session.v1";
+const AVATAR_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
 const session = {
   accessToken: "e2e-access-token",
@@ -61,6 +63,7 @@ const members = [
     userId: "user-2",
     email: "agent@acme.test",
     displayName: "Acme Agent",
+    avatarDataUrl: AVATAR_DATA_URL,
     status: "ACTIVE",
     roles: ["R-agent"],
   },
@@ -101,8 +104,12 @@ async function mobileHeaderLayout(page) {
   return page.evaluate(() => {
     const logo = document.querySelector('header a[href="/"]');
     const menu = document.querySelector('[aria-label="Toggle Navigation"]');
-    const identity = document.querySelector('[data-testid="nav-drawer-identity"]');
-    const signOut = document.querySelector('[data-testid="nav-sign-out-drawer"]');
+    const identity = document.querySelector(
+      '[data-testid="nav-drawer-identity"]',
+    );
+    const signOut = document.querySelector(
+      '[data-testid="nav-sign-out-drawer"]',
+    );
     if (!logo || !menu || !identity || !signOut) {
       throw new Error("The mobile header or drawer controls are not rendered");
     }
@@ -211,6 +218,14 @@ test.describe("tenant administrator user directory (F-03)", () => {
     // The old hardcoded directory mixed tenants. None of those rows remain.
     await expect(page.getByText("other@globex.test")).toHaveCount(0);
     await expect(page.getByText("marcus@globex.io")).toHaveCount(0);
+    await expect(page.getByTestId("tenant-user-avatar-image")).toHaveCount(1);
+    await expect(page.getByTestId("tenant-user-avatar-image")).toHaveAttribute(
+      "src",
+      AVATAR_DATA_URL,
+    );
+    await expect(page.getByTestId("tenant-user-avatar-initials")).toHaveCount(
+      1,
+    );
   });
 
   test("invites a new user into the tenant with the selected role", async ({
@@ -355,10 +370,10 @@ test.describe("tenant administrator user directory (F-03)", () => {
     await expect
       .poll(() => signOutAuthorization)
       .toBe("Bearer e2e-access-token");
-    await expect(page).toHaveURL(/\?signin=1/);
+    await expect(page).toHaveURL(/\/$/);
     await expect(
       page.getByRole("heading", { name: "Sign In to VELARIS" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     const stored = await page.evaluate(
       (key) => window.localStorage.getItem(key),
       SESSION_KEY,

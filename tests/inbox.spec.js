@@ -262,7 +262,11 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/tickets/ticket-1*", (route) => {
       assignmentBody = route.request().postDataJSON();
       return route.fulfill(
-        json({ ...tickets[0], assigneeMembershipId: "membership-2", version: 1 }),
+        json({
+          ...tickets[0],
+          assigneeMembershipId: "membership-2",
+          version: 1,
+        }),
       );
     });
 
@@ -326,6 +330,10 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
 
   test("sends a customer-visible reply from the composer", async ({ page }) => {
     let posted = null;
+    const screenshot = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
     await seedSession(page);
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
@@ -343,6 +351,9 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
             body: posted.body,
             authorType: "AGENT",
             visibility: posted.visibility,
+            metadataJson: posted.attachments
+              ? { attachments: posted.attachments }
+              : null,
             createdAt: "2026-10-20T10:07:00Z",
           }),
         );
@@ -355,6 +366,14 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await expect(page.getByTestId("inbox-timeline")).toBeVisible();
 
     await page.getByTestId("inbox-reply").fill("We are on it now.");
+    await page.getByTestId("inbox-attach-input").setInputFiles({
+      name: "screen.png",
+      mimeType: "image/png",
+      buffer: screenshot,
+    });
+    await expect(page.getByTestId("inbox-attachment-list")).toContainText(
+      "screen.png",
+    );
     await page.getByTestId("inbox-send").click();
 
     await expect(page.getByTestId("inbox-timeline")).toContainText(
@@ -364,6 +383,17 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
       body: "We are on it now.",
       visibility: "CUSTOMER_VISIBLE",
     });
+    expect(posted.attachments).toEqual([
+      expect.objectContaining({
+        name: "screen.png",
+        type: "image/png",
+        size: screenshot.length,
+      }),
+    ]);
+    await expect(page.getByTestId("inbox-attachment-image")).toHaveAttribute(
+      "src",
+      /^data:image\/png;base64,/,
+    );
   });
 
   test("offers the composer when a ticket has no conversation yet", async ({

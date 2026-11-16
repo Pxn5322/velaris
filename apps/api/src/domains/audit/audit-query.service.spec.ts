@@ -46,8 +46,31 @@ const TRACE_ROW = {
 function buildService(rows: { events?: unknown[]; traces?: unknown[] }) {
   const auditEvent = { findMany: vi.fn().mockResolvedValue(rows.events ?? []) };
   const aiTrace = { findMany: vi.fn().mockResolvedValue(rows.traces ?? []) };
-  const prisma = { auditEvent, aiTrace } as unknown as PrismaService;
-  return { service: new AuditQueryService(prisma), auditEvent, aiTrace };
+  const empty = () => vi.fn().mockResolvedValue([]);
+  const user = { findMany: empty() };
+  const tenantMembership = { findMany: empty() };
+  const prisma = {
+    auditEvent,
+    aiTrace,
+    user,
+    tenantMembership,
+    tenant: { findMany: empty() },
+    role: { findMany: empty() },
+    ticket: { findMany: empty() },
+    conversation: { findMany: empty() },
+    message: { findMany: empty() },
+    aiAgent: { findMany: empty() },
+    aiModelProvider: { findMany: empty() },
+    integrationEndpoint: { findMany: empty() },
+    knowledgeSource: { findMany: empty() },
+  } as unknown as PrismaService;
+  return {
+    service: new AuditQueryService(prisma),
+    auditEvent,
+    aiTrace,
+    user,
+    tenantMembership,
+  };
 }
 
 describe('parseAuditLimit', () => {
@@ -105,6 +128,68 @@ describe('AuditQueryService', () => {
         where: { tenantId: 'tenant-a', action: 'ticket.updated' },
       }),
     );
+  });
+
+  it('resolves actor names, tenant role names and a resource label', async () => {
+    const actorId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const membershipId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const { service, user, tenantMembership } = buildService({
+      events: [
+        {
+          ...EVENT_ROW,
+          actorId,
+          resourceType: 'membership',
+          resourceId: membershipId,
+        },
+      ],
+    });
+    user.findMany.mockResolvedValue([
+      {
+        externalSubject: actorId,
+        displayName: 'Ada Lovelace',
+        emailNormalized: 'ada@acme.test',
+        memberships: [
+          {
+            tenantId: 'tenant-a',
+            roles: [
+              { role: { name: 'Tenant Administrator' } },
+              { role: { name: 'Support Agent' } },
+            ],
+          },
+          {
+            tenantId: 'tenant-b',
+            roles: [{ role: { name: 'Other Tenant Role' } }],
+          },
+        ],
+      },
+    ]);
+    tenantMembership.findMany.mockResolvedValue([
+      {
+        id: membershipId,
+        user: {
+          displayName: 'Grace Hopper',
+          emailNormalized: 'grace@acme.test',
+        },
+      },
+    ]);
+
+    const page = await service.listEvents('tenant-a', { limit: 10 });
+
+    expect(user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          provider: 'supabase',
+          externalSubject: { in: [actorId] },
+        },
+      }),
+    );
+    expect(page.items[0]).toMatchObject({
+      actorId,
+      actorName: 'Ada Lovelace',
+      actorEmail: 'ada@acme.test',
+      actorRoles: ['Tenant Administrator', 'Support Agent'],
+      resourceLabel: 'Grace Hopper',
+    });
   });
 
   it('reports hasMore when the page is full', async () => {

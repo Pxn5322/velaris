@@ -36,6 +36,7 @@ interface TenantMember {
   userId: string;
   email: string;
   displayName: string;
+  avatarDataUrl?: string | null;
   status: string;
   roles: string[];
   /** Present on the platform-wide directory. */
@@ -685,12 +686,24 @@ export function TenantUsersPanel({
                       <td className="block p-0 sm:table-cell sm:p-3">
                         <span className="flex items-start justify-between gap-3 sm:items-center">
                           <span className="flex min-w-0 items-center gap-2.5">
-                            <span
-                              className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 text-white text-[10px] font-mono font-bold flex items-center justify-center shrink-0"
-                              aria-hidden="true"
-                            >
-                              {initialsFor(member)}
-                            </span>
+                            {member.avatarDataUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={member.avatarDataUrl}
+                                alt=""
+                                data-testid="tenant-user-avatar-image"
+                                referrerPolicy="no-referrer"
+                                className="w-8 h-8 rounded-lg object-cover ring-1 ring-blue-500/50 shrink-0"
+                              />
+                            ) : (
+                              <span
+                                data-testid="tenant-user-avatar-initials"
+                                className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 text-white text-[10px] font-mono font-bold flex items-center justify-center shrink-0"
+                                aria-hidden="true"
+                              >
+                                {initialsFor(member)}
+                              </span>
+                            )}
                             <span className="min-w-0">
                               <span className="block font-semibold text-heading truncate">
                                 {member.displayName || member.email}

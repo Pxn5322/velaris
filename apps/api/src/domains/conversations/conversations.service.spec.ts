@@ -329,6 +329,67 @@ describe('ConversationsService (T2.03)', () => {
     expect(timeline).toHaveLength(1);
   });
 
+  it('stores a validated attachment with the message metadata', async () => {
+    prisma._convStore.push(conversationRow('conv-1'));
+    const dataUrl =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    const size = Buffer.from(dataUrl.split(',')[1], 'base64').length;
+
+    const message = await service.sendMessage(TENANT_A, 'conv-1', {
+      body: 'Screenshot from the customer',
+      authorType: 'AGENT',
+      attachments: [{ name: 'screen.png', type: 'image/png', size, dataUrl }],
+    });
+
+    expect(message.metadataJson).toEqual({
+      attachments: [{ name: 'screen.png', type: 'image/png', size, dataUrl }],
+    });
+  });
+
+  it('accepts an attachment-only message and rejects unsafe files', async () => {
+    prisma._convStore.push(conversationRow('conv-1'));
+    const dataUrl = 'data:text/plain;base64,aGVsbG8=';
+
+    const message = await service.sendMessage(TENANT_A, 'conv-1', {
+      body: '   ',
+      authorType: 'AGENT',
+      attachments: [{ name: 'note.txt', type: 'text/plain', size: 5, dataUrl }],
+    });
+    expect(message.body).toBe('Attached: note.txt');
+
+    await expect(
+      service.sendMessage(TENANT_A, 'conv-1', {
+        body: 'unsafe',
+        authorType: 'AGENT',
+        attachments: [
+          {
+            name: 'page.html',
+            type: 'text/html',
+            size: 5,
+            dataUrl: 'data:text/html;base64,PGgxPg==',
+          },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    await expect(
+      service.sendMessage(TENANT_A, 'conv-1', {
+        body: 'too large',
+        authorType: 'AGENT',
+        attachments: [
+          {
+            name: 'big.png',
+            type: 'image/png',
+            size: 1,
+            dataUrl:
+              'data:image/png;base64,' +
+              Buffer.alloc(512 * 1024 + 1).toString('base64'),
+          },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('rejects a message with an empty body with 400', async () => {
     prisma._convStore.push(conversationRow('conv-1'));
     await expect(

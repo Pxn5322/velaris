@@ -197,6 +197,7 @@ test.describe("retention settings (T6.06, AC-F14-2)", () => {
             {
               id: "event-retention-2",
               actorId: "user-1",
+              actorName: "Maya Chen",
               action: "retention.policy_changed",
               metadata: { category: "MEMORY", retentionDays: 7 },
               createdAt: "2026-11-05T10:00:00.000Z",
@@ -204,6 +205,7 @@ test.describe("retention settings (T6.06, AC-F14-2)", () => {
             {
               id: "event-retention-1",
               actorId: "user-1",
+              actorName: "Maya Chen",
               action: "retention.policy_changed",
               metadata: { category: "KNOWLEDGE", retentionDays: 30 },
               createdAt: "2026-11-04T09:00:00.000Z",
@@ -221,11 +223,11 @@ test.describe("retention settings (T6.06, AC-F14-2)", () => {
     const changes = history.getByTestId("retention-change");
     await expect(changes).toHaveCount(2);
     await expect(changes.first()).toContainText(
-      "MEMORY · 7 days · actor user-1",
+      "MEMORY · 7 days · actor Maya Chen",
     );
     await expect(changes.first()).toContainText("2026-11-05 10:00:00 UTC");
     await expect(changes.nth(1)).toContainText(
-      "KNOWLEDGE · 30 days · actor user-1",
+      "KNOWLEDGE · 30 days · actor Maya Chen",
     );
     await expect(
       history.getByRole("link", { name: "View full audit trail" }),
@@ -236,7 +238,9 @@ test.describe("retention settings (T6.06, AC-F14-2)", () => {
     expect(auditQuery?.limit).toBe("10");
   });
 
-  test("hides the change history when audit.read is denied", async ({ page }) => {
+  test("hides the change history when audit.read is denied", async ({
+    page,
+  }) => {
     await seedSession(page);
     await routeSession(page);
     await page.route("**/settings/retention*", (route) =>

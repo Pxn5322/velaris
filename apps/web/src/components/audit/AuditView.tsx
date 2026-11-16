@@ -37,9 +37,13 @@ interface AuthSessionResponse {
 interface AuditEventRow {
   id: string;
   actorId: string | null;
+  actorName?: string | null;
+  actorEmail?: string | null;
+  actorRoles?: string[];
   action: string;
   resourceType: string;
   resourceId: string | null;
+  resourceLabel?: string | null;
   requestId: string | null;
   metadata?: Record<string, unknown> | null;
   createdAt: string;
@@ -290,48 +294,74 @@ export function AuditView() {
                 </p>
               ) : (
                 <div data-testid="audit-events-list" className="space-y-2">
-                  {events.items.map((event) => (
-                    <div
-                      key={event.id}
-                      data-testid="audit-event"
-                      className="p-3 rounded-xl border border-[var(--card-border)] space-y-1"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span
-                          className="text-xs font-mono font-bold"
-                          style={{ color: "var(--accent-cyan)" }}
-                        >
-                          {event.action}
-                        </span>
-                        <span
+                  {events.items.map((event) => {
+                    const actor = event.actorName ?? event.actorEmail;
+                    const resource = event.resourceLabel ?? event.resourceId;
+                    const actorEmail =
+                      event.actorName && event.actorEmail
+                        ? event.actorEmail
+                        : null;
+                    return (
+                      <div
+                        key={event.id}
+                        data-testid="audit-event"
+                        className="p-3 rounded-xl border border-[var(--card-border)] space-y-1"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span
+                            className="text-xs font-mono font-bold"
+                            style={{ color: "var(--accent-cyan)" }}
+                          >
+                            {event.action}
+                          </span>
+                          <span
+                            className="text-[10px] font-mono"
+                            style={{ color: "var(--text-muted)" }}
+                          >
+                            {shortInstant(event.createdAt)}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-heading">
+                          {event.resourceType}
+                          {resource ? ` · ${resource}` : ""}
+                          {` · actor ${actor ?? event.actorId ?? "none recorded"}`}
+                        </p>
+                        {actorEmail && (
+                          <p
+                            data-testid="audit-event-actor-email"
+                            className="text-[10px] font-mono"
+                            style={{ color: "var(--text-muted)" }}
+                          >
+                            {actorEmail}
+                          </p>
+                        )}
+                        {(event.actorRoles?.length ?? 0) > 0 && (
+                          <p
+                            data-testid="audit-event-roles"
+                            className="text-[10px] font-mono"
+                            style={{ color: "var(--text-muted)" }}
+                          >
+                            Role: {event.actorRoles?.join(", ")}
+                          </p>
+                        )}
+                        {retentionDetail(event) && (
+                          <p
+                            data-testid="audit-event-retention"
+                            className="text-[11px] text-heading"
+                          >
+                            Retention window: {retentionDetail(event)}
+                          </p>
+                        )}
+                        <p
+                          data-testid="audit-event-request"
                           className="text-[10px] font-mono"
                           style={{ color: "var(--text-muted)" }}
                         >
-                          {shortInstant(event.createdAt)}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-heading">
-                        {event.resourceType}
-                        {event.resourceId ? ` · ${event.resourceId}` : ""}
-                        {event.actorId ? ` · actor ${event.actorId}` : ""}
-                      </p>
-                      {retentionDetail(event) && (
-                        <p
-                          data-testid="audit-event-retention"
-                          className="text-[11px] text-heading"
-                        >
-                          Retention window: {retentionDetail(event)}
+                          request {event.requestId ?? "none recorded"}
                         </p>
-                      )}
-                      <p
-                        data-testid="audit-event-request"
-                        className="text-[10px] font-mono"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        request {event.requestId ?? "none recorded"}
-                      </p>
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {events?.hasMore && (
