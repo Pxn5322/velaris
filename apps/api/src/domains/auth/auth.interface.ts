@@ -34,4 +34,10 @@ export interface AuthSessionResponse {
    * renders signed-out/denied states from it.
    */
   role: CanonicalRole | null;
+  /**
+   * True when the account must change its password before normal use. The
+   * session answer still returns the identity so the client can open the
+   * reset form, but tenantContext and role stay null while the flag is set.
+   */
+  passwordResetRequired: boolean;
 }

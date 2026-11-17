@@ -95,6 +95,10 @@ model User {
   displayName     String     @map("display_name")
   /** Small browser-compressed image; empty string records removal. */
   avatarDataUrl   String?    @map("avatar_data_url") @db.Text
+  /** T6.08: normal routes are refused until the password is changed. */
+  passwordResetRequired Boolean @default(false) @map("password_reset_required")
+  /** T6.08: access tokens issued at or before this instant are refused. */
+  tokenInvalidBefore DateTime? @map("token_invalid_before")
   status          UserStatus @default(ACTIVE)
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
@@ -197,6 +201,28 @@ model RevokedAccessToken {
   @@index([sessionId])
   @@index([expiresAt])
   @@map("revoked_access_tokens")
+}
+
+/// E-step-up-grant: one short-lived, single-use grant for a sensitive action
+/// (T6.08, D-58; INV-02). The row stores only a SHA-256 digest of the bearer
+/// value. The grant is bound to the identity subject, Supabase session, tenant
+/// and action, and is consumed by the first successful verification.
+model StepUpGrant {
+  id        String    @id @default(uuid()) @db.Uuid
+  subject   String    @db.VarChar(128)
+  sessionId String    @map("session_id") @db.VarChar(64)
+  tenantId  String?   @map("tenant_id") @db.Uuid
+  action    String    @db.VarChar(64)
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([subject, action, expiresAt])
+  @@index([sessionId])
+  @@index([expiresAt])
+  @@map("step_up_grants")
 }
 
 // ---- Phase 2: core support vertical slice (T2.01) ----

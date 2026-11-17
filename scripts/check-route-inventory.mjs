@@ -72,6 +72,24 @@ const AUTHENTICATED_WITHOUT_PERMISSION = [
     reason:
       "Self-service profile edit: the caller writes only its own name and avatar",
   },
+  {
+    controller: "domains/auth/auth-security.controller.ts",
+    handler: "stepUp",
+    reason:
+      "Self-service re-authentication: the caller proves its own password and receives a grant bound to its own session",
+  },
+  {
+    controller: "domains/auth/auth-security.controller.ts",
+    handler: "changePassword",
+    reason:
+      "Self-service password change: the caller changes only its own password and must prove the current one",
+  },
+  {
+    controller: "domains/auth/auth-security.controller.ts",
+    handler: "revokeSessions",
+    reason:
+      "Self-service session revocation: the caller revokes only its own sessions and must present a step-up grant",
+  },
 ];
 
 function listControllerFiles(directory) {

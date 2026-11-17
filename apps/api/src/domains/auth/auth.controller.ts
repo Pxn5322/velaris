@@ -29,6 +29,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuditService } from '../audit/audit.service.js';
+import { AllowPasswordResetRequired } from './allow-password-reset-required.decorator.js';
 import type {
   AuthSessionResponse,
   AuthenticatedIdentity,
@@ -49,6 +50,7 @@ import { ProfileService } from './profile.service.js';
 type SessionRequest = Request & {
   user?: AuthenticatedIdentity;
   accessToken?: string;
+  passwordResetRequired?: boolean;
 };
 
 @Controller('auth')
@@ -87,15 +89,20 @@ export class AuthController {
   }
 
   @Get('session')
+  @AllowPasswordResetRequired()
   @UseGuards(SupabaseAuthGuard)
   async session(@Req() request: SessionRequest): Promise<AuthSessionResponse> {
     // The guard set user before the controller runs; the cast states that.
     const identity = request.user as AuthenticatedIdentity;
-    const tenantContext = await this.tenants.resolveContext(
-      identity.provider,
-      identity.subject,
-    );
-    const role = await this.resolveRole(identity, tenantContext?.tenants ?? []);
+    const passwordResetRequired = request.passwordResetRequired === true;
+    // A flagged account can read its identity and reset state, but not the
+    // workspace context or role that normal navigation needs.
+    const tenantContext = passwordResetRequired
+      ? null
+      : await this.tenants.resolveContext(identity.provider, identity.subject);
+    const role = passwordResetRequired
+      ? null
+      : await this.resolveRole(identity, tenantContext?.tenants ?? []);
     const profile = await this.profiles.findForIdentity(identity);
     return {
       identity: {
@@ -107,6 +114,7 @@ export class AuthController {
       },
       tenantContext,
       role,
+      passwordResetRequired,
     };
   }
 
@@ -139,6 +147,7 @@ export class AuthController {
    */
   @Post('signout')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @AllowPasswordResetRequired()
   @UseGuards(SupabaseAuthGuard)
   async signout(@Req() request: SessionRequest): Promise<void> {
     const token = request.accessToken;
