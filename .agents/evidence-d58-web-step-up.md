@@ -16,7 +16,7 @@ Status: pass for the live browser dialog, first-time TOTP enrollment and the den
 
 | Check | Observed |
 | --- | --- |
-| Synthetic signup | 201; tenant `65facc83-bd40-4ac9-ace3-16f018c18cf5` |
+| Synthetic signup | 201; tenant `1d87e537-2d94-47d5-9dc1-f4223e28057a` |
 | Browser session | 200; `R-tenant-admin`; role list 200 |
 | First role write, before TOTP | 403 `MFA_REQUIRED` |
 | Step-up dialog | opened in the Roles & RBAC panel |
@@ -24,21 +24,22 @@ Status: pass for the live browser dialog, first-time TOTP enrollment and the den
 | Step-up before TOTP | 403 `MFA_REQUIRED` |
 | Step-up after TOTP | 200; grant issued |
 | Browser session token after verification | `aal` `aal2`; `session_id` present |
-| Granted retry of the same role write | 201; role `R-web-mfa-mwkkazzq-0656c8` |
-| Success notice | `Web MFA mwkkazzq-0656c8 was created.` |
+| Granted retry of the same role write | 201; role `R-web-mfa-mwkkpc8r-959d2a` |
+| Success notice | `Web MFA mwkkpc8r-959d2a was created.` |
 | New role card | visible |
 
 The first denial is `MFA_REQUIRED`, not `STEP_UP_REQUIRED`, because the initial browser token is `aal1`. The API's `STEP_UP_REQUIRED` path after `aal2` is covered by `.agents/evidence-d58-password-mfa-tests.md`.
 
 ## Cleanup
 
-The verifier ran `scripts/cleanup-load-tenants.mjs --delete --email <synthetic email>` after the browser closed. It reported `cleanup: "removed"`. The follow-up dry run reported zero synthetic tenants and zero synthetic accounts.
+The verifier ran `scripts/cleanup-load-tenants.mjs --delete --email <synthetic email>` after the browser closed. It then ran the targeted dry run and required `Synthetic tenants: 0` and `Synthetic auth accounts: 0` before it reported `cleanup: "removed"`. A failed delete or a non-zero check now fails the run.
 
 ## Artifacts
 
 - `.agents/evidence-d58-web-step-up.json` contains the status-only machine record.
-- `.agents/verify-d58-web-step-up.mjs` is the browser verifier.
-- The web build used only local API overrides. No application source was changed for this run.
+- `.agents/verify-d58-web-step-up.mjs` is the browser verifier. It asserts the denied `403`, granted `201`, `aal2`, session and role-card results.
+- `tests/roles.spec.js` covers the tenant-load gate: the create control stays disabled while the tenant request is delayed and enables after it resolves.
+- The web build used only local API overrides.
 
 ## Limits
 

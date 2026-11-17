@@ -69,6 +69,39 @@ function json(body, status = 200) {
 }
 
 test.describe("Roles & RBAC", () => {
+  test("keeps role creation disabled until the tenant loads", async ({
+    page,
+  }) => {
+    let sessionCalls = 0;
+
+    await page.addInitScript(
+      ([key, value]) => window.localStorage.setItem(key, value),
+      [SESSION_KEY, JSON.stringify(session)],
+    );
+    await page.route("**/auth/session*", async (route) => {
+      sessionCalls += 1;
+      if (sessionCalls > 1) {
+        await new Promise((resolve) => setTimeout(resolve, 3_000));
+      }
+      await route.fulfill(json(sessionResponse));
+    });
+    await page.route(/\/tenants\/tenant-a\/roles(?:\/.*)?$/, (route) =>
+      route.fulfill(json(roles)),
+    );
+
+    await page.goto("/admin");
+    await page.getByRole("button", { name: "Roles & RBAC" }).click();
+
+    const createButton = page.getByTestId("role-create-open");
+    await expect(createButton).toBeVisible();
+    await expect(createButton).toBeDisabled();
+    await expect(page.getByTestId("role-create-form")).toHaveCount(0);
+
+    await expect(createButton).toBeEnabled({ timeout: 8_000 });
+    await createButton.click();
+    await expect(page.getByTestId("role-create-form")).toBeVisible();
+  });
+
   test("creates, edits and deletes a custom role", async ({ page }) => {
     const calls = [];
     let current = [...roles];
@@ -84,9 +117,7 @@ test.describe("Roles & RBAC", () => {
       const request = route.request();
       const method = request.method();
       const body =
-        method === "GET" || method === "DELETE"
-          ? null
-          : request.postDataJSON();
+        method === "GET" || method === "DELETE" ? null : request.postDataJSON();
       calls.push({ method, body });
 
       if (method === "GET") return route.fulfill(json(current));
@@ -151,9 +182,9 @@ test.describe("Roles & RBAC", () => {
 
     await createdCard.getByTestId("role-edit").click();
     await createdCard.getByTestId("role-edit-name").fill("Escalation lead");
-    await createdCard.getByTestId("role-edit-base").selectOption(
-      "R-tenant-admin",
-    );
+    await createdCard
+      .getByTestId("role-edit-base")
+      .selectOption("R-tenant-admin");
     await createdCard.getByTestId("role-save").click();
 
     await expect(createdCard).toContainText("Escalation lead");

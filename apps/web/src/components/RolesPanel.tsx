@@ -234,12 +234,16 @@ export function RolesPanel() {
           <button
             type="button"
             data-testid="role-create-open"
+            disabled={!tenantId}
             onClick={() => {
               setCreating((open) => !open);
               setEditingId(null);
               setError(null);
             }}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-blue-600 bg-blue-600/10 px-4 py-2 text-xs font-mono font-bold text-cyan-300 hover:bg-blue-600/20"
+            title={
+              tenantId ? "Create a custom role" : "Roles are still loading"
+            }
+            className="inline-flex items-center gap-1.5 rounded-xl border border-blue-600 bg-blue-600/10 px-4 py-2 text-xs font-mono font-bold text-cyan-300 hover:bg-blue-600/20 disabled:opacity-60"
           >
             <Plus className="h-3.5 w-3.5" /> Create New Custom Role
           </button>
@@ -314,8 +318,9 @@ export function RolesPanel() {
           <div className="flex items-end gap-2">
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || !tenantId}
               data-testid="role-create-submit"
+              title={tenantId ? undefined : "Roles are still loading"}
               className="rounded-xl bg-gradient-to-r from-brand-purple to-brand-cyan px-4 py-2 font-bold text-white disabled:opacity-60"
             >
               {saving ? "Creating…" : "Create role"}

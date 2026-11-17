@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-11-17T10:41:13.910Z",
+  "generatedAt": "2026-11-17T10:52:22.971Z",
   "apiOrigin": "http://localhost:3000",
   "webOrigin": "http://localhost:3001",
   "supabaseHost": "lygekvhwmhbonsdeiaot.supabase.co",
-  "syntheticEmail": "smokecheck-mfa-web-mwkkazzq-0656c8@velaris.test",
-  "roleCode": "R-web-mfa-mwkkazzq-0656c8",
+  "syntheticEmail": "smokecheck-mfa-web-mwkkpc8r-959d2a@velaris.test",
+  "roleCode": "R-web-mfa-mwkkpc8r-959d2a",
   "network": [
     {
       "method": "GET",
@@ -32,13 +32,13 @@
     },
     {
       "method": "GET",
-      "path": "/tenants/65facc83-bd40-4ac9-ace3-16f018c18cf5/roles",
+      "path": "/tenants/1d87e537-2d94-47d5-9dc1-f4223e28057a/roles",
       "status": 200,
       "code": null
     },
     {
       "method": "POST",
-      "path": "/tenants/65facc83-bd40-4ac9-ace3-16f018c18cf5/roles",
+      "path": "/tenants/1d87e537-2d94-47d5-9dc1-f4223e28057a/roles",
       "status": 403,
       "code": "MFA_REQUIRED"
     },
@@ -56,32 +56,32 @@
     },
     {
       "method": "POST",
-      "path": "/tenants/65facc83-bd40-4ac9-ace3-16f018c18cf5/roles",
+      "path": "/tenants/1d87e537-2d94-47d5-9dc1-f4223e28057a/roles",
       "status": 201,
-      "code": "R-web-mfa-mwkkazzq-0656c8"
+      "code": "R-web-mfa-mwkkpc8r-959d2a"
     }
   ],
   "signupStatus": 201,
-  "tenantId": "65facc83-bd40-4ac9-ace3-16f018c18cf5",
+  "tenantId": "1d87e537-2d94-47d5-9dc1-f4223e28057a",
   "passwordGrantStatus": 200,
-  "dialogOpened": true,
-  "enrollmentFormShown": true,
-  "notice": "Web MFA mwkkazzq-0656c8 was created.",
-  "roleCardVisible": true,
-  "aal": "aal2",
-  "sessionIdPresent": true,
   "deniedRoleWrite": {
     "method": "POST",
-    "path": "/tenants/65facc83-bd40-4ac9-ace3-16f018c18cf5/roles",
+    "path": "/tenants/1d87e537-2d94-47d5-9dc1-f4223e28057a/roles",
     "status": 403,
     "code": "MFA_REQUIRED"
   },
+  "dialogOpened": true,
+  "enrollmentFormShown": true,
   "grantedRoleWrite": {
     "method": "POST",
-    "path": "/tenants/65facc83-bd40-4ac9-ace3-16f018c18cf5/roles",
+    "path": "/tenants/1d87e537-2d94-47d5-9dc1-f4223e28057a/roles",
     "status": 201,
-    "code": "R-web-mfa-mwkkazzq-0656c8"
+    "code": "R-web-mfa-mwkkpc8r-959d2a"
   },
+  "notice": "Web MFA mwkkpc8r-959d2a was created.",
+  "roleCardVisible": true,
+  "aal": "aal2",
+  "sessionIdPresent": true,
   "stepUpCalls": [
     {
       "method": "POST",
