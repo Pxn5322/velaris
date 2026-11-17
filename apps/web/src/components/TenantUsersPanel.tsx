@@ -15,6 +15,8 @@ import {
   X,
 } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api/client";
+import { useStepUp } from "@/context/StepUpContext";
+import { STEP_UP_ACTIONS } from "@/lib/auth/step-up";
 
 interface TenantOption {
   tenantId: string;
@@ -74,8 +76,14 @@ function describeError(error: unknown): string {
       return "Your session has expired. Sign in again.";
     }
     if (error.status === 403) {
-      return "You do not have permission to manage users in this tenant.";
+      return (
+        error.message ||
+        "You do not have permission to manage users in this tenant."
+      );
     }
+    return error.message;
+  }
+  if (error instanceof Error) {
     return error.message;
   }
   return "The user directory could not be loaded.";
@@ -118,6 +126,7 @@ export function TenantUsersPanel({
 }: {
   platformWide?: boolean;
 }) {
+  const { runWithStepUp } = useStepUp();
   const [tenants, setTenants] = useState<TenantOption[]>([]);
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [members, setMembers] = useState<TenantMember[]>([]);
@@ -240,16 +249,19 @@ export function TenantUsersPanel({
     setError(null);
     setNotice(null);
     try {
-      const result = await apiFetch<InviteResult>(
-        `/tenants/${tenantId}/users`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            email,
-            roleCode: inviteRole,
-            invite: true,
+      const result = await runWithStepUp(
+        STEP_UP_ACTIONS.MEMBERSHIP_CHANGE,
+        tenantId,
+        (stepUpToken) =>
+          apiFetch<InviteResult>(`/tenants/${tenantId}/users`, {
+            method: "POST",
+            headers: { "x-step-up-token": stepUpToken },
+            body: JSON.stringify({
+              email,
+              roleCode: inviteRole,
+              invite: true,
+            }),
           }),
-        },
       );
       setNotice(
         result.invited
@@ -272,12 +284,18 @@ export function TenantUsersPanel({
     setError(null);
     setNotice(null);
     try {
-      await apiFetch(
-        `/tenants/${scopeTenantId}/memberships/${member.membershipId}/roles`,
-        {
-          method: "PUT",
-          body: JSON.stringify({ roleCode: editingRole }),
-        },
+      await runWithStepUp(
+        STEP_UP_ACTIONS.ROLE_CHANGE,
+        scopeTenantId,
+        (stepUpToken) =>
+          apiFetch(
+            `/tenants/${scopeTenantId}/memberships/${member.membershipId}/roles`,
+            {
+              method: "PUT",
+              headers: { "x-step-up-token": stepUpToken },
+              body: JSON.stringify({ roleCode: editingRole }),
+            },
+          ),
       );
       setNotice(`Role updated for ${member.email}.`);
       setEditingId(null);
@@ -297,12 +315,18 @@ export function TenantUsersPanel({
     setError(null);
     setNotice(null);
     try {
-      await apiFetch(
-        `/tenants/${scopeTenantId}/memberships/${member.membershipId}/status`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ status: nextStatus }),
-        },
+      await runWithStepUp(
+        STEP_UP_ACTIONS.MEMBERSHIP_CHANGE,
+        scopeTenantId,
+        (stepUpToken) =>
+          apiFetch(
+            `/tenants/${scopeTenantId}/memberships/${member.membershipId}/status`,
+            {
+              method: "PATCH",
+              headers: { "x-step-up-token": stepUpToken },
+              body: JSON.stringify({ status: nextStatus }),
+            },
+          ),
       );
       setNotice(
         `${member.email} is now ${nextStatus === "ACTIVE" ? "active" : "suspended"}.`,
@@ -326,9 +350,17 @@ export function TenantUsersPanel({
     setError(null);
     setNotice(null);
     try {
-      await apiFetch(
-        `/tenants/${scopeTenantId}/memberships/${member.membershipId}`,
-        { method: "DELETE" },
+      await runWithStepUp(
+        STEP_UP_ACTIONS.MEMBERSHIP_CHANGE,
+        scopeTenantId,
+        (stepUpToken) =>
+          apiFetch(
+            `/tenants/${scopeTenantId}/memberships/${member.membershipId}`,
+            {
+              method: "DELETE",
+              headers: { "x-step-up-token": stepUpToken },
+            },
+          ),
       );
       setNotice(`${member.email} was removed from this tenant.`);
       refresh();

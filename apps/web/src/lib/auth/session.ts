@@ -21,6 +21,17 @@ const SUPABASE_PUBLISHABLE_KEY =
 
 const STORAGE_KEY = "velaris.auth.session.v1";
 
+/** Public Supabase Auth settings, or null when the build has no provider. */
+export function getAuthProviderConfig(): {
+  url: string;
+  key: string;
+} | null {
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+    return null;
+  }
+  return { url: SUPABASE_URL, key: SUPABASE_PUBLISHABLE_KEY };
+}
+
 export interface AuthSession {
   accessToken: string;
   refreshToken: string;
@@ -66,6 +77,35 @@ export function storeSession(session: AuthSession): void {
   if (typeof window !== "undefined") {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   }
+}
+
+/**
+ * Replace the stored tokens after a Supabase MFA verification. The provider
+ * returns an access token with a higher assurance level and a new refresh
+ * token; keeping the old pair would lose the `aal2` claim on the next call.
+ */
+export function updateSessionTokens(tokens: {
+  access_token: string;
+  refresh_token: string;
+  expires_in?: number;
+  expires_at?: number;
+  user?: { email?: string };
+}): void {
+  const current = getSession();
+  if (!current) {
+    return;
+  }
+  storeSession({
+    ...current,
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    expiresAt:
+      tokens.expires_at ??
+      (tokens.expires_in
+        ? Math.floor(Date.now() / 1_000) + tokens.expires_in
+        : current.expiresAt),
+    email: tokens.user?.email ?? current.email,
+  });
 }
 
 /**

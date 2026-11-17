@@ -22,6 +22,11 @@ import { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
 export const STEP_UP_ACTIONS = {
   SESSION_REVOKE: 'session.revoke',
   ROLE_CHANGE: 'role.change',
+  MEMBERSHIP_CHANGE: 'membership.change',
+  TENANT_CHANGE: 'tenant.change',
+  PROVIDER_CHANGE: 'provider.change',
+  RETENTION_CHANGE: 'retention.change',
+  ATTACHMENT_SEND: 'attachment.send',
 } as const;
 
 export type StepUpAction =
@@ -30,6 +35,11 @@ export type StepUpAction =
 const ACTION_POLICY: Record<StepUpAction, { mfa: boolean }> = {
   [STEP_UP_ACTIONS.SESSION_REVOKE]: { mfa: false },
   [STEP_UP_ACTIONS.ROLE_CHANGE]: { mfa: true },
+  [STEP_UP_ACTIONS.MEMBERSHIP_CHANGE]: { mfa: true },
+  [STEP_UP_ACTIONS.TENANT_CHANGE]: { mfa: true },
+  [STEP_UP_ACTIONS.PROVIDER_CHANGE]: { mfa: true },
+  [STEP_UP_ACTIONS.RETENTION_CHANGE]: { mfa: true },
+  [STEP_UP_ACTIONS.ATTACHMENT_SEND]: { mfa: true },
 };
 
 export const STEP_UP_TTL_MS = 10 * 60 * 1_000;

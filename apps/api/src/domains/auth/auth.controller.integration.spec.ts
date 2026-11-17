@@ -12,6 +12,7 @@
 
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { AuthAccountService } from './auth-account.service.js';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -93,6 +94,7 @@ describe('GET /auth/session (integration)', () => {
       providers: [
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
+        AuthAccountService,
         {
           provide: TokenRevocationService,
           useValue: {
@@ -231,7 +233,7 @@ describe('GET /auth/session (integration)', () => {
     expect(res.body.role).toBeNull();
   });
 
-  it('returns a null tenant context when no user row exists for the identity', async () => {
+  it('refuses an identity with no application user row', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { sub: 'unknown-sub' }));
     findUnique.mockResolvedValue(null);
 
@@ -239,9 +241,8 @@ describe('GET /auth/session (integration)', () => {
       .get('/auth/session')
       .set('Authorization', 'Bearer valid-token');
 
-    expect(res.status).toBe(200);
-    expect(res.body.tenantContext).toBeNull();
-    expect(res.body.role).toBeNull();
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ACCOUNT_NOT_PROVISIONED');
   });
 
   it('updates the caller display name', async () => {

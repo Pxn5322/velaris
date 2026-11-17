@@ -8,10 +8,12 @@
 
 import {
   ExecutionContext,
+  ForbiddenException,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AuthAccountService } from './auth-account.service.js';
 import { SupabaseAuthGuard } from './supabase-auth.guard.js';
 import type { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
 
@@ -24,17 +26,30 @@ function contextWith(header: string | undefined) {
   };
   const context = {
     switchToHttp: () => ({ getRequest: () => request }),
+    getHandler: () => ({}),
+    getClass: () => ({}),
   } as unknown as ExecutionContext;
   return { context, request };
 }
 
 describe('SupabaseAuthGuard', () => {
   let verifier: { verify: ReturnType<typeof vi.fn> };
+  let accounts: { findState: ReturnType<typeof vi.fn> };
   let guard: SupabaseAuthGuard;
 
   beforeEach(() => {
     verifier = { verify: vi.fn() };
-    guard = new SupabaseAuthGuard(verifier as unknown as SupabaseTokenVerifier);
+    accounts = {
+      findState: vi.fn().mockResolvedValue({
+        userId: 'user-1',
+        passwordResetRequired: false,
+        tokenInvalidBefore: null,
+      }),
+    };
+    guard = new SupabaseAuthGuard(
+      verifier as unknown as SupabaseTokenVerifier,
+      accounts as unknown as AuthAccountService,
+    );
   });
 
   it('rejects a request with no Authorization header (401)', async () => {
@@ -86,6 +101,52 @@ describe('SupabaseAuthGuard', () => {
 
     await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
+    );
+  });
+
+  it('fails closed when the verified identity has no application account', async () => {
+    verifier.verify.mockResolvedValue({
+      provider: 'supabase',
+      subject: 'unknown-sub',
+    });
+    accounts.findState.mockResolvedValue(null);
+    const { context, request } = contextWith('Bearer verified-token');
+
+    await expect(guard.canActivate(context)).rejects.toMatchObject({
+      response: { code: 'ACCOUNT_NOT_PROVISIONED' },
+    });
+    expect(request.user).toBeUndefined();
+  });
+
+  it('propagates an account-state lookup failure instead of granting access', async () => {
+    verifier.verify.mockResolvedValue({
+      provider: 'supabase',
+      subject: 'sub-123',
+    });
+    accounts.findState.mockRejectedValue(
+      new ServiceUnavailableException('account store unavailable'),
+    );
+    const { context } = contextWith('Bearer verified-token');
+
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+  });
+
+  it('refuses a flagged account on a route without the reset exemption', async () => {
+    verifier.verify.mockResolvedValue({
+      provider: 'supabase',
+      subject: 'sub-123',
+    });
+    accounts.findState.mockResolvedValue({
+      userId: 'user-1',
+      passwordResetRequired: true,
+      tokenInvalidBefore: null,
+    });
+    const { context } = contextWith('Bearer verified-token');
+
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+      ForbiddenException,
     );
   });
 });

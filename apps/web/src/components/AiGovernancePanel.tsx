@@ -24,6 +24,8 @@ import {
   X,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
+import { useStepUp } from "@/context/StepUpContext";
+import { STEP_UP_ACTIONS } from "@/lib/auth/step-up";
 
 interface ProviderRow {
   id: string;
@@ -59,6 +61,7 @@ const EMPTY_FORM: ProviderForm = {
 };
 
 export function AiGovernancePanel() {
+  const { runWithStepUp } = useStepUp();
   const [providers, setProviders] = useState<ProviderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -132,9 +135,15 @@ export function AiGovernancePanel() {
     };
     try {
       if (editingId) {
-        const updated = await apiFetch<ProviderRow>(
-          `/ai-governance/providers/${editingId}`,
-          { method: "PATCH", body: JSON.stringify(body) },
+        const updated = await runWithStepUp(
+          STEP_UP_ACTIONS.PROVIDER_CHANGE,
+          null,
+          (stepUpToken) =>
+            apiFetch<ProviderRow>(`/ai-governance/providers/${editingId}`, {
+              method: "PATCH",
+              headers: { "x-step-up-token": stepUpToken },
+              body: JSON.stringify(body),
+            }),
         );
         setProviders((rows) =>
           rows.map((row) =>
@@ -147,12 +156,15 @@ export function AiGovernancePanel() {
         );
         setNotice(`${updated.name} was updated.`);
       } else {
-        const created = await apiFetch<ProviderRow>(
-          "/ai-governance/providers",
-          {
-            method: "POST",
-            body: JSON.stringify(body),
-          },
+        const created = await runWithStepUp(
+          STEP_UP_ACTIONS.PROVIDER_CHANGE,
+          null,
+          (stepUpToken) =>
+            apiFetch<ProviderRow>("/ai-governance/providers", {
+              method: "POST",
+              headers: { "x-step-up-token": stepUpToken },
+              body: JSON.stringify(body),
+            }),
         );
         setProviders((rows) => [
           created,
@@ -182,9 +194,15 @@ export function AiGovernancePanel() {
     setError(null);
     setNotice(null);
     try {
-      await apiFetch(`/ai-governance/providers/${row.id}`, {
-        method: "DELETE",
-      });
+      await runWithStepUp(
+        STEP_UP_ACTIONS.PROVIDER_CHANGE,
+        null,
+        (stepUpToken) =>
+          apiFetch(`/ai-governance/providers/${row.id}`, {
+            method: "DELETE",
+            headers: { "x-step-up-token": stepUpToken },
+          }),
+      );
       setProviders((rows) => rows.filter((item) => item.id !== row.id));
       setNotice(`${row.name} was deleted.`);
     } catch (caught) {

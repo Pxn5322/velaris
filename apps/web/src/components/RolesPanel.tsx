@@ -10,6 +10,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api/client";
+import { useStepUp } from "@/context/StepUpContext";
+import { STEP_UP_ACTIONS } from "@/lib/auth/step-up";
 
 interface TenantRole {
   id: string;
@@ -48,6 +50,7 @@ function baseLabel(code: string): string {
  * permission profile and can be renamed or deleted when unassigned.
  */
 export function RolesPanel() {
+  const { runWithStepUp } = useStepUp();
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [roles, setRoles] = useState<TenantRole[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,10 +114,16 @@ export function RolesPanel() {
     setError(null);
     setNotice(null);
     try {
-      const created = await apiFetch<TenantRole>(`/tenants/${tenantId}/roles`, {
-        method: "POST",
-        body: JSON.stringify({ code, name, baseRoleCode }),
-      });
+      const created = await runWithStepUp(
+        STEP_UP_ACTIONS.ROLE_CHANGE,
+        tenantId,
+        (stepUpToken) =>
+          apiFetch<TenantRole>(`/tenants/${tenantId}/roles`, {
+            method: "POST",
+            headers: { "x-step-up-token": stepUpToken },
+            body: JSON.stringify({ code, name, baseRoleCode }),
+          }),
+      );
       setRoles((current) => [...current, created]);
       setNotice(`${created.name} was created.`);
       setCreating(false);
@@ -147,12 +156,15 @@ export function RolesPanel() {
     setSaving(true);
     setError(null);
     try {
-      const updated = await apiFetch<TenantRole>(
-        `/tenants/${tenantId}/roles/${editingId}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ name: editName, baseRoleCode: editBase }),
-        },
+      const updated = await runWithStepUp(
+        STEP_UP_ACTIONS.ROLE_CHANGE,
+        tenantId,
+        (stepUpToken) =>
+          apiFetch<TenantRole>(`/tenants/${tenantId}/roles/${editingId}`, {
+            method: "PATCH",
+            headers: { "x-step-up-token": stepUpToken },
+            body: JSON.stringify({ name: editName, baseRoleCode: editBase }),
+          }),
       );
       setRoles((current) =>
         current.map((role) => (role.id === updated.id ? updated : role)),
@@ -176,9 +188,15 @@ export function RolesPanel() {
     setError(null);
     setNotice(null);
     try {
-      await apiFetch(`/tenants/${tenantId}/roles/${role.id}`, {
-        method: "DELETE",
-      });
+      await runWithStepUp(
+        STEP_UP_ACTIONS.ROLE_CHANGE,
+        tenantId,
+        (stepUpToken) =>
+          apiFetch(`/tenants/${tenantId}/roles/${role.id}`, {
+            method: "DELETE",
+            headers: { "x-step-up-token": stepUpToken },
+          }),
+      );
       setRoles((current) => current.filter((item) => item.id !== role.id));
       setNotice(`${role.name} was deleted.`);
     } catch (caught) {

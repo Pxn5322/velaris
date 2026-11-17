@@ -16,7 +16,10 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { AuthAssurance } from './auth-assurance.js';
 import type { AuthenticatedIdentity } from './auth.interface.js';
-import { STEP_UP_DECORATOR_KEY } from './require-step-up.decorator.js';
+import {
+  STEP_UP_DECORATOR_KEY,
+  type StepUpRequirement,
+} from './require-step-up.decorator.js';
 import {
   StepUpService,
   mfaRequired,
@@ -42,15 +45,23 @@ export class StepUpGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<GuardedRequest>();
-    const action = this.reflector.getAllAndOverride<string | undefined>(
-      STEP_UP_DECORATOR_KEY,
-      [context.getHandler(), context.getClass()],
-    );
+    const requirement = this.reflector.getAllAndOverride<
+      StepUpRequirement | string | undefined
+    >(STEP_UP_DECORATOR_KEY, [context.getHandler(), context.getClass()]);
+    const action =
+      typeof requirement === 'string' ? requirement : requirement?.action;
     if (!action) {
       throw new ForbiddenException('Route declares no step-up action');
     }
     if (!request.user || !request.authAssurance) {
       throw new UnauthorizedException();
+    }
+    if (
+      typeof requirement !== 'string' &&
+      requirement?.when === 'attachments' &&
+      !hasAttachments(request.body)
+    ) {
+      return true;
     }
     if (
       this.stepUps.requiresMfa(action) &&
@@ -76,6 +87,14 @@ export class StepUpGuard implements CanActivate {
     request.stepUp = { action, tenantId };
     return true;
   }
+}
+
+function hasAttachments(body: unknown): boolean {
+  if (typeof body !== 'object' || body === null) {
+    return false;
+  }
+  const attachments = (body as { attachments?: unknown }).attachments;
+  return Array.isArray(attachments) && attachments.length > 0;
 }
 
 function readTenantId(request: GuardedRequest): string | null {

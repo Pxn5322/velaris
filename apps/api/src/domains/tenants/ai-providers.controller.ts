@@ -23,6 +23,9 @@ import { RequirePermission } from '../../common/security/require-permission.deco
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.interface.js';
+import { RequireStepUp } from '../auth/require-step-up.decorator.js';
+import { StepUpGuard } from '../auth/step-up.guard.js';
+import { STEP_UP_ACTIONS } from '../auth/step-up.service.js';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { PERMISSIONS } from '../permissions/permission.codes.js';
 import { AiProvidersService } from './ai-providers.service.js';
@@ -49,6 +52,8 @@ export class AiProvidersController {
 
   @Post()
   @RequirePermission(PERMISSIONS.TENANT_MANAGE_PLATFORM)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.PROVIDER_CHANGE)
   async create(
     @Req() request: AuthedRequest,
     @Body() input: CreateModelProviderDto,
@@ -70,6 +75,8 @@ export class AiProvidersController {
 
   @Patch(':id')
   @RequirePermission(PERMISSIONS.TENANT_MANAGE_PLATFORM)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.PROVIDER_CHANGE)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() request: AuthedRequest,
@@ -93,6 +100,8 @@ export class AiProvidersController {
 
   @Delete(':id')
   @RequirePermission(PERMISSIONS.TENANT_MANAGE_PLATFORM)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.PROVIDER_CHANGE)
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() request: AuthedRequest,

@@ -42,6 +42,8 @@ import {
 } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { getSession } from "@/lib/auth/session";
+import { useStepUp } from "@/context/StepUpContext";
+import { STEP_UP_ACTIONS } from "@/lib/auth/step-up";
 
 interface TenantEntry {
   tenantId: string;
@@ -182,6 +184,7 @@ const STATUS_ACTIONS = [
 ] as const;
 
 export default function InboxPage() {
+  const { runWithStepUp } = useStepUp();
   const [phase, setPhase] = useState<Phase>("loading");
   const [denial, setDenial] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -455,22 +458,34 @@ export default function InboxPage() {
           setConversationId(created.id);
           setTimeline("ready");
         }
-        const message = await apiFetch<Message>(
-          `/conversations/${activeConversationId}/messages?tenantId=${encodeURIComponent(scope.tenantId)}`,
-          {
-            method: "POST",
-            body: JSON.stringify({
-              body:
-                reply.trim() ||
-                `Attached: ${attachments.map((file) => file.name).join(", ")}`,
-              visibility: "CUSTOMER_VISIBLE",
-              ...(attachments.length > 0 ? { attachments } : {}),
-              idempotencyKey: `inbox-${Date.now()}-${Math.random()
-                .toString(36)
-                .slice(2)}`,
-            }),
-          },
-        );
+        const sendMessage = (stepUpToken?: string) =>
+          apiFetch<Message>(
+            `/conversations/${activeConversationId}/messages?tenantId=${encodeURIComponent(scope.tenantId)}`,
+            {
+              method: "POST",
+              headers: stepUpToken
+                ? { "x-step-up-token": stepUpToken }
+                : undefined,
+              body: JSON.stringify({
+                body:
+                  reply.trim() ||
+                  `Attached: ${attachments.map((file) => file.name).join(", ")}`,
+                visibility: "CUSTOMER_VISIBLE",
+                ...(attachments.length > 0 ? { attachments } : {}),
+                idempotencyKey: `inbox-${Date.now()}-${Math.random()
+                  .toString(36)
+                  .slice(2)}`,
+              }),
+            },
+          );
+        const message =
+          attachments.length > 0
+            ? await runWithStepUp(
+                STEP_UP_ACTIONS.ATTACHMENT_SEND,
+                scope.tenantId,
+                sendMessage,
+              )
+            : await sendMessage();
         setMessages((rows) => [...rows, message]);
         setReply("");
         setAttachments([]);
@@ -484,7 +499,15 @@ export default function InboxPage() {
         setSending(false);
       }
     },
-    [scope, selected, conversationId, reply, attachments, sending],
+    [
+      scope,
+      selected,
+      conversationId,
+      reply,
+      attachments,
+      sending,
+      runWithStepUp,
+    ],
   );
 
   const chooseAttachments = async (files: FileList | null) => {

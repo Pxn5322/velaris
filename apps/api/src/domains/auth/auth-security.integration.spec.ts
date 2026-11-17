@@ -83,6 +83,14 @@ class AssuranceHarnessController {
   roleChange(): { ok: boolean } {
     return { ok: true };
   }
+
+  @Post('attachment')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(SupabaseAuthGuard, StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.ATTACHMENT_SEND, { when: 'attachments' })
+  attachment(): { ok: boolean } {
+    return { ok: true };
+  }
 }
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -433,6 +441,28 @@ describe('auth assurance (integration)', () => {
     const res = await request(app.getHttpServer())
       .post('/harness/role-change')
       .set('Authorization', `Bearer ${accessToken({ aal: 'aal1' })}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('MFA_REQUIRED');
+  });
+
+  it('skips attachment step-up for a message without attachments', async () => {
+    user.passwordResetRequired = false;
+    const res = await request(app.getHttpServer())
+      .post('/harness/attachment')
+      .set('Authorization', `Bearer ${accessToken({ aal: 'aal1' })}`)
+      .send({ body: 'No files here' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+  });
+
+  it('refuses an attachment message before MFA when the token is aal1', async () => {
+    user.passwordResetRequired = false;
+    const res = await request(app.getHttpServer())
+      .post('/harness/attachment')
+      .set('Authorization', `Bearer ${accessToken({ aal: 'aal1' })}`)
+      .send({ body: 'See attached', attachments: [{ name: 'a.txt' }] });
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('MFA_REQUIRED');

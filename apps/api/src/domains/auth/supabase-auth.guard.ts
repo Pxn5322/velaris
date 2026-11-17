@@ -10,6 +10,11 @@
  * claims and the application account state to request.user. T6.08 uses that
  * state to refuse a flagged account outside its reset routes and to refuse a
  * token issued before a password change or global session revocation.
+ *
+ * The account lookup is mandatory. A verified provider identity with no
+ * application user row is refused instead of being treated as an account with
+ * no restrictions. A lookup failure propagates, so a database outage cannot
+ * grant access.
  */
 
 import {
@@ -38,7 +43,7 @@ type GuardedRequest = {
   user?: AuthenticatedIdentity;
   accessToken?: string;
   authAssurance?: AuthAssurance;
-  account?: AuthAccountState | null;
+  account?: AuthAccountState;
   passwordResetRequired?: boolean;
 };
 
@@ -46,12 +51,11 @@ type GuardedRequest = {
 export class SupabaseAuthGuard implements CanActivate {
   constructor(
     private readonly verifier: SupabaseTokenVerifier,
+    @Inject(AuthAccountService)
+    private readonly accounts: AuthAccountService,
     @Optional()
     @Inject(TokenRevocationService)
     private readonly revocations: TokenRevocationService | null = null,
-    @Optional()
-    @Inject(AuthAccountService)
-    private readonly accounts: AuthAccountService | null = null,
     private readonly reflector: Reflector = new Reflector(),
   ) {}
 
@@ -75,17 +79,23 @@ export class SupabaseAuthGuard implements CanActivate {
     }
 
     const assurance = readAuthAssurance(token);
-    const account = this.accounts
-      ? await this.accounts.findState(identity)
-      : null;
+    // Fail closed: no application row means no verified account state, so the
+    // caller cannot prove that the reset flag and token cutoff are clear.
+    const account = await this.accounts.findState(identity);
+    if (!account) {
+      throw new ForbiddenException({
+        code: 'ACCOUNT_NOT_PROVISIONED',
+        message: 'No active application account exists for this identity',
+      });
+    }
     if (
-      account?.tokenInvalidBefore &&
+      account.tokenInvalidBefore &&
       (assurance.issuedAt === null ||
         assurance.issuedAt * 1_000 <= account.tokenInvalidBefore.getTime())
     ) {
       throw new UnauthorizedException();
     }
-    if (account?.passwordResetRequired && !this.allowsResetRequired(context)) {
+    if (account.passwordResetRequired && !this.allowsResetRequired(context)) {
       throw new ForbiddenException({
         code: 'PASSWORD_RESET_REQUIRED',
         message: 'The account must change its password before normal use',
@@ -96,7 +106,7 @@ export class SupabaseAuthGuard implements CanActivate {
     request.accessToken = token;
     request.authAssurance = assurance;
     request.account = account;
-    request.passwordResetRequired = account?.passwordResetRequired ?? false;
+    request.passwordResetRequired = account.passwordResetRequired;
     return true;
   }
 

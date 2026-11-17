@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { RoleProvider } from "@/context/RoleContext";
+import { StepUpProvider } from "@/context/StepUpContext";
 import { AppShell } from "@/components/AppShell";
 
 // The font files are local (src/app/fonts, SIL Open Font License) so a build
@@ -59,7 +60,9 @@ export default function RootLayout({
     <html lang="en" className={htmlClass} data-theme="dark">
       <body className={bodyClass}>
         <RoleProvider>
-          <AppShell>{children}</AppShell>
+          <StepUpProvider>
+            <AppShell>{children}</AppShell>
+          </StepUpProvider>
         </RoleProvider>
       </body>
     </html>

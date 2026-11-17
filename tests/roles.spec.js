@@ -168,4 +168,132 @@ test.describe("Roles & RBAC", () => {
     );
     expect(calls.some((call) => call.method === "DELETE")).toBe(true);
   });
+
+  test("re-authenticates and enrolls TOTP before a sensitive role change", async ({
+    page,
+  }) => {
+    let submitted = null;
+
+    await page.addInitScript(
+      ([key, value]) => window.localStorage.setItem(key, value),
+      [SESSION_KEY, JSON.stringify(session)],
+    );
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route(/\/tenants\/tenant-a\/roles(?:\/.*)?$/, (route) => {
+      const request = route.request();
+      if (request.method() === "GET") return route.fulfill(json(roles));
+      const grant = request.headers()["x-step-up-token"];
+      if (!grant) {
+        return route.fulfill(
+          json(
+            {
+              code: "STEP_UP_REQUIRED",
+              message: "A recent step-up is required for this action",
+            },
+            403,
+          ),
+        );
+      }
+      submitted = { body: request.postDataJSON(), grant };
+      return route.fulfill(
+        json(
+          {
+            id: "22222222-2222-4222-8222-222222222222",
+            code: "R-support-lead",
+            name: "Support lead",
+            systemManaged: false,
+            baseRoleCode: "R-agent",
+            membershipCount: 0,
+            permissionCount: 5,
+          },
+          201,
+        ),
+      );
+    });
+
+    // The API still sees an aal1 token, so it asks for the second factor.
+    await page.route("**/auth/step-up", (route) => {
+      if (
+        route.request().headers()["authorization"] !==
+        "Bearer e2e-mfa-access-token"
+      ) {
+        return route.fulfill(
+          json(
+            {
+              code: "MFA_REQUIRED",
+              message: "Multi-factor authentication is required",
+            },
+            403,
+          ),
+        );
+      }
+      return route.fulfill(json({ token: "grant-1" }));
+    });
+
+    await page.route("**/auth/v1/user", (route) =>
+      route.fulfill(json({ factors: [] })),
+    );
+    await page.route("**/auth/v1/factors", (route) =>
+      route.fulfill(
+        json({
+          id: "factor-1",
+          totp: {
+            qr_code: "data:image/svg+xml;base64,PHN2Zy8+",
+            secret: "JBSWY3DPEHPK3PXP",
+            uri: "otpauth://totp/VELARIS",
+          },
+        }),
+      ),
+    );
+    await page.route("**/auth/v1/factors/factor-1/challenge", (route) =>
+      route.fulfill(json({ id: "challenge-1" })),
+    );
+    await page.route("**/auth/v1/factors/factor-1/verify", (route) =>
+      route.fulfill(
+        json({
+          access_token: "e2e-mfa-access-token",
+          refresh_token: "e2e-mfa-refresh-token",
+          expires_in: 3600,
+          user: { email: "admin@acme.test" },
+        }),
+      ),
+    );
+
+    await page.goto("/admin");
+    await page.getByRole("button", { name: "Roles & RBAC" }).click();
+    await page.getByTestId("role-create-open").click();
+    await page.getByTestId("role-code").fill("R-support-lead");
+    await page.getByTestId("role-name").fill("Support lead");
+    await page.getByTestId("role-create-submit").click();
+
+    await expect(page.getByTestId("step-up-dialog")).toBeVisible();
+    await page.getByTestId("step-up-password").fill("correct horse battery");
+    await page.getByTestId("step-up-password-submit").click();
+
+    await expect(page.getByTestId("step-up-mfa-form")).toBeVisible();
+    await expect(page.getByTestId("step-up-mfa-form")).toContainText(
+      "JBSWY3DPEHPK3PXP",
+    );
+    await page.getByTestId("step-up-code").fill("123456");
+    await page.getByTestId("step-up-code-submit").click();
+
+    await expect(page.getByTestId("roles-notice")).toContainText(
+      "Support lead was created",
+    );
+    expect(submitted).toEqual({
+      body: {
+        code: "R-support-lead",
+        name: "Support lead",
+        baseRoleCode: "R-agent",
+      },
+      grant: "grant-1",
+    });
+    const stored = await page.evaluate((key) => {
+      const value = window.localStorage.getItem(key);
+      return value ? JSON.parse(value) : null;
+    }, SESSION_KEY);
+    expect(stored.accessToken).toBe("e2e-mfa-access-token");
+  });
 });
