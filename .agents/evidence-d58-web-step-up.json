@@ -1,0 +1,101 @@
+{
+  "generatedAt": "2026-11-17T10:41:13.910Z",
+  "apiOrigin": "http://localhost:3000",
+  "webOrigin": "http://localhost:3001",
+  "supabaseHost": "lygekvhwmhbonsdeiaot.supabase.co",
+  "syntheticEmail": "smokecheck-mfa-web-mwkkazzq-0656c8@velaris.test",
+  "roleCode": "R-web-mfa-mwkkazzq-0656c8",
+  "network": [
+    {
+      "method": "GET",
+      "path": "/auth/session",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "GET",
+      "path": "/auth/session",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "GET",
+      "path": "/auth/session",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "GET",
+      "path": "/auth/session",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "GET",
+      "path": "/tenants/65facc83-bd40-4ac9-ace3-16f018c18cf5/roles",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/tenants/65facc83-bd40-4ac9-ace3-16f018c18cf5/roles",
+      "status": 403,
+      "code": "MFA_REQUIRED"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/step-up",
+      "status": 403,
+      "code": "MFA_REQUIRED"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/step-up",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/tenants/65facc83-bd40-4ac9-ace3-16f018c18cf5/roles",
+      "status": 201,
+      "code": "R-web-mfa-mwkkazzq-0656c8"
+    }
+  ],
+  "signupStatus": 201,
+  "tenantId": "65facc83-bd40-4ac9-ace3-16f018c18cf5",
+  "passwordGrantStatus": 200,
+  "dialogOpened": true,
+  "enrollmentFormShown": true,
+  "notice": "Web MFA mwkkazzq-0656c8 was created.",
+  "roleCardVisible": true,
+  "aal": "aal2",
+  "sessionIdPresent": true,
+  "deniedRoleWrite": {
+    "method": "POST",
+    "path": "/tenants/65facc83-bd40-4ac9-ace3-16f018c18cf5/roles",
+    "status": 403,
+    "code": "MFA_REQUIRED"
+  },
+  "grantedRoleWrite": {
+    "method": "POST",
+    "path": "/tenants/65facc83-bd40-4ac9-ace3-16f018c18cf5/roles",
+    "status": 201,
+    "code": "R-web-mfa-mwkkazzq-0656c8"
+  },
+  "stepUpCalls": [
+    {
+      "method": "POST",
+      "path": "/auth/step-up",
+      "status": 403,
+      "code": "MFA_REQUIRED"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/step-up",
+      "status": 200,
+      "code": null
+    }
+  ],
+  "cleanup": "removed",
+  "result": "pass"
+}
