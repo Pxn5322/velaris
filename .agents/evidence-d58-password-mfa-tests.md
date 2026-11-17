@@ -15,9 +15,9 @@ Status: pass for the live synthetic TOTP and step-up path; D-58 remains Blocked 
 
 | Check | Observed |
 | --- | --- |
-| Synthetic signup | 201; tenant `456300b3-8fae-4e1b-84d8-e42a9192493b` |
+| Synthetic signup | 201; tenant `f4202800-f934-4780-b461-4439cf8f78f8` |
 | Password grant | 200 |
-| TOTP factor enrollment | 200; one `totp` factor; QR payload returned |
+| TOTP factor enrollment | 200; one `totp` factor |
 | TOTP challenge | 200 |
 | TOTP verification | 200; replacement access and refresh tokens returned |
 | Access-token `aal` claim | `aal2` |
@@ -26,18 +26,17 @@ Status: pass for the live synthetic TOTP and step-up path; D-58 remains Blocked 
 | `GET /auth/session` with the `aal2` token | 200; role `R-tenant-admin` |
 | Role write without a step-up grant | 403 `STEP_UP_REQUIRED` |
 | `POST /auth/step-up` with the current password | 200; grant issued |
-| Role write with the grant | 201; role `R-live-mfa-mwkjjqvn-551275`, 5 permissions |
+| Role write with the grant | 201; role `R-live-mfa-mwkjtpg5-a50b55`, 5 permissions |
 | Replay of the same grant | 403 `STEP_UP_REQUIRED` |
-| Role list after the write | 200; created role present |
 
 ## Cleanup
 
-`node --env-file=.env scripts/cleanup-load-tenants.mjs --delete` removed the one synthetic tenant and the one synthetic Auth account. The follow-up dry run reported zero synthetic tenants and zero synthetic accounts.
+The verifier runs a targeted `scripts/cleanup-load-tenants.mjs --delete --email <synthetic email>` in its final path. The successful run reported `cleanup: "removed"`; the follow-up dry run reported zero synthetic tenants and zero synthetic accounts. A temporary copy that threw immediately after signup also exited 1, reported `cleanup: "removed"`, and left zero synthetic rows. The cleanup filter rejects a non-`velaris.test` address with exit 1.
 
 ## Artifacts
 
 - `.agents/evidence-d58-live-totp.json` contains the status-only machine record.
-- `.agents/verify-d58-live-totp.mjs` is the temporary verifier used for this run. It is not application source.
+- `.agents/verify-d58-live-totp.mjs` is the reproducible verifier. It is not application source.
 
 ## Limits
 

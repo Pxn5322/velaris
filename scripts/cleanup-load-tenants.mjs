@@ -12,6 +12,9 @@
  * Usage:
  *   node --env-file=.env scripts/cleanup-load-tenants.mjs
  *   node --env-file=.env scripts/cleanup-load-tenants.mjs --delete
+ *   node --env-file=.env scripts/cleanup-load-tenants.mjs --delete --email <synthetic-email>
+ *
+ * --email limits cleanup to one synthetic account and its tenant.
  *
  * Required environment: DATABASE_URL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
  * No token or password is printed.
@@ -134,6 +137,12 @@ async function deleteAuthUser(baseUrl, serviceKey, userId) {
 
 async function main() {
   const deleteMode = process.argv.includes('--delete');
+  const emailIndex = process.argv.indexOf('--email');
+  const onlyEmail =
+    emailIndex >= 0 ? (process.argv[emailIndex + 1] ?? '').toLowerCase() : null;
+  if (onlyEmail !== null && !SYNTHETIC_EMAIL.test(onlyEmail)) {
+    throw new Error('--email must be a synthetic velaris.test account');
+  }
   const databaseUrl = requireEnvironment('DATABASE_URL');
   const baseUrl = requireEnvironment('SUPABASE_URL').replace(/\/+$/, '');
   const serviceKey = requireEnvironment('SUPABASE_SERVICE_ROLE_KEY');
@@ -142,8 +151,19 @@ async function main() {
     adapter: new PrismaPg({ connectionString: databaseUrl }),
   });
   try {
-    const tenants = await listSyntheticTenants(prisma);
-    const authUsers = await listSyntheticAuthUsers(baseUrl, serviceKey);
+    const allTenants = await listSyntheticTenants(prisma);
+    const allAuthUsers = await listSyntheticAuthUsers(baseUrl, serviceKey);
+    const tenants = onlyEmail
+      ? allTenants.filter((tenant) =>
+          tenant.memberships.some(
+            (membership) =>
+              membership.user.emailNormalized.toLowerCase() === onlyEmail,
+          ),
+        )
+      : allTenants;
+    const authUsers = onlyEmail
+      ? allAuthUsers.filter((user) => user.email.toLowerCase() === onlyEmail)
+      : allAuthUsers;
     const tenantEmails = new Set(
       tenants.flatMap((tenant) =>
         tenant.memberships.map((membership) => membership.user.emailNormalized),

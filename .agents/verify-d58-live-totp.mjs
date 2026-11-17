@@ -1,16 +1,16 @@
 /**
- * Temporary live verifier for D-58 (not committed).
+ * Live D-58 verifier (synthetic account only).
  *
- * Creates one `smokecheck-mfa-*@velaris.test` synthetic tenant administrator,
- * enrolls a TOTP factor, confirms the replacement access token carries `aal2`,
- * then proves one role write is denied without a step-up grant and accepted
- * with one. It prints and writes status evidence only. It never prints a
- * password, token, TOTP secret or QR payload.
+ * Creates one `smokecheck-mfa-*@velaris.test` tenant administrator, enrolls
+ * TOTP, checks the `aal2` claim, then proves a role write is denied without a
+ * step-up grant and accepted with one. A targeted cleanup runs whether the
+ * checks pass or fail. Only status evidence is printed or written; no
+ * password, token, TOTP secret or QR payload is recorded.
  *
  * Usage: node --env-file=.env .agents/verify-d58-live-totp.mjs
- * Cleanup: node --env-file=.env scripts/cleanup-load-tenants.mjs --delete
  */
 
+import { spawnSync } from "node:child_process";
 import { createHmac, randomBytes } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 
@@ -29,10 +29,9 @@ const evidence = {
   apiOrigin: api,
   supabaseHost: new URL(supabase).host,
   syntheticEmail: email,
-  syntheticNamespace: "smokecheck-*@velaris.test",
 };
 
-async function json(response) {
+async function readJson(response) {
   const text = await response.text();
   if (!text) return null;
   try {
@@ -42,8 +41,27 @@ async function json(response) {
   }
 }
 
-function codeOf(body) {
-  return body && typeof body.code === "string" ? body.code : null;
+async function request(label, url, init) {
+  const response = await fetch(url, init);
+  const body = await readJson(response);
+  evidence[`${label}Status`] = response.status;
+  if (!response.ok) {
+    throw new Error(
+      `${label} HTTP ${response.status}${body?.code ? ` ${body.code}` : ""}`,
+    );
+  }
+  return body;
+}
+
+function apiHeaders(token) {
+  return {
+    authorization: `Bearer ${token}`,
+    "content-type": "application/json",
+  };
+}
+
+function authHeaders(token) {
+  return { apikey: anon, ...apiHeaders(token) };
 }
 
 function base32Decode(value) {
@@ -66,17 +84,15 @@ function base32Decode(value) {
 }
 
 function totp(secret) {
-  const counter = Math.floor(Date.now() / 30_000);
   const message = Buffer.alloc(8);
-  message.writeBigUInt64BE(BigInt(counter));
+  message.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
   const digest = createHmac("sha1", base32Decode(secret))
     .update(message)
     .digest();
   const offset = digest[19] & 0x0f;
-  return String((digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(
-    6,
-    "0",
-  );
+  return String(
+    (digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000,
+  ).padStart(6, "0");
 }
 
 async function waitForFreshWindow() {
@@ -88,216 +104,186 @@ async function waitForFreshWindow() {
   }
 }
 
-const signupResponse = await fetch(`${api}/auth/signup`, {
-  method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify({
-    email,
-    password,
-    tenantName: `Smoke check MFA ${stamp}`,
-  }),
-});
-const signup = await json(signupResponse);
-evidence.signupStatus = signupResponse.status;
-if (!signupResponse.ok || typeof signup?.tenantId !== "string") {
-  throw new Error(
-    `signup HTTP ${signupResponse.status} ${codeOf(signup) ?? ""}`.trim(),
+function cleanupSyntheticAccount() {
+  const result = spawnSync(
+    process.execPath,
+    ["scripts/cleanup-load-tenants.mjs", "--delete", "--email", email],
+    { encoding: "utf8", env: process.env },
   );
+  if (result.status === 0) return { ok: true };
+  return {
+    ok: false,
+    detail: (result.stderr || result.stdout || "cleanup failed")
+      .trim()
+      .split("\n")
+      .slice(-3)
+      .join(" | "),
+  };
 }
-const tenantId = signup.tenantId;
-evidence.tenantId = tenantId;
 
-const grantResponse = await fetch(
-  `${supabase}/auth/v1/token?grant_type=password`,
-  {
+async function run() {
+  const signup = await request("signup", `${api}/auth/signup`, {
     method: "POST",
-    headers: { apikey: anon, "content-type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  },
-);
-const passwordGrant = await json(grantResponse);
-evidence.passwordGrantStatus = grantResponse.status;
-if (!grantResponse.ok || typeof passwordGrant?.access_token !== "string") {
-  throw new Error(`password grant HTTP ${grantResponse.status}`);
-}
-const aal1Token = passwordGrant.access_token;
-
-const enrollResponse = await fetch(`${supabase}/auth/v1/factors`, {
-  method: "POST",
-  headers: {
-    apikey: anon,
-    authorization: `Bearer ${aal1Token}`,
-    "content-type": "application/json",
-  },
-  body: JSON.stringify({
-    factor_type: "totp",
-    friendly_name: "D-58 live synthetic",
-  }),
-});
-const enrolled = await json(enrollResponse);
-evidence.factorEnrollStatus = enrollResponse.status;
-const factorId = typeof enrolled?.id === "string" ? enrolled.id : null;
-const secret =
-  typeof enrolled?.totp?.secret === "string" ? enrolled.totp.secret : null;
-if (!enrollResponse.ok || !factorId || !secret) {
-  throw new Error(
-    `factor enroll HTTP ${enrollResponse.status} ${codeOf(enrolled) ?? ""}`.trim(),
-  );
-}
-evidence.factorId = factorId;
-evidence.factorType = enrolled.totp ? "totp" : null;
-evidence.qrCodeReturned =
-  typeof enrolled.totp?.qr_code === "string" &&
-  enrolled.totp.qr_code.length > 0;
-
-const challengeResponse = await fetch(
-  `${supabase}/auth/v1/factors/${encodeURIComponent(factorId)}/challenge`,
-  {
-    method: "POST",
-    headers: {
-      apikey: anon,
-      authorization: `Bearer ${aal1Token}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({}),
-  },
-);
-const challenge = await json(challengeResponse);
-evidence.challengeStatus = challengeResponse.status;
-if (!challengeResponse.ok || typeof challenge?.id !== "string") {
-  throw new Error(`challenge HTTP ${challengeResponse.status}`);
-}
-
-await waitForFreshWindow();
-const verifyResponse = await fetch(
-  `${supabase}/auth/v1/factors/${encodeURIComponent(factorId)}/verify`,
-  {
-    method: "POST",
-    headers: {
-      apikey: anon,
-      authorization: `Bearer ${aal1Token}`,
-      "content-type": "application/json",
-    },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      challenge_id: challenge.id,
-      code: totp(secret),
+      email,
+      password,
+      tenantName: `Smoke check MFA ${stamp}`,
     }),
-  },
-);
-const verified = await json(verifyResponse);
-evidence.verifyStatus = verifyResponse.status;
-if (
-  !verifyResponse.ok ||
-  typeof verified?.access_token !== "string" ||
-  typeof verified?.refresh_token !== "string"
-) {
-  throw new Error(
-    `verify HTTP ${verifyResponse.status} ${codeOf(verified) ?? ""}`.trim(),
+  });
+  if (typeof signup?.tenantId !== "string") {
+    throw new Error("signup returned no tenantId");
+  }
+  const tenantId = signup.tenantId;
+  evidence.tenantId = tenantId;
+
+  const login = await request(
+    "passwordGrant",
+    `${supabase}/auth/v1/token?grant_type=password`,
+    {
+      method: "POST",
+      headers: { apikey: anon, "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    },
   );
-}
-const aal2Token = verified.access_token;
-const payload = JSON.parse(
-  Buffer.from(aal2Token.split(".")[1], "base64url").toString("utf8"),
-);
-evidence.aal = typeof payload.aal === "string" ? payload.aal : null;
-evidence.sessionIdPresent =
-  typeof payload.session_id === "string" && payload.session_id.length > 0;
-evidence.refreshTokenReplaced =
-  verified.refresh_token !== passwordGrant.refresh_token;
-if (payload.aal !== "aal2") throw new Error(`access token aal is ${payload.aal}`);
+  const aal1 = login?.access_token;
+  if (typeof aal1 !== "string")
+    throw new Error("password grant returned no token");
 
-const authHeaders = {
-  authorization: `Bearer ${aal2Token}`,
-  "content-type": "application/json",
-};
-const sessionResponse = await fetch(`${api}/auth/session`, {
-  headers: authHeaders,
-});
-const sessionBody = await json(sessionResponse);
-evidence.sessionStatus = sessionResponse.status;
-evidence.sessionRole = sessionResponse.ok ? (sessionBody?.role ?? null) : null;
-if (!sessionResponse.ok) {
-  throw new Error(`session HTTP ${sessionResponse.status}`);
-}
-
-const roleCode = `R-live-mfa-${stamp}`;
-const roleBody = {
-  code: roleCode,
-  name: `Live MFA ${stamp}`,
-  baseRoleCode: "R-agent",
-};
-
-const deniedResponse = await fetch(`${api}/tenants/${tenantId}/roles`, {
-  method: "POST",
-  headers: authHeaders,
-  body: JSON.stringify(roleBody),
-});
-const denied = await json(deniedResponse);
-evidence.writeWithoutGrantStatus = deniedResponse.status;
-evidence.writeWithoutGrantCode = codeOf(denied);
-if (
-  deniedResponse.status !== 403 ||
-  evidence.writeWithoutGrantCode !== "STEP_UP_REQUIRED"
-) {
-  throw new Error(
-    `ungranted write HTTP ${deniedResponse.status} ${evidence.writeWithoutGrantCode ?? ""}`.trim(),
+  const enrolled = await request(
+    "factorEnroll",
+    `${supabase}/auth/v1/factors`,
+    {
+      method: "POST",
+      headers: authHeaders(aal1),
+      body: JSON.stringify({
+        factor_type: "totp",
+        friendly_name: "D-58 live synthetic",
+      }),
+    },
   );
-}
+  const factorId = enrolled?.id;
+  const secret = enrolled?.totp?.secret;
+  if (typeof factorId !== "string" || typeof secret !== "string") {
+    throw new Error("TOTP enrollment returned no factor or secret");
+  }
 
-const stepUpResponse = await fetch(`${api}/auth/step-up`, {
-  method: "POST",
-  headers: authHeaders,
-  body: JSON.stringify({ action: "role.change", tenantId, password }),
-});
-const stepUp = await json(stepUpResponse);
-evidence.stepUpStatus = stepUpResponse.status;
-const grantToken = typeof stepUp?.token === "string" ? stepUp.token : null;
-evidence.grantIssued = Boolean(grantToken);
-if (!stepUpResponse.ok || !grantToken) {
-  throw new Error(
-    `step-up HTTP ${stepUpResponse.status} ${codeOf(stepUp) ?? ""}`.trim(),
+  const challenge = await request(
+    "challenge",
+    `${supabase}/auth/v1/factors/${encodeURIComponent(factorId)}/challenge`,
+    { method: "POST", headers: authHeaders(aal1), body: "{}" },
   );
-}
+  if (typeof challenge?.id !== "string") {
+    throw new Error("TOTP challenge returned no id");
+  }
 
-const writeResponse = await fetch(`${api}/tenants/${tenantId}/roles`, {
-  method: "POST",
-  headers: { ...authHeaders, "x-step-up-token": grantToken },
-  body: JSON.stringify(roleBody),
-});
-const written = await json(writeResponse);
-evidence.writeWithGrantStatus = writeResponse.status;
-evidence.roleId = writeResponse.ok ? (written?.id ?? null) : null;
-evidence.roleCode = writeResponse.ok ? (written?.code ?? null) : null;
-evidence.rolePermissionCount = writeResponse.ok
-  ? (written?.permissionCount ?? null)
-  : null;
-if (writeResponse.status !== 201) {
-  throw new Error(
-    `granted write HTTP ${writeResponse.status} ${codeOf(written) ?? ""}`.trim(),
+  await waitForFreshWindow();
+  const verified = await request(
+    "verify",
+    `${supabase}/auth/v1/factors/${encodeURIComponent(factorId)}/verify`,
+    {
+      method: "POST",
+      headers: authHeaders(aal1),
+      body: JSON.stringify({ challenge_id: challenge.id, code: totp(secret) }),
+    },
   );
+  const aal2 = verified?.access_token;
+  if (typeof aal2 !== "string" || typeof verified?.refresh_token !== "string") {
+    throw new Error("TOTP verification returned no token pair");
+  }
+  const payload = JSON.parse(Buffer.from(aal2.split(".")[1], "base64url"));
+  evidence.aal = payload.aal ?? null;
+  evidence.sessionIdPresent = typeof payload.session_id === "string";
+  evidence.refreshTokenReplaced =
+    verified.refresh_token !== login.refresh_token;
+  if (payload.aal !== "aal2")
+    throw new Error(`access token aal is ${payload.aal}`);
+
+  const session = await request("session", `${api}/auth/session`, {
+    headers: apiHeaders(aal2),
+  });
+  evidence.sessionRole = session?.role ?? null;
+
+  const roleCode = `R-live-mfa-${stamp}`;
+  const roleBody = {
+    code: roleCode,
+    name: `Live MFA ${stamp}`,
+    baseRoleCode: "R-agent",
+  };
+  const deniedResponse = await fetch(`${api}/tenants/${tenantId}/roles`, {
+    method: "POST",
+    headers: apiHeaders(aal2),
+    body: JSON.stringify(roleBody),
+  });
+  const denied = await readJson(deniedResponse);
+  evidence.writeWithoutGrantStatus = deniedResponse.status;
+  evidence.writeWithoutGrantCode = denied?.code ?? null;
+  if (
+    deniedResponse.status !== 403 ||
+    evidence.writeWithoutGrantCode !== "STEP_UP_REQUIRED"
+  ) {
+    throw new Error(
+      `ungranted write HTTP ${deniedResponse.status} ${evidence.writeWithoutGrantCode ?? ""}`.trim(),
+    );
+  }
+
+  const stepUp = await request("stepUp", `${api}/auth/step-up`, {
+    method: "POST",
+    headers: apiHeaders(aal2),
+    body: JSON.stringify({ action: "role.change", tenantId, password }),
+  });
+  if (typeof stepUp?.token !== "string") {
+    throw new Error("step-up returned no grant");
+  }
+  evidence.grantIssued = true;
+
+  const written = await request(
+    "writeWithGrant",
+    `${api}/tenants/${tenantId}/roles`,
+    {
+      method: "POST",
+      headers: { ...apiHeaders(aal2), "x-step-up-token": stepUp.token },
+      body: JSON.stringify(roleBody),
+    },
+  );
+  evidence.roleId = written?.id ?? null;
+  evidence.roleCode = written?.code ?? null;
+  evidence.rolePermissionCount = written?.permissionCount ?? null;
+
+  const replayResponse = await fetch(`${api}/tenants/${tenantId}/roles`, {
+    method: "POST",
+    headers: { ...apiHeaders(aal2), "x-step-up-token": stepUp.token },
+    body: JSON.stringify({ ...roleBody, code: `${roleCode}-replay` }),
+  });
+  const replay = await readJson(replayResponse);
+  evidence.replayStatus = replayResponse.status;
+  evidence.replayCode = replay?.code ?? null;
 }
 
-const replayResponse = await fetch(`${api}/tenants/${tenantId}/roles`, {
-  method: "POST",
-  headers: { ...authHeaders, "x-step-up-token": grantToken },
-  body: JSON.stringify({ ...roleBody, code: `${roleCode}-replay` }),
-});
-const replay = await json(replayResponse);
-evidence.replayStatus = replayResponse.status;
-evidence.replayCode = codeOf(replay);
+let failure = null;
+try {
+  await run();
+} catch (error) {
+  failure = error;
+  evidence.failure = error instanceof Error ? error.message : String(error);
+}
 
-const listResponse = await fetch(`${api}/tenants/${tenantId}/roles`, {
-  headers: authHeaders,
-});
-const list = await json(listResponse);
-evidence.roleListStatus = listResponse.status;
-evidence.roleListed =
-  listResponse.ok && Array.isArray(list)
-    ? list.some((role) => role.code === roleCode)
-    : false;
+const cleanup = cleanupSyntheticAccount();
+evidence.cleanup = cleanup.ok ? "removed" : "failed";
+if (!cleanup.ok) evidence.cleanupFailure = cleanup.detail;
+evidence.result = failure || !cleanup.ok ? "failed" : "pass";
 
 await writeFile(
   ".agents/evidence-d58-live-totp.json",
   `${JSON.stringify(evidence, null, 2)}\n`,
 );
 console.log(JSON.stringify(evidence, null, 2));
+
+if (failure) {
+  console.error(evidence.failure);
+  process.exitCode = 1;
+}
+if (!cleanup.ok) {
+  console.error(`Cleanup failed: ${cleanup.detail}`);
+  process.exitCode = 1;
+}
