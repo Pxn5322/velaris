@@ -13,9 +13,9 @@ T6.09 is not complete and remains unchecked. On 2026-11-18 the owner selected se
 
 **Recorded:** D-59-R1 Option A is the backup TOTP factor recovery model. This is the only recovery-model option selected.
 
-**Not recorded:** OD-2 approval mechanism. The D-62 approval service is recommended but **not selected**. The 2026-11-18 Option A choice does not apply to section 5.1.
+**Recorded:** OD-2 Option 1 is the D-62 approval service, selected on 2026-11-18. D-62 is Blocked, so its approval contract is still required.
 
-**Still open:** OD-2, OD-3, OD-4, OD-5, OD-8, OD-9 and OD-10. D-59 remains **Blocked**.
+**Still open:** OD-3, OD-4, OD-5, OD-8, OD-9 and OD-10. D-59 remains **Blocked**.
 
 ## 1. Purpose
 
@@ -50,7 +50,7 @@ Sources: Supabase MFA guide (`https://supabase.com/docs/guides/platform/multi-fa
 
 **Recorded owner choice: option A, the backup TOTP factor recovery model (2026-11-18).**
 
-This choice applies only to this section. It does not select the D-62 approval service or any other approval mechanism in section 5.1. OD-2 remains open.
+This choice applies only to this section. It does not describe the approval mechanism. OD-2 separately selects the D-62 service in section 5.1.
 
 | Option | Description | Consequence |
 | --- | --- | --- |
@@ -113,19 +113,17 @@ These rules apply to every privileged recovery and to every sealed-account use.
 9. **Denial is recorded.** A denied request records the actor, target, reason and request id.
 10. **No emergency bypass in Phase 1.** The sealed account is the emergency path. An operator must not disable the approval rule during an incident.
 
-### 5.1 Approval mechanism (open decision — not selected)
+### 5.1 Approval mechanism (selected: D-62 service)
 
-The D-59 review rejects a separate approval store in T6.09. The 2026-11-18 Option A choice applies only to section 3 and does not select an approval mechanism here. OD-2 remains open.
+The owner selected Option 1, the D-62 approval service, on 2026-11-18. The D-59 review rejects a separate approval store in T6.09. D-62 is Blocked, so the approval contract is still required.
 
 | Option | Description | Assessment |
 | --- | --- | --- |
-| D-62 approval service (recommended; not selected) | The recovery request uses the D-62 request, approval and notification model. It does not add a second approval store. | Strongest consistency. D-62 is Blocked, so T6.09 waits for it. |
-| Signed operations ticket (interim) | Two approvers sign a ticket; an operator executes the reset with a controlled admin command and attaches the ticket. | Acceptable only until D-62 is ready. The audit trail depends on manual discipline. |
-| Email approval | Approvers reply to an email thread. | Reject. Mailbox compromise and ambiguous identity make it unsuitable for privileged recovery. |
+| D-62 approval service (selected) | The recovery request uses the D-62 request, approval and notification model. It does not add a second approval store. | Selected. D-62 is Blocked, so T6.09 waits for its contract. |
+| Signed operations ticket (interim; not selected) | Two approvers sign a ticket; an operator executes the reset with a controlled admin command and attaches the ticket. | Not selected. This is only a fallback if D-62 cannot meet the date. |
+| Email approval (not selected) | Approvers reply to an email thread. | Reject. Mailbox compromise and ambiguous identity make it unsuitable for privileged recovery. |
 
-If OD-2 selects the D-62 service, D-62 must expose the approval contract and enforce requester ≠ approver. If OD-2 selects the signed-ticket interim, T6.09 must write the same audit events and record the ticket id. The owner records the selection in OD-2. The D-62 service is not selected now.
-
-The drafted options and comparison are in `.agents/evidence-d59-od2-options.md`. That brief does not select an option.
+Because OD-2 selects the D-62 service, D-62 must expose the approval contract and enforce requester ≠ approver. The drafted options and comparison are in `.agents/evidence-d59-od2-options.md`.
 
 ## 6. Sealed platform-owner account runbook
 
@@ -216,7 +214,7 @@ The two proposed events close a gap: approval is not execution. Without them, th
 D-59 must be Recorded before the remaining T6.09 work starts. The section 3 Option A backup-factor slice is implemented. The remaining scope is:
 
 - seed `user.mfa.reset` and `user.password.reset` if OD-5 keeps administrator password reset;
-- integrate with the D-62 approval service if OD-2 selects it, or use the signed-ticket interim if OD-2 selects it;
+- integrate with the selected D-62 approval service when its contract is ready;
 - add server-side MFA factor reset through the provider admin API;
 - revoke sessions and advance the token cutoff after a privileged reset;
 - require factor enrollment before normal use;
@@ -251,7 +249,7 @@ Each item comes from the cross-check against `docs/ARCHITECTURE.md`, `docs/PRD.m
 | Check | Gap the owner must resolve | Recommended answer | Owner |
 | --- | --- | --- | --- |
 | [x] OD-1 | D-59 requires TOTP recovery codes, but hosted Supabase does not provide them. The old T6.09 verification required a recovery code to work once. The backup factor is recommended but not required, and D-58 gives administrators a seven-day TOTP grace. | Section 3 option A selected on 2026-11-18. Amend D-59 and T6.09. Add second-factor enrollment and selection to the web flow (implemented 2026-11-18). Set the backup-factor deadline only after enrollment-completion and support-load evidence. Keep it optional for agents and customers until then. | Product/security owner |
-| [ ] OD-2 | The approval mechanism is not selected. The plan requires an approval record for each path. T6.09 says two approvers are recorded, but customer and agent reset use one tenant admin. The 2026-11-18 Option A choice does not apply here. | Reuse the D-62 approval service. If D-62 is not ready, use a signed-ticket interim with the same audit events and ticket id. Do not add a separate approval store to T6.09. Require records for all paths and apply the two-approver test only to privileged and sealed paths. | Product/security owner; Engineering owner |
+| [x] OD-2 | The approval mechanism is selected: the D-62 service. D-62 is Blocked, so the approval contract is not ready. The plan requires an approval record for each path. T6.09 says two approvers are recorded, but customer and agent reset use one tenant admin. | D-62 must expose the approval contract, enforce requester ≠ approver, and provide the notification and audit references. Do not add a separate approval store to T6.09. Apply the two-approver test only to privileged and sealed paths. | Product/security owner; Engineering owner |
 | [ ] OD-3 | The platform security owner, second platform owner and alternates are not named. | Name both people and one alternate for each role. Add availability and conflict-of-interest rules. Record the names in the evidence file, not in chat. | Product/security owner |
 | [ ] OD-4 | D-59 says “two-person access,” but the packet can require four participants. The quorum, material split, initial provisioning and annual test date are undefined. The packet assumes the sealed material exists, and D-58 gives the sealed account no grace. | Use two custodians plus one security-owner approval. Require two platform-owner approvals only if at least four named, available people exist. Store two sealed parts in separate safes. Two custodians and the security owner create the account, enroll the first TOTP factor and seal it. Set the first test for November 2027, owned by Operations. | Operations owner; Product/security owner |
 | [ ] OD-5 | D-59 allows a tenant admin to reset a same-tenant member's password and sessions. The packet leaves the target scope and permission open. D-59 also allows peer MFA reset with enterprise approval, while T6.09 says a tenant admin cannot recover a peer. | Keep tenant-admin password reset for active agents and customers only, conditional on identity verification, rate limits, target notification and abuse tests. Send a recovery link. Remove the tenant-admin actor from peer MFA recovery; the enterprise administrator plus platform security owner handle it. Test denial and the enterprise-led approval. Amend D-59. | Product/security owner |
@@ -259,7 +257,7 @@ Each item comes from the cross-check against `docs/ARCHITECTURE.md`, `docs/PRD.m
 | [ ] OD-7 | No PRD acceptance criterion covers recovery. T6.09 maps to F-03 and AC-F03-1, which cover tenant create/disable and role change, not recovery. | Review and approve the draft `AC-F02-4` and `AC-F02-5` in `docs/PRD.md`. Map T6.09 to F-02 and AC-F02-4 for recovery, and keep F-03 and AC-F03-1 for the tenant user-management scope. | Product/security owner |
 | [ ] OD-8 | `user.mfa.reset` has no permission code or role assignment. No password-reset permission exists. | Grant `user.mfa.reset` to `R-tenant-admin` only. If OD-5 keeps administrator password reset, add `user.password.reset` for `R-tenant-admin` only. Show the role matrix and denial tests; `user.password.reset` must not allow peer tenant-admin reset. The privileged path uses its approval, not these tenant permissions. | Product/security owner; Engineering owner |
 | [ ] OD-9 | The setup guide requires custom SMTP before invitations, not recovery. Hosted recovery delivery used the built-in mailer at low volume. | Custom SMTP or the Send Email hook is required. Defer provider selection until the data terms, region, sending domain, deliverability and volume evidence exist. Justify the 10-email-per-hour threshold. Add the recovery check to the setup guide and mailer evidence. | Operations owner |
-| [ ] OD-10 | T6.09 file scope has no `prisma/migrations` path and no web path. The in-app approval option needs both. Its verification names a recovery code. | Defer the scope change. It depends on OD-2 and D-62. Do not add migration or web approval paths until those are settled. Change the verification to factor reset and backup factor only after OD-1. Do not start T6.09 before D-59 is Recorded. | Engineering owner |
+| [ ] OD-10 | T6.09 file scope has no `prisma/migrations` path and no web path. The selected D-62 service may need integration surfaces. Its verification names a recovery code. | Defer the scope change until the D-62 contract is ready. Do not add migration or web approval paths before that. Change the verification to factor reset and backup factor only after OD-1. Do not start the remaining T6.09 work before D-59 is Recorded. | Engineering owner |
 
 ### 11.1 Product/security owner review (2026-11-18)
 
@@ -268,7 +266,7 @@ The product/security owner would not sign the packet with the recommendations as
 | Check | Review outcome | Required change or evidence |
 | --- | --- | --- |
 | OD-1 | Section 3 option A selected; deadline evidence required | Keep the backup-factor direction. Factor enrollment and selection are implemented in the web flow. Record enrollment completion and support load before a mandatory deadline. |
-| OD-2 | Open; not selected | Reuse the D-62 approval service or record a signed-ticket interim. Do not add a separate approval store to T6.09 before that decision. The section 3 Option A choice is unrelated. |
+| OD-2 | Option 1 selected; D-62 contract open | Use the D-62 approval service. D-62 must expose the contract and enforce requester ≠ approver. Do not add a separate approval store to T6.09. |
 | OD-3 | Evidence required | Add names, alternates, availability and conflict-of-interest rules. |
 | OD-4 | Reject the fixed four-person quorum as written | Prove at least four named, available participants. Otherwise use two custodians plus one security-owner approval, with post-incident review. Keep the storage and provisioning recommendations. |
 | OD-5 | Evidence required | Add identity verification, rate limits, target notification and abuse tests before a tenant admin may send a recovery link. Keep the ban on tenant-admin peer recovery. |
@@ -276,7 +274,7 @@ The product/security owner would not sign the packet with the recommendations as
 | OD-7 | Accept the need; criteria under review | AC-F02-4 and AC-F02-5 are now Draft PRD rows. They need owner approval and executable tests. |
 | OD-8 | Evidence required | Show the role/permission matrix and denial tests. `user.password.reset` must not allow peer tenant-admin reset. |
 | OD-9 | Reject the provider selection; accept the SMTP requirement | Select a provider only after data terms, region, sending domain, deliverability and volume review. Justify the 10-per-hour threshold. |
-| OD-10 | Reject as written; defer | Scope depends on OD-2 and D-62. Do not add migration or web approval paths until those are settled. |
+| OD-10 | Reject as written; defer | Scope depends on the D-62 contract. Do not add migration or web approval paths until it is ready. |
 
 ## 12. Draft PRD acceptance criteria (for owner approval)
 
