@@ -38,8 +38,8 @@ Use Jest for unit/domain tests, Supertest for NestJS API/integration tests, Cypr
 | AC-F02-1 | TST-AC-F02-1 | Valid identity resolves session and tenant membership |
 | AC-F02-2 | TST-AC-F02-2 | Invalid/expired credential returns 401 |
 | AC-F02-3 | TST-AC-F02-3 | Authenticated principal lacking permission receives 403 |
-| AC-F02-4 | TST-AC-F02-4 | Approved recovery resets the password or factor, records approval and completion, requires a new factor after a factor reset and revokes earlier administrator sessions |
-| AC-F02-5 | TST-AC-F02-5 | Tenant-admin recovery for a foreign, peer, enterprise or platform administrator is denied and audited |
+| AC-F02-4 | TST-AC-F02-4 | Role-approved recovery resets the password or removes MFA factors, audits request and completion, requires a new factor before protected routes, and revokes earlier sessions for an administrator |
+| AC-F02-5 | TST-AC-F02-5 | Tenant administrator with recovery permission is denied without password, factor or session change and the denial is audited for foreign-tenant, peer, enterprise or platform targets |
 | AC-F03-1 | TST-AC-F03-1 | Tenant/user/role governance persists and creates audit event |
 | AC-F03-2 | TST-AC-F03-2 | Invalid identifiers/role assignments rejected |
 | AC-F03-3 | TST-AC-F03-3 | Tenant admin cannot perform platform-wide tenant governance |

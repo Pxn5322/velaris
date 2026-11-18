@@ -224,8 +224,8 @@ D-59 can move to Recorded only when every item is true.
 - [ ] Named people hold the platform security owner, second platform owner and custodian roles.
 - [ ] `user.mfa.reset` is approved for the role baseline and seeded.
 - [ ] If OD-5 keeps administrator password reset, `user.password.reset` is approved and seeded.
-- [ ] `.agents/evidence-d59-mailer.md` passes section 7.
-- [ ] `.agents/evidence-d59-sealed-account.md` names custodians, successor, storage, initial provisioning, annual test date and incident record location.
+- [ ] `.agents/evidence-d59-mailer.md` is complete and passes section 7. Template created 2026-11-18.
+- [ ] `.agents/evidence-d59-sealed-account.md` is complete and names custodians, successor, storage, initial provisioning, annual test date and incident record location. Template created 2026-11-18.
 - [ ] The audit event list in section 8 is approved, including the two proposed events.
 - [ ] The owner approves the draft AC-F02-4 and AC-F02-5 in `docs/PRD.md`.
 - [ ] Approval records exist for each path in OD-2.
@@ -261,7 +261,7 @@ The product/security owner would not sign the packet with the recommendations as
 | OD-4 | Reject the fixed four-person quorum as written | Prove at least four named, available participants. Otherwise use two custodians plus one security-owner approval, with post-incident review. Keep the storage and provisioning recommendations. |
 | OD-5 | Evidence required | Add identity verification, rate limits, target notification and abuse tests before a tenant admin may send a recovery link. Keep the ban on tenant-admin peer recovery. |
 | OD-6 | Accept | Add the two events and remove `auth.mfa_recovery_used` if OD-1 selects backup factors. |
-| OD-7 | Accept the need; criteria under review | AC-F02-4 and AC-F02-5 are now Draft PRD rows. They need owner approval and test mapping. |
+| OD-7 | Accept the need; criteria under review | AC-F02-4 and AC-F02-5 are now Draft PRD rows. They need owner approval and executable tests. |
 | OD-8 | Evidence required | Show the role/permission matrix and denial tests. `user.password.reset` must not allow peer tenant-admin reset. |
 | OD-9 | Reject the provider selection; accept the SMTP requirement | Select a provider only after data terms, region, sending domain, deliverability and volume review. Justify the 10-per-hour threshold. |
 | OD-10 | Reject as written; defer | Scope depends on OD-2 and D-62. Do not add migration or web approval paths until those are settled. |
@@ -272,15 +272,26 @@ Status: **Draft PRD criteria.** AC-F02-4 and AC-F02-5 were added to `docs/PRD.md
 
 | AC ID | Feature | Given / When / Then | Kind |
 | --- | --- | --- | --- |
-| AC-F02-4 | F-02 | Given a user who cannot sign in because of a lost password or second factor, when the approved recovery path completes, then the password or MFA factor is reset, the request and completion are audited, and after a factor reset the user enrolls a new factor before normal use; for an administrator, all earlier sessions are revoked | happy |
+| AC-F02-4 | F-02 | Given an active user who cannot sign in because of a lost password or second factor, when the recovery path approved for that user's role completes, then the password is reset or the MFA factors are removed, the recovery request and completion are audited, and after the MFA factors are removed the user enrolls a new factor before any protected route is allowed; if the user is an administrator, all earlier sessions for that user are revoked | happy |
 
 The negative companion is also a draft PRD row:
 
 | AC ID | Feature | Given / When / Then | Kind |
 | --- | --- | --- | --- |
-| AC-F02-5 | F-02 | Given a tenant administrator, when the administrator requests recovery for a foreign-tenant user or a peer administrator outside the approved path, then the request is denied without a reset and the denial is audited | unauthorized |
+| AC-F02-5 | F-02 | Given a tenant administrator with recovery permission, when the administrator requests password or MFA recovery for a foreign-tenant user, a peer tenant administrator, an enterprise administrator or a platform owner, then the request is denied without a password, factor or session change and the denial is audited | unauthorized |
 
 If the owner wants a different feature mapping, record it in OD-7 and draft the alternative criterion before approval. Do not use two IDs for one behavior.
+
+### 12.1 Testability review (2026-11-18)
+
+The Draft wording was tightened to remove ambiguous test targets and to match `docs/PRD.md`.
+
+| AC | What a test can now assert | Remaining dependency |
+| --- | --- | --- |
+| AC-F02-4 | The user is active; the path is approved for the user's role; the password is reset or the MFA factors are removed; request and completion are audited; a new factor is enrolled before any protected route; earlier sessions are revoked for an administrator. | D-59 must name the approved path and audit events for each role. |
+| AC-F02-5 | The actor has recovery permission; the request covers password or MFA recovery; the four target classes are named; no password, factor or session change occurs; the denial is audited. | OD-5 must keep the absolute ban and name the denial event. |
+
+AC-F02-4 remains one criterion with two branches. A test must parameterize password recovery and MFA recovery. One passing branch does not prove the other.
 
 ## 13. Sign-off
 
