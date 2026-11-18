@@ -24,6 +24,7 @@ import { join, relative, sep } from "node:path";
 const CONTROLLERS_ROOT = "apps/api/src";
 const PERMISSION_SOURCE =
   "apps/api/src/domains/permissions/permission.codes.ts";
+const STEP_UP_SOURCE = "apps/api/src/domains/auth/step-up.service.ts";
 
 const HTTP_METHODS = ["Get", "Post", "Put", "Patch", "Delete"];
 
@@ -119,6 +120,29 @@ function readPermissionCodes() {
   return codes;
 }
 
+/** Map each STEP_UP_ACTIONS key to its action code and MFA policy. */
+function readStepUpActions() {
+  const source = readFileSync(STEP_UP_SOURCE, "utf8");
+  const codes = new Map();
+  for (const match of source.matchAll(
+    /([A-Z][A-Z0-9_]*):\s*'([a-z][a-z0-9.]*)'/g,
+  )) {
+    codes.set(match[1], match[2]);
+  }
+  const policy = /const ACTION_POLICY[\s\S]*?\n};/.exec(source)?.[0] ?? "";
+  const mfa = new Map();
+  for (const match of policy.matchAll(
+    /\[STEP_UP_ACTIONS\.([A-Z0-9_]+)\]:\s*\{\s*mfa:\s*(true|false)/g,
+  )) {
+    mfa.set(match[1], match[2] === "true");
+  }
+  const actions = new Map();
+  for (const [key, code] of codes) {
+    actions.set(key, { code, mfa: mfa.get(key) ?? null });
+  }
+  return actions;
+}
+
 /** Collect decorator lines, then attach them to the following method. */
 function parseController(path) {
   const lines = readFileSync(path, "utf8").split(/\r?\n/);
@@ -201,7 +225,46 @@ function isAuthenticated(decorators) {
   return decorators.some((entry) => entry.includes("SupabaseAuthGuard"));
 }
 
+function declaredStepUp(decorators) {
+  const actions = [];
+  let malformed = false;
+  for (const entry of decorators) {
+    if (!entry.startsWith("@RequireStepUp(")) continue;
+    const matches = [...entry.matchAll(/STEP_UP_ACTIONS\.([A-Z0-9_]+)/g)];
+    if (matches.length === 0) malformed = true;
+    for (const match of matches) actions.push(match[1]);
+  }
+  return { actions, malformed };
+}
+
+function hasStepUpGuard(decorators) {
+  return decorators.some(
+    (entry) => entry.startsWith("@UseGuards(") && entry.includes("StepUpGuard"),
+  );
+}
+
+function assuranceLabel(keys, knownActions) {
+  if (keys.length === 0) return "-";
+  return keys
+    .map((key) => {
+      const action = knownActions.get(key);
+      if (!action) return `unknown:${key}`;
+      if (action.mfa === null) return `no-policy:${action.code}`;
+      return action.mfa
+        ? `mfa+step-up:${action.code}`
+        : `step-up:${action.code}`;
+    })
+    .join(", ");
+}
+
 const knownCodes = readPermissionCodes();
+const knownStepUps = readStepUpActions();
+if (knownStepUps.size === 0) {
+  process.stderr.write(
+    `No step-up actions parsed from ${STEP_UP_SOURCE}; the parser no longer matches the source\n`,
+  );
+  process.exit(2);
+}
 const files = listControllerFiles(CONTROLLERS_ROOT);
 const routes = files.flatMap(parseController);
 
@@ -226,6 +289,9 @@ for (const route of routes) {
   );
   const permissions = declaredPermissions(route.decorators);
   const authenticated = isAuthenticated(route.decorators);
+  const stepUp = declaredStepUp(route.decorators);
+  const stepUpGuarded = hasStepUpGuard(route.decorators);
+  const assurance = assuranceLabel(stepUp.actions, knownStepUps);
 
   for (const code of permissions) {
     if (!knownCodes.has(code)) {
@@ -234,12 +300,45 @@ for (const route of routes) {
       );
     }
   }
+  for (const key of stepUp.actions) {
+    const action = knownStepUps.get(key);
+    if (!action) {
+      findings.push(
+        `${route.method} ${route.path} (${route.handler}) declares unknown step-up action ${key}`,
+      );
+    } else if (action.mfa === null) {
+      findings.push(
+        `${route.method} ${route.path} (${route.handler}) step-up action ${action.code} has no MFA policy`,
+      );
+    }
+  }
+  if (stepUp.malformed) {
+    findings.push(
+      `${route.method} ${route.path} (${route.handler}) declares a step-up action that is not a STEP_UP_ACTIONS constant`,
+    );
+  }
+  if (stepUp.actions.length > 0 && !stepUpGuarded) {
+    findings.push(
+      `${route.method} ${route.path} (${route.handler}) declares step-up but has no StepUpGuard`,
+    );
+  }
+  if (stepUpGuarded && stepUp.actions.length === 0) {
+    findings.push(
+      `${route.method} ${route.path} (${route.handler}) has StepUpGuard but declares no step-up action`,
+    );
+  }
+  if (stepUp.actions.length > 0 && !authenticated) {
+    findings.push(
+      `${route.method} ${route.path} (${route.handler}) declares step-up without SupabaseAuthGuard`,
+    );
+  }
 
   if (publicEntry) {
     rows.push({
       ...route,
       auth: "public",
       permissions: permissions.join(", ") || "-",
+      assurance,
       note: publicEntry.reason,
     });
     continue;
@@ -256,6 +355,7 @@ for (const route of routes) {
         ...route,
         auth: "bearer",
         permissions: "-",
+        assurance,
         note: selfOnly.reason,
       });
       continue;
@@ -268,6 +368,7 @@ for (const route of routes) {
     ...route,
     auth: authenticated ? "bearer" : "none",
     permissions: permissions.join(", ") || "-",
+    assurance,
     note: authenticated ? "" : "missing auth guard",
   });
 }
@@ -275,19 +376,26 @@ for (const route of routes) {
 process.stdout.write(
   `Route inventory: ${routes.length} route(s) in ${files.length} controller file(s)\n\n`,
 );
-process.stdout.write("| Method | Path | Handler | Auth | Permissions |\n");
-process.stdout.write("| --- | --- | --- | --- | --- |\n");
+process.stdout.write(
+  "| Method | Path | Handler | Auth | Permissions | Assurance |\n",
+);
+process.stdout.write("| --- | --- | --- | --- | --- | --- |\n");
 for (const row of rows) {
   process.stdout.write(
-    `| ${row.method} | ${row.path} | ${row.handler} | ${row.auth} | ${row.permissions} |\n`,
+    `| ${row.method} | ${row.path} | ${row.handler} | ${row.auth} | ${row.permissions} | ${row.assurance} |\n`,
   );
 }
 
 const declared = rows.filter((row) => row.permissions !== "-").length;
 const publicCount = rows.filter((row) => row.auth === "public").length;
+const stepUpCount = rows.filter((row) => row.assurance !== "-").length;
+const mfaCount = rows.filter((row) =>
+  row.assurance.includes("mfa+step-up:"),
+).length;
 process.stdout.write(
   `\n${rows.length - publicCount} protected route(s), ${publicCount} documented public route(s); ` +
-    `${declared} route(s) declare at least one permission code\n`,
+    `${declared} route(s) declare at least one permission code; ` +
+    `${stepUpCount} route(s) declare step-up protection (${mfaCount} require MFA)\n`,
 );
 
 if (findings.length > 0) {
@@ -299,5 +407,6 @@ if (findings.length > 0) {
 }
 
 process.stdout.write(
-  "\nEvery route is authenticated and permission-scoped, or on the documented public list.\n",
+  "\nEvery route is authenticated and permission-scoped, or on the documented public list. " +
+    "Every step-up declaration has a StepUpGuard and a known MFA policy.\n",
 );
