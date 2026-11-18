@@ -161,6 +161,9 @@ test.describe("profile settings", () => {
       "list",
     );
     await expect(page.getByTestId("mfa-factor")).toHaveCount(1);
+    await expect(page.getByTestId("mfa-factor")).toContainText(
+      "Primary authenticator",
+    );
 
     await page.getByTestId("mfa-add-backup").click();
     await expect(page.getByTestId("mfa-settings")).toHaveAttribute(
@@ -184,6 +187,9 @@ test.describe("profile settings", () => {
       "Backup authenticator added",
     );
     await expect(page.getByTestId("mfa-factor")).toHaveCount(2);
+    await expect(page.getByTestId("mfa-factor").nth(1)).toContainText(
+      "Backup authenticator",
+    );
     expect(enrollments).toEqual([
       { factor_type: "totp", friendly_name: "VELARIS backup" },
     ]);

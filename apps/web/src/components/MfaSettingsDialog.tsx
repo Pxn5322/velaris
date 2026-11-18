@@ -22,6 +22,7 @@ import {
   enrollTotp,
   listTotpFactors,
   removeTotpFactor,
+  totpFactorLabel,
   verifyTotp,
   type TotpEnrollment,
   type TotpFactor,
@@ -39,12 +40,17 @@ function describe(error: unknown): string {
     : "The authenticator request failed.";
 }
 
-function factorLabel(factor: TotpFactor, index: number): string {
-  const name = factor.friendlyName?.trim();
-  if (name && !name.toLowerCase().startsWith("velaris")) {
-    return name;
-  }
-  return index === 0 ? "Primary authenticator" : "Backup authenticator";
+function ErrorNotice({ message }: { message: string }) {
+  if (!message) return null;
+  return (
+    <p
+      role="alert"
+      data-testid="mfa-settings-error"
+      className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-rose-300"
+    >
+      {message}
+    </p>
+  );
 }
 
 export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
@@ -57,11 +63,11 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  const loadFactors = useCallback(async () => {
+  const loadFactors = async () => {
     const list = await listTotpFactors();
     setFactors(list);
     setStage("list");
-  }, []);
+  };
 
   useEffect(() => {
     let active = true;
@@ -106,17 +112,21 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
     setStage("enroll");
   };
 
-  const enrollFirst = async () => {
+  const run = async (operation: () => Promise<void>): Promise<void> => {
     setBusy(true);
     setError("");
-    setNotice("");
     try {
-      await createEnrollment("VELARIS");
+      await operation();
     } catch (caught) {
       setError(describe(caught));
     } finally {
       setBusy(false);
     }
+  };
+
+  const enrollFirst = () => {
+    setNotice("");
+    void run(() => createEnrollment("VELARIS"));
   };
 
   const startBackup = () => {
@@ -128,37 +138,26 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
     setStage("verify");
   };
 
-  const verifyExisting = async (event: FormEvent<HTMLFormElement>) => {
+  const verifyExisting = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!factorId) return;
-    setBusy(true);
-    setError("");
-    try {
+    void run(async () => {
       await verifyTotp(factorId, code.trim());
       await createEnrollment("VELARIS backup");
-    } catch (caught) {
-      setError(describe(caught));
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
-  const verifyNew = async (event: FormEvent<HTMLFormElement>) => {
+  const verifyNew = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!enrollment) return;
-    setBusy(true);
-    setError("");
-    try {
-      await verifyTotp(enrollment.factorId, code.trim());
+    const enrolledId = enrollment.factorId;
+    void run(async () => {
+      await verifyTotp(enrolledId, code.trim());
       setEnrollment(null);
       setCode("");
       await loadFactors();
       setNotice("Backup authenticator added.");
-    } catch (caught) {
-      setError(describe(caught));
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const backToList = () => {
@@ -172,11 +171,11 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
       ? enrollment.qrCode
       : null;
 
-  const codeInput = (testId: string, autoFocus = true) => (
+  const codeInput = (testId: string) => (
     <input
       type="text"
       required
-      autoFocus={autoFocus}
+      autoFocus
       inputMode="numeric"
       autoComplete="one-time-code"
       pattern="[0-9]{6}"
@@ -260,7 +259,7 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
                   >
                     <span className="flex items-center gap-2 text-heading">
                       <Smartphone className="h-4 w-4 text-cyan-300" />
-                      {factorLabel(factor, index)}
+                      {totpFactorLabel(factor, index)}
                     </span>
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-300">
                       <CheckCircle2 className="h-3.5 w-3.5" />
@@ -297,15 +296,7 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
               </p>
             )}
 
-            {error && (
-              <p
-                role="alert"
-                data-testid="mfa-settings-error"
-                className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-rose-300"
-              >
-                {error}
-              </p>
-            )}
+            <ErrorNotice message={error} />
 
             <div className="flex flex-wrap justify-end gap-2">
               {factors.length === 0 && (
@@ -356,7 +347,9 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
             <p className="text-muted-custom">
               Verify{" "}
               <strong className="text-heading">
-                {factors[0] ? factorLabel(factors[0], 0) : "the authenticator"}
+                {factors[0]
+                  ? totpFactorLabel(factors[0], 0)
+                  : "the authenticator"}
               </strong>{" "}
               before you add a backup.
             </p>
@@ -365,15 +358,7 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
               {codeInput("mfa-existing-code")}
             </label>
 
-            {error && (
-              <p
-                role="alert"
-                data-testid="mfa-settings-error"
-                className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-rose-300"
-              >
-                {error}
-              </p>
-            )}
+            <ErrorNotice message={error} />
 
             <div className="flex justify-end gap-2">
               <button
@@ -436,15 +421,7 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
               {codeInput("mfa-new-code")}
             </label>
 
-            {error && (
-              <p
-                role="alert"
-                data-testid="mfa-settings-error"
-                className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-rose-300"
-              >
-                {error}
-              </p>
-            )}
+            <ErrorNotice message={error} />
 
             <div className="flex justify-end gap-2">
               <button

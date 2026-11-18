@@ -125,6 +125,8 @@ The D-59 review rejects a separate approval store in T6.09. The 2026-11-18 Optio
 
 If OD-2 selects the D-62 service, D-62 must expose the approval contract and enforce requester ≠ approver. If OD-2 selects the signed-ticket interim, T6.09 must write the same audit events and record the ticket id. The owner records the selection in OD-2. The D-62 service is not selected now.
 
+The drafted options and comparison are in `.agents/evidence-d59-od2-options.md`. That brief does not select an option.
+
 ## 6. Sealed platform-owner account runbook
 
 The sealed account is a break-glass platform identity. It is not a normal administrator account and it is not shared for daily work.

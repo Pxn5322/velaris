@@ -25,6 +25,15 @@ export interface TotpEnrollment {
   uri: string | null;
 }
 
+/** Stable display name for a verified TOTP factor. */
+export function totpFactorLabel(factor: TotpFactor, index: number): string {
+  const name = factor.friendlyName?.trim();
+  if (name && !name.toLowerCase().startsWith("velaris")) {
+    return name;
+  }
+  return index === 0 ? "Primary authenticator" : "Backup authenticator";
+}
+
 interface ProviderFactor {
   id?: unknown;
   friendly_name?: unknown;

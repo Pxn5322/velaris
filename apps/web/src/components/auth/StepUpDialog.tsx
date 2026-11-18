@@ -3,11 +3,11 @@
 /**
  * Re-authentication dialog for a sensitive action (T6.08, D-58).
  *
- * The API requires a current password and an `aal2` session. An administrator
- * with no factor is enrolled here: the dialog shows the TOTP secret and QR,
- * verifies the first code, replaces the stored session tokens with the `aal2`
- * pair, then requests the one-time grant. The grant is never cached because
- * the API consumes it on first use.
+ * The API requires a current password and an `aal2` session. A user with
+ * verified factors selects one here. A user with no factor enrolls one: the
+ * dialog shows the TOTP secret and QR, verifies the first code, replaces the
+ * stored session tokens with the `aal2` pair, then requests the one-time
+ * grant. The grant is never cached because the API consumes it on first use.
  */
 
 import { useEffect, useState, type FormEvent } from "react";
@@ -17,6 +17,7 @@ import {
   enrollTotp,
   listTotpFactors,
   removeTotpFactor,
+  totpFactorLabel,
   verifyTotp,
   type TotpEnrollment,
   type TotpFactor,
@@ -303,10 +304,7 @@ export function StepUpDialog({
                 >
                   {factors.map((factor, index) => (
                     <option key={factor.id} value={factor.id}>
-                      {factor.friendlyName?.trim() ||
-                        (index === 0
-                          ? "Primary authenticator"
-                          : "Backup authenticator")}
+                      {totpFactorLabel(factor, index)}
                     </option>
                   ))}
                 </select>
