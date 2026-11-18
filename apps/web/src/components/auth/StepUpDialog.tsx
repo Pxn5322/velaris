@@ -19,6 +19,7 @@ import {
   removeTotpFactor,
   verifyTotp,
   type TotpEnrollment,
+  type TotpFactor,
 } from "@/lib/auth/mfa";
 import {
   isMfaRequired,
@@ -51,6 +52,7 @@ export function StepUpDialog({
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [factorId, setFactorId] = useState<string | null>(null);
+  const [factors, setFactors] = useState<TotpFactor[]>([]);
   const [enrollment, setEnrollment] = useState<TotpEnrollment | null>(null);
   const [verified, setVerified] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -87,12 +89,14 @@ export function StepUpDialog({
   };
 
   const prepareFactor = async () => {
-    const factors = await listTotpFactors();
-    if (factors.length > 0) {
-      setFactorId(factors[0].id);
+    const available = await listTotpFactors();
+    if (available.length > 0) {
+      setFactors(available);
+      setFactorId(available[0].id);
       setStage("mfa");
       return;
     }
+    setFactors([]);
     const created = await enrollTotp();
     setEnrollment(created);
     setFactorId(created.factorId);
@@ -283,6 +287,33 @@ export function StepUpDialog({
                 <Smartphone className="h-3.5 w-3.5 text-cyan-300" />
                 Enter the current code from your authenticator app.
               </p>
+            )}
+
+            {stage === "mfa" && factors.length > 1 && (
+              <label className="block space-y-1">
+                <span className="text-muted-custom">Authenticator</span>
+                <select
+                  value={factorId ?? ""}
+                  onChange={(event) => {
+                    setFactorId(event.target.value);
+                    setCode("");
+                  }}
+                  data-testid="step-up-factor"
+                  className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-heading focus:border-brand-cyan focus:outline-none"
+                >
+                  {factors.map((factor, index) => (
+                    <option key={factor.id} value={factor.id}>
+                      {factor.friendlyName?.trim() ||
+                        (index === 0
+                          ? "Primary authenticator"
+                          : "Backup authenticator")}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[10px] text-muted-custom">
+                  Choose the backup if the primary device is unavailable.
+                </span>
+              </label>
             )}
 
             <label className="block space-y-1">

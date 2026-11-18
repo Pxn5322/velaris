@@ -7,7 +7,7 @@ Scope owner: Product/security owner; Operations owner for the sealed account and
 
 This packet is the draft for `.agents/evidence-d59-recovery-matrix.md`. It records the proposed recovery rules, the facts that constrain them, and the decisions the owners must make. A signature on this packet does not mark D-59 Recorded. D-59 also needs the mailer and sealed-account artifacts listed in section 10.
 
-T6.09 has not started. No recovery route, MFA reset route, approval store, mailer change or sealed account was implemented for this packet.
+T6.09 is not complete and remains unchecked. On 2026-11-18 the owner selected Option A, the backup TOTP factor recovery model, and directed the backup-factor slice. The web app now lists verified TOTP factors, selects one during step-up and enrolls one backup factor after AAL2 verification. No recovery route, MFA reset route, approval store, mailer change or sealed account was implemented.
 
 ## 1. Purpose
 
@@ -24,7 +24,7 @@ The rules must preserve these existing controls:
 - A password change or global session revocation advances `users.token_invalid_before`, so earlier access tokens are refused.
 - A sensitive action needs a short-lived, single-use step-up grant.
 - The API denies a verified identity that has no application account row.
-- Support cannot read MFA secrets, recovery codes or passwords.
+- Support cannot read MFA secrets, backup factors or passwords.
 
 ## 2. Facts that constrain the decision
 
@@ -40,7 +40,7 @@ Sources: Supabase MFA guide (`https://supabase.com/docs/guides/platform/multi-fa
 
 ## 3. Decision D-59-R1: recovery model
 
-**Recommended: option A.**
+**Owner selected option A on 2026-11-18.**
 
 | Option | Description | Consequence |
 | --- | --- | --- |
@@ -48,7 +48,7 @@ Sources: Supabase MFA guide (`https://supabase.com/docs/guides/platform/multi-fa
 | B. Custom recovery codes | VELARIS generates one-time recovery codes, stores only hashes, and verifies them before deleting a lost factor. | Adds a new credential type, rate limits, rotation, support procedure and threat tests. It must never be the only factor. More work and more risk in T6.09. |
 | C. Email-only factor reset | A recovery email removes the second factor without another proof. | Not acceptable for administrators. A compromised mailbox would become a full account takeover. Reject. |
 
-If the owner selects A, the D-59 text and the event list must change. `auth.mfa_recovery_used` has no producer if no recovery codes exist. The packet does not silently keep an event for a feature that is not built. The owner records the selection in OD-1.
+The owner selected A on 2026-11-18. The D-59 text and the event list must change. `auth.mfa_recovery_used` has no producer if no recovery codes exist. The packet does not silently keep an event for a feature that is not built. OD-1 records the selection. D-59 remains Blocked on the other decisions and evidence.
 
 ## 4. Recovery matrix
 
@@ -195,25 +195,25 @@ No provider is selected by this packet. T6.09 must not assume that the built-in 
 | `auth.mfa_reset_completed` (proposed) | The factor reset finishes | executor, target, request id, approval id | factor secret |
 | `auth.mfa_reset_denied` (proposed) | A request is denied or expires | actor, target, request id, reason | factor secret |
 
-`auth.mfa_recovery_used` applies only if option B in section 3 is selected. Under option A, remove it or record that it is not emitted; do not ship an event with no producer.
+`auth.mfa_recovery_used` is not emitted under the selected option A. Do not ship it.
 
 The two proposed events close a gap: approval is not execution. Without them, the audit trail cannot show whether an approved reset completed or was denied.
 
-## 9. Implementation boundary for T6.09 (not started)
+## 9. Implementation boundary for T6.09 (partial)
 
-D-59 must be Recorded before T6.09 starts. When it does, the expected scope is:
+D-59 must be Recorded before the remaining T6.09 work starts. The Option A backup-factor slice is implemented. The remaining scope is:
 
 - seed `user.mfa.reset` and `user.password.reset` if OD-5 keeps administrator password reset;
 - integrate with the D-62 approval service if option A is selected, or use the signed-ticket interim if option B is selected;
 - add server-side MFA factor reset through the provider admin API;
 - revoke sessions and advance the token cutoff after a privileged reset;
 - require factor enrollment before normal use;
-- add backup-factor enrollment and selection in the web flow if OD-1 requires it;
+- [done 2026-11-18] add backup-factor enrollment and selection in the web flow;
 - emit the approved audit events;
 - add denial tests for self-approval, peer approval, cross-tenant reset, wrong role, expired approval, replay and missing `aal2`;
 - add the web recovery request and approval surfaces only when the selected mechanism needs them.
 
-This packet does not authorize any of that work.
+This packet does not authorize the remaining work.
 
 ## 10. Evidence checklist
 
@@ -238,7 +238,7 @@ Each item comes from the cross-check against `docs/ARCHITECTURE.md`, `docs/PRD.m
 
 | Check | Gap the owner must resolve | Recommended answer | Owner |
 | --- | --- | --- | --- |
-| [ ] OD-1 | D-59 requires TOTP recovery codes, but hosted Supabase does not provide them. The old T6.09 verification required a recovery code to work once. The backup factor is recommended but not required, and D-58 gives administrators a seven-day TOTP grace. | Select the backup TOTP factor. Amend D-59 and T6.09. Add second-factor enrollment and selection to the web flow. Set the backup-factor deadline only after enrollment-completion and support-load evidence. Keep it optional for agents and customers until then. | Product/security owner |
+| [x] OD-1 | D-59 requires TOTP recovery codes, but hosted Supabase does not provide them. The old T6.09 verification required a recovery code to work once. The backup factor is recommended but not required, and D-58 gives administrators a seven-day TOTP grace. | Option A selected on 2026-11-18. Amend D-59 and T6.09. Add second-factor enrollment and selection to the web flow (implemented 2026-11-18). Set the backup-factor deadline only after enrollment-completion and support-load evidence. Keep it optional for agents and customers until then. | Product/security owner |
 | [ ] OD-2 | The approval mechanism is not selected. The plan requires an approval record for each path. T6.09 says two approvers are recorded, but customer and agent reset use one tenant admin. | Reuse the D-62 approval service. If D-62 is not ready, use a signed-ticket interim with the same audit events and ticket id. Do not add a separate approval store to T6.09. Require records for all paths and apply the two-approver test only to privileged and sealed paths. | Product/security owner; Engineering owner |
 | [ ] OD-3 | The platform security owner, second platform owner and alternates are not named. | Name both people and one alternate for each role. Add availability and conflict-of-interest rules. Record the names in the evidence file, not in chat. | Product/security owner |
 | [ ] OD-4 | D-59 says “two-person access,” but the packet can require four participants. The quorum, material split, initial provisioning and annual test date are undefined. The packet assumes the sealed material exists, and D-58 gives the sealed account no grace. | Use two custodians plus one security-owner approval. Require two platform-owner approvals only if at least four named, available people exist. Store two sealed parts in separate safes. Two custodians and the security owner create the account, enroll the first TOTP factor and seal it. Set the first test for November 2027, owned by Operations. | Operations owner; Product/security owner |
@@ -255,7 +255,7 @@ The product/security owner would not sign the packet with the recommendations as
 
 | Check | Review outcome | Required change or evidence |
 | --- | --- | --- |
-| OD-1 | Reject the mandatory deadline; evidence required | Keep the backup-factor direction. Add factor enrollment and selection to the web flow before requiring a backup factor within seven days. `StepUpDialog.tsx` uses `factors[0]`; `mfa.ts` has no backup-factor management. Record enrollment completion and support load. |
+| OD-1 | Option A selected; deadline evidence required | Keep the backup-factor direction. Factor enrollment and selection are implemented in the web flow. Record enrollment completion and support load before a mandatory deadline. |
 | OD-2 | Reject as written | Reuse the D-62 approval service or record a signed-ticket interim. Do not add a separate approval store to T6.09 before that decision. |
 | OD-3 | Evidence required | Add names, alternates, availability and conflict-of-interest rules. |
 | OD-4 | Reject the fixed four-person quorum as written | Prove at least four named, available participants. Otherwise use two custodians plus one security-owner approval, with post-incident review. Keep the storage and provisioning recommendations. |

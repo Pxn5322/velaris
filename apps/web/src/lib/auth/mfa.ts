@@ -102,12 +102,14 @@ export async function listTotpFactors(): Promise<TotpFactor[]> {
 }
 
 /** Start TOTP enrollment; the factor stays unverified until the code is checked. */
-export async function enrollTotp(): Promise<TotpEnrollment> {
+export async function enrollTotp(
+  friendlyName = "VELARIS",
+): Promise<TotpEnrollment> {
   const response = await providerFetch("/factors", {
     method: "POST",
     body: JSON.stringify({
       factor_type: "totp",
-      friendly_name: "VELARIS",
+      friendly_name: friendlyName,
     }),
   });
   if (!response.ok) {
