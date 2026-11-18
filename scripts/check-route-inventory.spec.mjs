@@ -11,7 +11,9 @@ import {
 } from "./check-route-inventory.mjs";
 
 const MULTI_LINE = `
-@Controller('things')
+@Controller(
+  'things',
+)
 @UseGuards(
   SupabaseAuthGuard,
   PermissionsGuard,

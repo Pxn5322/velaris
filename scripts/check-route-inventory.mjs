@@ -121,13 +121,18 @@ function readQuotedConstants(source) {
 }
 
 function readPermissionCodes() {
-  return readQuotedConstants(readFileSync(PERMISSION_SOURCE, "utf8"));
+  const source = readFileSync(PERMISSION_SOURCE, "utf8");
+  const block =
+    /export const PERMISSIONS = \{([\s\S]*?)\n\} as const;/.exec(source)?.[1] ?? "";
+  return readQuotedConstants(block);
 }
 
 /** Map each STEP_UP_ACTIONS key to its action code and MFA policy. */
 function readStepUpActions() {
   const source = readFileSync(STEP_UP_SOURCE, "utf8");
-  const codes = readQuotedConstants(source);
+  const actionsBlock =
+    /export const STEP_UP_ACTIONS = \{([\s\S]*?)\n\};/.exec(source)?.[1] ?? "";
+  const codes = readQuotedConstants(actionsBlock);
   const policy = /const ACTION_POLICY[\s\S]*?\n};/.exec(source)?.[0] ?? "";
   const mfa = new Map();
   for (const match of policy.matchAll(
@@ -262,17 +267,13 @@ export function parseControllerSource(source, file) {
 }
 
 export function declaredPermissions(decorators) {
-  return decoratorConstants(
-    decorators,
-    "@RequirePermission(",
-    /PERMISSIONS\.([A-Z0-9_]+)/g,
-  );
-}
-
-function decoratorConstants(decorators, prefix, pattern) {
   return decorators
-    .filter((entry) => entry.startsWith(prefix))
-    .flatMap((entry) => [...entry.matchAll(pattern)].map((match) => match[1]));
+    .filter((entry) => entry.startsWith("@RequirePermission("))
+    .flatMap((entry) =>
+      [...entry.matchAll(/PERMISSIONS\.([A-Z0-9_]+)/g)].map(
+        (match) => match[1],
+      ),
+    );
 }
 
 export function declaredStepUp(decorators) {
