@@ -123,7 +123,7 @@ The owner selected Option 1, the D-62 approval service, on 2026-11-18. The D-59 
 | Signed operations ticket (interim; not selected) | Two approvers sign a ticket; an operator executes the reset with a controlled admin command and attaches the ticket. | Not selected. This is only a fallback if D-62 cannot meet the date. |
 | Email approval (not selected) | Approvers reply to an email thread. | Reject. Mailbox compromise and ambiguous identity make it unsuitable for privileged recovery. |
 
-Because OD-2 selects the D-62 service, D-62 must expose the approval contract and enforce requester ≠ approver. The drafted options and comparison are in `.agents/evidence-d59-od2-options.md`.
+Because OD-2 selects the D-62 service, D-62 must expose the approval contract and enforce requester ≠ approver. The drafted options and comparison are in `.agents/evidence-d59-od2-options.md`. The service contract is `.agents/evidence-d62-recovery-approval-contract.md`.
 
 ## 6. Sealed platform-owner account runbook
 
@@ -198,16 +198,18 @@ No provider is selected by this packet. T6.09 must not assume that the built-in 
 | `auth.password_reset_requested` | A reset email is accepted for sending | actor or system, target user id, request id, result | token, password, mailbox content |
 | `auth.password_changed` | A password change succeeds | actor, target, session id, request id | old or new password |
 | `auth.mfa_enrolled` | A factor is verified | actor, target, factor type, request id | TOTP secret, QR payload |
-| `auth.mfa_recovery_used` | A recovery code is used | actor, target, request id | the code |
-| `auth.mfa_reset_requested` | A reset request is created | requester, target, tenant, reason, ticket, request id | factor secret |
+| `auth.mfa_reset_requested` | A reset request is created | requester, target, tenant, reason, ticket, request id, required approvals | factor secret |
+| `auth.mfa_reset_approval_recorded` | One approver records a decision | approver, policy role, approval count, required count | factor secret, token |
 | `auth.mfa_reset_approved` | The required approvals are complete | approvers, target, request id, expiry | factor secret |
+| `auth.mfa_reset_denied` | A request is denied, cancelled or expires | actor, target, request id, reason code | factor secret |
+| `auth.mfa_reset_execution_started` | An approved request is consumed | executor, target, request id, approval id | factor secret, token |
 | `auth.sessions_revoked` | Sessions are revoked | actor, target, scope, request id | bearer token, refresh token |
-| `auth.mfa_reset_completed` (proposed) | The factor reset finishes | executor, target, request id, approval id | factor secret |
-| `auth.mfa_reset_denied` (proposed) | A request is denied or expires | actor, target, request id, reason | factor secret |
+| `auth.mfa_reset_completed` | The factor reset finishes | executor, target, request id, approval id | factor secret |
+| `auth.mfa_reset_failed` | The factor reset fails or times out | executor, target, request id, approval id, failure code | factor secret, password, token |
 
 `auth.mfa_recovery_used` is not emitted under the selected section 3 option A. Do not ship it.
 
-The two proposed events close a gap: approval is not execution. Without them, the audit trail cannot show whether an approved reset completed or was denied.
+The events separate approval from execution. D-62 records `approval_recorded`, `approved` and `execution_started`; T6.09 records `completed`, `failed` and `sessions_revoked`.
 
 ## 9. Implementation boundary for T6.09 (partial)
 
