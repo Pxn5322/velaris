@@ -73,10 +73,23 @@ export type RecoveryApprovalState =
   | "EXPIRED"
   | "CANCELLED";
 
+export type RecoveryStepUpAction =
+  | "recovery.request"
+  | "recovery.execute";
+
+export interface RecoveryStepUpProof {
+  action: RecoveryStepUpAction;
+  grantId: string;
+  tenantId: string | null;
+  verifiedAt: string;
+  expiresAt: string;
+}
+
 export interface RecoveryActor {
   subject: string;
   sessionId: string;
   aal: "aal1" | "aal2";
+  stepUp: RecoveryStepUpProof | null;
 }
 
 export interface CreateRecoveryApprovalInput {
@@ -107,12 +120,45 @@ export interface RecoveryApprovalView {
   expiresAt: string;
   consumedAt: string | null;
   completedAt: string | null;
+  stateReason: string | null;
+  failureCode: string | null;
   version: number;
+}
+
+export interface RecoveryApprovalSummary {
+  approvalId: string;
+  state: RecoveryApprovalState;
+  recoveryPath: RecoveryPath;
+  tenantId: string | null;
+  targetUserId: string;
+  requestedAt: string;
+  expiresAt: string;
+  requiredApprovals: number;
+  approvalCount: number;
+  stateReason: string | null;
+  failureCode: string | null;
+}
+
+export interface ListMyRecoveryApprovalsInput {
+  tenantId?: string | null;
+  states?: RecoveryApprovalState[];
+  cursor?: string;
+  limit?: number;
+}
+
+export interface RecoveryApprovalPage {
+  items: RecoveryApprovalSummary[];
+  nextCursor: string | null;
 }
 
 export interface DecideRecoveryApprovalInput {
   decision: "APPROVE" | "DENY";
   reason?: string;
+}
+
+export interface ConsumeRecoveryApprovalInput {
+  approvalId: string;
+  tenantId: string | null;
 }
 
 export interface ConsumeRecoveryApprovalResult {
@@ -139,6 +185,11 @@ export interface RecoveryApprovalService {
     approvalId: string,
   ): Promise<RecoveryApprovalView>;
 
+  listMine(
+    actor: RecoveryActor,
+    input: ListMyRecoveryApprovalsInput,
+  ): Promise<RecoveryApprovalPage>;
+
   listPending(
     actor: RecoveryActor,
     tenantId: string | null,
@@ -152,7 +203,7 @@ export interface RecoveryApprovalService {
 
   consume(
     actor: RecoveryActor,
-    approvalId: string,
+    input: ConsumeRecoveryApprovalInput,
   ): Promise<ConsumeRecoveryApprovalResult>;
 
   complete(
@@ -170,6 +221,26 @@ export interface RecoveryApprovalService {
 `RecoveryActor` comes from the verified session. It is not accepted from a request body.
 
 ## 5. Inputs
+
+### Assurance and step-up
+
+`create` and `consume` use the existing T6.08 step-up guard. A step-up grant is one-time, expires after 10 minutes, and is bound to subject, session, action and tenant.
+
+| Operation | AAL | Step-up action | Binding |
+| --- | --- | --- | --- |
+| `create` | `aal2` | `recovery.request` | Requester and request tenant |
+| `consume` | `aal2` | `recovery.execute` | Executor and request tenant |
+| `decide` | `aal2` | None | Approver session |
+| `cancel` | `aal2` | None | Requester session |
+| `complete` | `aal2` | None; same executor and `executionId` as `consume` | Execution |
+| `listMine` | Any authenticated requester | None | Requester only |
+| `get` | Any authenticated actor allowed by the read rule | None | Approval |
+
+T6.09 applies `@RequireStepUp` to the create route and the consume route. The guard checks `aal2`, verifies the `x-step-up-token`, and consumes the grant. D-62 receives the verified proof in `RecoveryActor.stepUp`; it must not accept a step-up claim from a request body. D-62 rechecks the action, tenant, session and expiry before it changes state.
+
+A missing or invalid proof is `STEP_UP_REQUIRED`. An `aal1` session is `MFA_REQUIRED`. A retry after a lost response needs a new grant because the guard consumes the old grant. The service still returns the existing approval for an idempotent retry.
+
+`complete` does not need a second step-up. The execution is bound to the executor and expires after five minutes. This keeps the reset inside one approved execution.
 
 ### Create
 
@@ -189,6 +260,19 @@ T6.09 must already hold `user.mfa.reset` or the approved privileged recovery per
 
 `get` is limited to the requester, an eligible approver, the target, or an audit reader with the approved permission. `listPending` returns only open requests (`PENDING` or `APPROVED`) where the actor is an eligible approver and is not the requester or target. A caller with no eligible request receives an empty list.
 
+`listMine` is the requester-facing status list. It returns only records where `requestedBy` equals `actor.subject`. It supports `tenantId`, `states`, `cursor` and `limit`. The default limit is 20 and the maximum is 50. Results are newest first. The list returns `RecoveryApprovalSummary`, not approver identities, provider details or `executionId`.
+
+### Requester list
+
+| Field | Rule |
+| --- | --- |
+| `tenantId` | Optional. Null means platform scope. |
+| `states` | Optional. If omitted, return every state. |
+| `cursor` | Optional opaque cursor from the previous page. |
+| `limit` | Optional. 1–50; default 20. |
+
+The list shows state, target, path, approval count, required count, expiry, `stateReason` and `failureCode`. The requester cannot use this list to read another requester's records.
+
 ### Decide
 
 | Field | Rule |
@@ -200,15 +284,20 @@ The actor must be eligible for one of the policy roles, must have `aal2`, must n
 
 ### Consume
 
-Only an `APPROVED` approval can be consumed. The actor must be the executor authorized by T6.09. Consumption is atomic and returns one `executionId`. A retry by the same executor returns the same id while the approval is `CONSUMED`; another executor receives `APPROVAL_ALREADY_CONSUMED`.
+| Field | Rule |
+| --- | --- |
+| `approvalId` | Required. |
+| `tenantId` | Required for a tenant approval; null for platform scope. Must match the approval tenant and the step-up grant tenant. |
+
+Only an `APPROVED` approval can be consumed. The actor must have `aal2`, a valid `recovery.execute` step-up grant, and the executor permission from T6.09. Consumption is atomic and returns one `executionId`. A retry by the same executor returns the same id while the approval is `CONSUMED`; another executor receives `APPROVAL_ALREADY_CONSUMED`.
 
 ### Complete
 
-The actor and `executionId` must match the consumer. `SUCCEEDED` moves the approval to `COMPLETED`. `FAILED` moves it to `FAILED` and records a safe `failureCode`.
+The actor must have `aal2`, and the actor and `executionId` must match the consumer. `SUCCEEDED` moves the approval to `COMPLETED`. `FAILED` moves it to `FAILED` and records a safe `failureCode`. No second step-up is required.
 
 ### Cancel
 
-The requester may cancel a `PENDING` or `APPROVED` approval before consumption. A consumed approval cannot be cancelled.
+The requester may cancel a `PENDING` or `APPROVED` approval before consumption. The requester must have `aal2`. A consumed approval cannot be cancelled.
 
 ## 6. Outputs
 
@@ -218,7 +307,9 @@ The requester may cancel a `PENDING` or `APPROVED` approval before consumption. 
 - the required approval count and policy roles;
 - each recorded approval with actor, policy role and time;
 - request and expiry times;
-- the terminal time and failure code where applicable.
+- the terminal time, state reason and failure code where applicable.
+
+The requester list returns `RecoveryApprovalSummary`: state, target, path, approval count, required count, expiry, `stateReason` and `failureCode`. It does not return approver identities or `executionId`.
 
 The `executionId` is returned only by `consume` to the server-side caller. It is not part of the general approval view.
 
@@ -243,6 +334,8 @@ Terminal states are `COMPLETED`, `FAILED`, `DENIED`, `EXPIRED` and `CANCELLED`. 
 
 `expiresAt` is 30 minutes after creation. `executionExpiresAt` is 5 minutes after consumption. Expiry is checked lazily on every operation and by a background job. A failed or expired execution needs a new approval request.
 
+`stateReason` is one of `APPROVER_DENIED`, `REQUESTER_CANCELLED`, `APPROVAL_EXPIRED`, `EXECUTION_TIMEOUT` or null. `failureCode` is a safe provider or validation code, never a provider message or secret.
+
 ## 8. Approval rules
 
 1. The requester cannot approve.
@@ -257,11 +350,16 @@ Terminal states are `COMPLETED`, `FAILED`, `DENIED`, `EXPIRED` and `CANCELLED`. 
 10. A sealed-account request must reference an active custody record before consumption.
 11. An approval authorizes one execution only.
 12. T6.09 must not execute a reset from `APPROVED` without `consume`.
+13. The requester must have `aal2` and a valid `recovery.request` step-up grant.
+14. The executor must have `aal2` and a valid `recovery.execute` step-up grant.
+15. The step-up grant must match the subject, session, action and tenant.
+16. A consumed or expired step-up grant is never accepted again.
 
 ## 9. Idempotency and concurrency
 
 - `create` with the same `requestId` and same payload returns the existing approval.
 - `create` with the same `requestId` and a different payload returns `IDEMPOTENCY_CONFLICT`.
+- An idempotent `create` or `consume` retry still passes the step-up guard. A consumed grant is not reused; the caller needs a new grant.
 - `decide` by the same actor with the same decision returns the current approval.
 - `decide` by the same actor with a different decision returns `DECISION_ALREADY_RECORDED`.
 - `consume` is a conditional update from `APPROVED`. A second consumer receives `APPROVAL_ALREADY_CONSUMED`.
@@ -277,11 +375,11 @@ Each event uses `approvalId` (optional for a denied create), `requestId`, `targe
 
 | Event | When | Required fields | Forbidden fields |
 | --- | --- | --- | --- |
-| `auth.mfa_reset_requested` | Request created | requester, target, tenant, path, required count, expiry | TOTP secret, password, token |
-| `auth.mfa_reset_approval_recorded` | One approval recorded | approver, policy role, approval count, required count | TOTP secret, token |
+| `auth.mfa_reset_requested` | Request created | requester, target, tenant, path, required count, expiry, requester AAL, step-up grant id | TOTP secret, password, step-up token |
+| `auth.mfa_reset_approval_recorded` | One approval recorded | approver, policy role, approval count, required count, approver AAL | TOTP secret, token |
 | `auth.mfa_reset_approved` | Required approvals complete | approvers, target, expiry | TOTP secret, token |
-| `auth.mfa_reset_denied` | Deny, cancel or expiry | actor, target, reason code, state | TOTP secret, token |
-| `auth.mfa_reset_execution_started` | Approval consumed | executor, execution id, consumed time | TOTP secret, token |
+| `auth.mfa_reset_denied` | Deny, cancel, expiry or assurance failure | actor, target, reason code, state | TOTP secret, token |
+| `auth.mfa_reset_execution_started` | Approval consumed | executor, execution id, consumed time, executor AAL, step-up grant id | TOTP secret, step-up token |
 | `auth.mfa_reset_completed` | Provider reset succeeds | executor, execution id, target, result | TOTP secret, password, token |
 | `auth.mfa_reset_failed` | Provider reset fails or times out | executor, execution id, failure code | TOTP secret, password, token |
 | `auth.sessions_revoked` | T6.09 revokes sessions | actor, target, scope, request id | bearer token, refresh token |
@@ -297,13 +395,14 @@ The three new events are `auth.mfa_reset_approval_recorded`, `auth.mfa_reset_exe
 | `TARGET_NOT_FOUND` | 404 | Target does not exist or is outside the tenant | None |
 | `TARGET_NOT_ACTIVE` | 409 | Target is disabled or removed | None |
 | `RECOVERY_PATH_NOT_ALLOWED` | 422 | Path does not match target role | None |
-| `TENANT_SCOPE_MISMATCH` | 404 | Target is not in the request tenant | None |
+| `TENANT_SCOPE_MISMATCH` | 404 | Target or consume tenant does not match the approval tenant | None |
 | `CUSTODY_EVIDENCE_REQUIRED` | 409 | Sealed path has no active custody record | None |
 | `CUSTODY_RECORD_MISMATCH` | 409 | Custody record does not match the target | None |
 | `SELF_APPROVAL` | 403 | Requester tries to approve | None |
 | `TARGET_APPROVAL` | 403 | Target tries to approve | None |
 | `APPROVER_NOT_ELIGIBLE` | 403 | Actor lacks the policy role or active status | None |
-| `AAL2_REQUIRED` | 403 | Approver session is `aal1` | None |
+| `MFA_REQUIRED` | 403 | An actor whose action requires `aal2` has an `aal1` session | None |
+| `STEP_UP_REQUIRED` | 403 | Requester create or executor consume has no valid recent step-up. Reason is `MISSING`, `EXPIRED`, `ACTION_MISMATCH`, `SESSION_MISMATCH`, `TENANT_MISMATCH` or `REPLAYED` | None |
 | `READ_NOT_PERMITTED` | 403 | Actor is not the requester, an eligible approver, the target or an audit reader | None |
 | `EXECUTOR_NOT_PERMITTED` | 403 | Actor lacks the policy execution permission | None |
 | `DUPLICATE_APPROVAL` | 409 | Actor already approved | None |
@@ -325,13 +424,15 @@ A denied create records `auth.mfa_reset_denied` with the request id and denial c
 ## 12. T6.09 call sequence
 
 1. T6.09 verifies the requester, target, tenant, recovery permission and path.
-2. T6.09 calls `create`.
-3. The approval UI lists `PENDING` requests to eligible approvers.
-4. Approvers call `decide`. D-62 becomes `APPROVED` when the required count is reached.
-5. T6.09 calls `consume` and receives `executionId`.
-6. T6.09 performs the provider MFA factor reset and session revocation.
-7. T6.09 calls `complete` with `SUCCEEDED` or `FAILED`.
-8. T6.09 emits `auth.mfa_reset_completed` or `auth.mfa_reset_failed`, and `auth.sessions_revoked` after a successful reset.
+2. The requester obtains `aal2` and a `recovery.request` step-up grant for the tenant.
+3. T6.09 calls `create`.
+4. The requester sees status through `listMine`. The approval UI lists `PENDING` requests to eligible approvers.
+5. Approvers call `decide`. D-62 becomes `APPROVED` when the required count is reached.
+6. The executor obtains `aal2` and a `recovery.execute` step-up grant for the tenant.
+7. T6.09 calls `consume` with the approval id and tenant id and receives `executionId`.
+8. T6.09 performs the provider MFA factor reset and session revocation.
+9. T6.09 calls `complete` with `SUCCEEDED` or `FAILED`. The same executor and `executionId` are required. No second step-up is required.
+10. T6.09 emits `auth.mfa_reset_completed` or `auth.mfa_reset_failed`, and `auth.sessions_revoked` after a successful reset.
 
 If T6.09 crashes after `consume`, the execution expires and the approval becomes `FAILED`. A new request is required.
 
@@ -344,6 +445,11 @@ If T6.09 crashes after `consume`, the execution expires and the approval becomes
 - Custody-record source for the sealed account.
 - Concurrency and idempotency tests.
 - Denial tests for every row in section 11.
+- Registration of the `recovery.request` and `recovery.execute` step-up actions, with `mfa: true`.
+- Step-up proof handoff from the guard, including the grant id and verified time.
+- Proof that an `aal1` requester or executor is refused.
+- Proof that an expired, replayed, wrong-action, wrong-session or wrong-tenant grant is refused.
+- Proof that a requester cannot list another requester's approvals.
 - Proof that T6.09 cannot execute without `consume`.
 - Proof that a replayed `executionId` is refused.
 
