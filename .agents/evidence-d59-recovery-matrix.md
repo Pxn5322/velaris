@@ -62,7 +62,7 @@ The matrix applies to human accounts. Machine identities and API keys are out of
 | Agent | Self-service recovery email, then set a new password. | Tenant admin of the agent's own tenant, with `user.mfa.reset`, may reset the factor and sessions. | One tenant admin, same tenant. A peer agent cannot reset another agent. | Enroll a new factor, then sign in with `aal2`. | Same as customer, plus `auth.sessions_revoked` |
 | Tenant administrator | Self-service recovery email, then set a new password. A password reset does not remove the factor. | Enterprise administrator plus platform security owner. A peer tenant administrator cannot approve. A foreign tenant administrator cannot approve. | Two distinct people: one enterprise administrator and one platform security owner. | Enroll a new factor before any administrator action; earlier sessions stay revoked. | Same as agent, plus the approval record id |
 | Enterprise administrator | Self-service recovery email, then set a new password. A password reset does not remove the factor. | Platform security owner plus a second platform owner. The target cannot approve its own recovery. | Two distinct platform owners, one of whom is the platform security owner. | Enroll a new factor before any platform action; earlier sessions stay revoked. | Same as tenant administrator |
-| Sealed platform owner | No self-service path while sealed. Use the custody runbook in section 6. | Use the sealed material and the two-person procedure. Then rotate and re-seal. | Both custodians plus two distinct platform owners, or the approved quorum in section 6. | Rotate password and factor, revoke all sessions, enroll a new factor, re-seal, record the incident. | All reset events, the incident id and the custody log |
+| Sealed platform owner | No self-service path while sealed. Use the custody runbook in section 6. | Use the sealed material and the two-person procedure. Then rotate and re-seal. | Both custodians plus two distinct platform owners, as defined in OD-4. | Rotate password and factor, revoke all sessions, enroll a new factor, re-seal, record the incident. | All reset events, the incident id and the custody log |
 | Support operator | Self-service recovery email only. | No reset right. Support cannot read or reset MFA secrets, recovery codes or passwords. | None. Escalate to the platform security owner. | Not applicable. | Denial event or support ticket reference |
 
 ### 4.1 Tenant administrator limits
@@ -95,7 +95,7 @@ This prevents a mailbox compromise from becoming an administrator takeover.
 These rules apply to every privileged recovery and to every sealed-account use.
 
 1. **Two distinct humans.** The requester and the approver are different people. One person cannot supply both approvals.
-2. **Required roles.** Tenant administrator recovery: enterprise administrator plus platform security owner. Enterprise administrator recovery: platform security owner plus a second platform owner. Sealed account: the custody quorum in section 6.
+2. **Required roles.** Tenant administrator recovery: enterprise administrator plus platform security owner. Enterprise administrator recovery: platform security owner plus a second platform owner. Sealed account: the quorum in OD-4.
 3. **Active and authenticated.** Each approver must be active, must sign in with `aal2`, and must hold the required role at approval time.
 4. **Reason and ticket.** The request names the target, the reason, the incident or support ticket, and the recovery path.
 5. **Short expiry.** An approval expires after 30 minutes. An expired approval cannot be reused.
@@ -132,7 +132,7 @@ The sealed account is a break-glass platform identity. It is not a normal admini
 ### 6.2 Use
 
 1. Open an incident or emergency record with the reason, affected platform function and the normal owner who is unavailable.
-2. Obtain the required approvals. At minimum: both custodians and two distinct platform owners, or the quorum the owner approves in section 11.
+2. Obtain the required approvals. At minimum: both custodians and two distinct platform owners, or the quorum defined in OD-4.
 3. Retrieve the material with both authorized people present. Record the time, seal numbers and people.
 4. Sign in, perform only the approved action, and sign out.
 5. Revoke all sessions for the sealed account.
@@ -221,30 +221,59 @@ This packet does not authorize any of that work.
 D-59 can move to Recorded only when every item is true.
 
 - [ ] This packet is signed by the product/security owner and the operations owner.
+- [ ] The owner decision checklist in section 11 is complete.
 - [ ] The owner selected a recovery model in section 3.
 - [ ] The owner selected an approval mechanism in section 5.1.
 - [ ] Named people hold the platform security owner, second platform owner and custodian roles.
 - [ ] `user.mfa.reset` is approved for the role baseline and seeded.
 - [ ] `.agents/evidence-d59-mailer.md` passes section 7.
-- [ ] `.agents/evidence-d59-sealed-account.md` names custodians, successor, storage, annual test date and incident record location.
+- [ ] `.agents/evidence-d59-sealed-account.md` names custodians, successor, storage, initial provisioning, annual test date and incident record location.
 - [ ] The audit event list in section 8 is approved, including the two proposed events.
+- [ ] The owner approves a PRD recovery acceptance criterion in section 12.
+- [ ] Approval records exist for each path in OD-13.
 - [ ] D-59 in `docs/ARCHITECTURE.md` is amended if the recovery model or event list changes.
 - [ ] D-59 state is changed to Recorded by the owner, not by an agent.
 
-## 11. Open decisions
+## 11. Owner decision checklist (cross-check gaps)
 
-| Id | Decision | Recommended answer | Owner |
+Each item comes from the cross-check against `docs/ARCHITECTURE.md`, `docs/PRD.md`, `docs/SETUP_GUIDE.md` and `docs/IMPLEMENTATION_PLAN.md`. Tick one decision for each item before signature. The recommended answer is the packet author's proposal, not an owner decision.
+
+| Check | Gap the owner must resolve | Recommended answer | Owner |
 | --- | --- | --- | --- |
-| OD-1 | Backup TOTP factor or custom recovery codes? | Backup TOTP factor. It is supported and avoids a new secret type. | Product/security owner |
-| OD-2 | In-app approval or signed ticket? | In-app request with enforced requester ≠ approver. | Product/security owner; Engineering owner |
-| OD-3 | Who is the platform security owner and who is the second platform owner? | Name both people and one alternate for each. | Owner |
-| OD-4 | How is the sealed material split and stored? | Two sealed parts in separate safes, with two custodians and successors. | Operations owner |
-| OD-5 | Custom SMTP or Send Email hook, and which provider? | Select after a deliverability and data-terms review; do not use the built-in mailer. | Operations owner |
-| OD-6 | May a tenant administrator set a temporary password? | No. Send a recovery link; never let the administrator see the password. | Product/security owner |
-| OD-7 | Add `auth.mfa_reset_completed` and `auth.mfa_reset_denied`? | Yes. Approval and execution are distinct facts. | Product/security owner |
-| OD-8 | What is the annual sealed-account test date and who owns it? | Set a fixed month and name the operations owner. | Operations owner |
+| [ ] OD-1 | The D-59 text requires TOTP recovery codes, but hosted Supabase does not provide end-user recovery codes. T6.09 also verifies that a recovery code works once. | Select the backup TOTP factor. Amend D-59 and T6.09 to use a backup factor and factor reset. Do not build custom recovery codes in T6.09. | Product/security owner |
+| [ ] OD-2 | The approval mechanism is not selected. The plan requires an approval record for each path. | Use an in-app recovery request with requester ≠ approver, a 30-minute expiry and single use. If a signed ticket is selected, record the ticket id and the same audit events. | Product/security owner; Engineering owner |
+| [ ] OD-3 | The platform security owner, second platform owner and alternates are not named. | Name both people and one alternate for each role. Record the names in the evidence file, not in chat. | Owner |
+| [ ] OD-4 | D-59 says “two-person access,” but the packet can require both custodians plus two platform owners. The quorum is undefined. | Define two-person access as the two custodians who open the sealed material. Keep approval separate: two distinct platform owners, one the security owner, must approve use. Record the four named participants. | Operations owner; Product/security owner |
+| [ ] OD-5 | The sealed material split and storage method are not selected. | Use two sealed parts in separate safes. No single custodian can reconstruct the material. Record seal numbers and storage locations. | Operations owner |
+| [ ] OD-6 | The packet assumes the sealed material exists. It does not define initial account creation, first factor enrollment or the custody ceremony. D-58 gives the sealed account no enrollment grace. | Two custodians and the security owner create the account, enroll the first TOTP factor, seal the material and record the ceremony. Do not use the seven-day grace. | Operations owner |
+| [ ] OD-7 | The annual sealed-account test date and owner are not named. | Set the first test for November 2027. The Operations owner schedules it. Use a read-only sign-in or a tabletop test, as section 6.3 permits. | Operations owner |
+| [ ] OD-8 | D-59 allows a tenant admin to reset a same-tenant member's password and sessions. The matrix gives only self-service password reset, and section 4.1 limits the target to an agent or customer. | Keep tenant-admin password reset for active agents and customers only. Send a recovery link; the administrator never sees the password. Do not extend this path to tenant administrators. Amend D-59. | Product/security owner |
+| [ ] OD-9 | D-59 says a tenant admin may not reset another tenant admin's MFA without enterprise approval. T6.09 says a tenant admin cannot recover a peer administrator. | Remove the tenant-admin actor from peer recovery. The enterprise administrator plus the platform security owner perform it through the privileged path. Test both the unapproved denial and the approved path. | Product/security owner |
+| [ ] OD-10 | D-59 lists seven audit events. The packet adds `auth.mfa_reset_completed` and `auth.mfa_reset_denied`. `auth.mfa_recovery_used` has no producer under the backup-factor model. | Approve the two new events. Remove `auth.mfa_recovery_used` if OD-1 selects the backup factor, or record that it is not emitted. Amend D-59. | Product/security owner |
+| [ ] OD-11 | No PRD acceptance criterion covers recovery. T6.09 maps to F-03 and AC-F03-1, which cover tenant create/disable and role change, not recovery. | Approve the proposed `AC-F02-4` in section 12. Map T6.09 to F-02 and AC-F02-4 for recovery, and keep F-03 and AC-F03-1 for the tenant user-management scope. If the owner prefers user management, use `AC-F03-4` instead; do not use both IDs. | Product/security owner |
+| [ ] OD-12 | `user.mfa.reset` has no permission code or role assignment. No password-reset permission exists. | Grant `user.mfa.reset` to `R-tenant-admin` only. If OD-8 keeps administrator password reset, add `user.password.reset` for `R-tenant-admin` only. The privileged path uses its approval, not these tenant permissions. | Product/security owner; Engineering owner |
+| [ ] OD-13 | The plan requires an approval record for each path. The packet defines audit fields but does not require records for each matrix path. T6.09 says two approvers are recorded, but customer and agent reset use one tenant admin. | Require records for customer, agent, tenant admin, enterprise admin and sealed-account recovery. Apply the two-approver test only to privileged and sealed paths. | Product/security owner; QA/verification owner |
+| [ ] OD-14 | The setup guide requires custom SMTP before invitations, not recovery. Hosted recovery delivery used the built-in mailer at low volume. | Use custom SMTP with a transactional provider. Select the provider and sending domain after a deliverability review. Add the 10-email-per-hour recovery check to the setup guide and mailer evidence. | Operations owner |
+| [ ] OD-15 | The backup factor is recommended but not required. D-58 gives administrators a seven-day TOTP grace. The packet does not say whether a backup factor is mandatory. | Require a backup factor for enterprise and tenant administrators before the grace ends. Keep it optional for agents and customers. Add enrollment evidence and a denial test. | Product/security owner |
+| [ ] OD-16 | T6.09 file scope has no `prisma/migrations` path and no web path. The in-app approval option needs both. Its verification also names a recovery code. | Add the migration and web approval paths to T6.09 if OD-2 selects the in-app request. Change the verification to factor reset and backup factor. Add the denial and approval-record tests. Do not start T6.09 before D-59 is Recorded. | Engineering owner |
 
-## 12. Sign-off
+## 12. Proposed PRD acceptance criterion (for owner approval)
+
+Status: **Proposed only.** This criterion is not in `docs/PRD.md`. The owner must approve it before the PRD changes. D-59 stays Blocked until the owner records the decision.
+
+| AC ID | Feature | Given / When / Then | Kind |
+| --- | --- | --- | --- |
+| AC-F02-4 (proposed) | F-02 | Given a user who cannot sign in because of a lost password or second factor, when the approved recovery path completes, then the password or MFA factor is reset, the request and completion are audited, and a recovered administrator enrolls a new factor before normal use; for an administrator, all earlier sessions are revoked | happy |
+
+Recommended negative companion, if the owner wants denial as a separate criterion:
+
+| AC ID | Feature | Given / When / Then | Kind |
+| --- | --- | --- | --- |
+| AC-F02-5 (proposed) | F-02 | Given a tenant administrator, when the administrator requests recovery for a foreign-tenant user or a peer administrator outside the approved path, then the request is denied without a reset and the denial is audited | unauthorized |
+
+If the owner prefers to keep recovery under user management, use `AC-F03-4` for the primary criterion and map T6.09 to F-03. Do not use both IDs for the same behavior.
+
+## 13. Sign-off
 
 Signing records a decision. It does not deploy code, change a provider setting or mark T6.09 started.
 
@@ -254,4 +283,4 @@ Signing records a decision. It does not deploy code, change a provider setting o
 | Operations owner |  | [ ] Approved [ ] Approved with changes [ ] Rejected |  |  |
 | Engineering owner (noted) |  | [ ] Noted [ ] Changes required |  |  |
 
-**Change control:** if an owner changes a recommended answer, update sections 3, 4, 5, 7, 8 and 11 before signature. Do not record D-59 as Recorded while any checklist item in section 10 is unchecked.
+**Change control:** if an owner changes a recommended answer, update sections 3, 4, 5, 7, 8, 11 and 12 before signature. Do not record D-59 as Recorded while any checklist item in section 10 is unchecked.
