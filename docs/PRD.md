@@ -67,6 +67,8 @@ Each criterion is observable and intended to map to a test. UI features need loa
 | AC-F02-1 | F-02 | Given valid credentials and membership, when sign-in completes, then session and authorized tenant context are resolved | happy |
 | AC-F02-2 | F-02 | Given invalid/expired credentials, when a protected request is made, then a consistent 401 error is returned | invalid |
 | AC-F02-3 | F-02 | Given a user without the required permission, when invoking a protected operation, then a 403 is returned | unauthorized |
+| AC-F02-4 | F-02 | Given a user who cannot sign in because of a lost password or second factor, when the approved recovery path completes, then the password or MFA factor is reset, the request and completion are audited, and after a factor reset the user enrolls a new factor before normal use; all earlier administrator sessions are revoked | happy |
+| AC-F02-5 | F-02 | Given a tenant administrator, when the administrator requests recovery for a foreign-tenant user, a peer administrator, an enterprise administrator or a platform owner, then the request is denied without a reset and the denial is audited | unauthorized |
 | AC-F03-1 | F-03 | Given R-enterprise-admin, when creating/disabling a tenant or changing a user role, then the change is persisted and audited | happy |
 | AC-F03-2 | F-03 | Given an invalid tenant/user identifier or invalid role assignment, when submitted, then validation rejects it | invalid |
 | AC-F03-3 | F-03 | Given R-tenant-admin, when accessing platform-wide tenant governance beyond its scope, then access is denied | unauthorized |
