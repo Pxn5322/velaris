@@ -71,6 +71,7 @@ interface RequestRow {
   executedBy: string | null;
   completedAt: Date | null;
   stateReason: string | null;
+  resetOutcome: string | null;
   failureCode: string | null;
   version: number;
   createdAt: Date;
@@ -189,6 +190,15 @@ function fakeStore() {
   }
 
   let sequence = 0;
+  const userUpdate = vi.fn(
+    async ({
+      where,
+      data,
+    }: {
+      where: { id: string };
+      data: Record<string, unknown>;
+    }) => ({ id: where.id, ...data }),
+  );
   const prisma = {
     user: {
       findFirst: vi.fn(async ({ where }: { where: { id?: string } }) =>
@@ -201,15 +211,7 @@ function fakeStore() {
             }
           : null,
       ),
-      update: vi.fn(
-        async ({
-          where,
-          data,
-        }: {
-          where: { id: string };
-          data: Record<string, unknown>;
-        }) => ({ id: where.id, ...data }),
-      ),
+      update: userUpdate,
       findUnique: vi.fn(
         async ({
           where,
@@ -289,6 +291,7 @@ function fakeStore() {
           executedBy: null,
           completedAt: null,
           stateReason: null,
+          resetOutcome: null,
           failureCode: null,
           custodyRecordId: null,
           ...data,
@@ -411,6 +414,7 @@ function fakeStore() {
     decisions,
     audits,
     updateMany: prisma.recoveryApprovalRequest.updateMany,
+    userUpdate,
   };
 }
 
@@ -822,7 +826,7 @@ describe('privileged recovery approvals (integration)', () => {
       `sub-${TARGET_ID}`,
       'factor-2',
     );
-    expect(store.prisma.user.update).toHaveBeenCalledWith(
+    expect(store.userUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: TARGET_ID },
         data: { tokenInvalidBefore: expect.any(Date) },
@@ -972,7 +976,7 @@ describe('privileged recovery approvals (integration)', () => {
       'PROVIDER_FACTOR_RESET_FAILED',
     );
     expect(store.requests[0].state).toBe('CONSUMED');
-    expect(store.prisma.user.update).not.toHaveBeenCalled();
+    expect(store.userUpdate).not.toHaveBeenCalled();
     expect(
       store.audits.some(
         (event) =>
@@ -989,6 +993,93 @@ describe('privileged recovery approvals (integration)', () => {
     expect(completed.status).toBe(200);
     expect(completed.body.state).toBe('FAILED');
     expect(completed.body.failureCode).toBe('PROVIDER_FACTOR_RESET_FAILED');
+  });
+
+  it('refuses a complete result that differs from the recorded outcome', async () => {
+    const token = accessToken();
+    const created = await approveFully(token);
+    const consumed = await consume(created.approvalId, token);
+
+    const res = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/complete`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ executionId: consumed, result: 'FAILED' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('EXECUTION_RESULT_MISMATCH');
+    expect(store.requests[0].state).toBe('CONSUMED');
+    expect(
+      store.audits.some((event) => event.action === 'auth.mfa_reset_completed'),
+    ).toBe(false);
+  });
+
+  it('refuses to complete an execution with no recorded outcome', async () => {
+    const token = accessToken();
+    const created = await approveFully(token);
+    const consumed = await consume(created.approvalId, token);
+    store.requests[0].resetOutcome = null;
+
+    const res = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/complete`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ executionId: consumed });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('EXECUTION_RESULT_MISSING');
+    expect(store.requests[0].state).toBe('CONSUMED');
+  });
+
+  it('reports SESSION_REVOKE_FAILED when the token cutoff write fails', async () => {
+    store.userUpdate.mockRejectedValueOnce(new Error('db down'));
+    const token = accessToken();
+    const created = await approveFully(token);
+    const stepUp = await grant(
+      STEP_UP_ACTIONS.RECOVERY_EXECUTE,
+      token,
+      TENANT_ID,
+    );
+
+    const executed = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/execute`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-step-up-token', stepUp)
+      .send({ tenantId: TENANT_ID });
+
+    expect(executed.status).toBe(200);
+    expect(executed.body.result).toBe('FAILED');
+    expect(executed.body.approval.failureCode).toBe('SESSION_REVOKE_FAILED');
+    expect(admin.deleteMfaFactor).toHaveBeenCalledTimes(2);
+
+    const completed = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/complete`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ executionId: executed.body.executionId });
+
+    expect(completed.status).toBe(200);
+    expect(completed.body.state).toBe('FAILED');
+    expect(completed.body.failureCode).toBe('SESSION_REVOKE_FAILED');
+  });
+
+  it('fails closed on an execute retry with no recorded outcome', async () => {
+    const token = accessToken();
+    const created = await approveFully(token);
+    await consume(created.approvalId, token);
+    store.requests[0].resetOutcome = null;
+    const stepUp = await grant(
+      STEP_UP_ACTIONS.RECOVERY_EXECUTE,
+      token,
+      TENANT_ID,
+    );
+
+    const res = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/execute`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-step-up-token', stepUp)
+      .send({ tenantId: TENANT_ID });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('EXECUTION_RESULT_MISSING');
+    expect(res.body.result).toBeUndefined();
   });
 
   it('refuses a decision when another writer changed the row', async () => {

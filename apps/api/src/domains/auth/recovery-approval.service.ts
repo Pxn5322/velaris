@@ -524,9 +524,6 @@ export class RecoveryApprovalService {
     if (request.executionId !== executionId) {
       throw notFound('EXECUTION_NOT_FOUND');
     }
-    if (!request.resetOutcome) {
-      throw conflict('EXECUTION_RESULT_MISSING');
-    }
     const result = readRecordedResult(request);
     if (claim !== null && claim !== result) {
       throw conflict('EXECUTION_RESULT_MISMATCH');
@@ -936,10 +933,14 @@ function readOptionalResult(value: unknown): ExecutionResult | null {
   throw badRequest('result must be SUCCEEDED or FAILED');
 }
 
+/**
+ * Read the outcome the provider reset recorded. A missing value fails closed:
+ * an interrupted execution must never report FAILED when it did not run.
+ */
 function readRecordedResult(request: RequestRow): ExecutionResult {
-  return request.resetOutcome === RESULTS.SUCCEEDED
-    ? RESULTS.SUCCEEDED
-    : RESULTS.FAILED;
+  if (request.resetOutcome === RESULTS.SUCCEEDED) return RESULTS.SUCCEEDED;
+  if (request.resetOutcome === RESULTS.FAILED) return RESULTS.FAILED;
+  throw conflict('EXECUTION_RESULT_MISSING');
 }
 
 function readOptionalState(value: unknown): string | null {
