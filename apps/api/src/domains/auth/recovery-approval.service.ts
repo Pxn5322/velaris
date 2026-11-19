@@ -119,6 +119,21 @@ export interface RecoveryApprovalView {
   version: number;
 }
 
+/** The requester list hides approver identities (D-62 section 5). */
+export interface RecoveryApprovalSummary {
+  approvalId: string;
+  state: RecoveryApprovalState;
+  recoveryPath: string;
+  tenantId: string | null;
+  targetUserId: string;
+  requestedAt: Date;
+  expiresAt: Date;
+  requiredApprovals: number;
+  approvalCount: number;
+  stateReason: string | null;
+  failureCode: string | null;
+}
+
 export interface ConsumeRecoveryApprovalResult {
   approval: RecoveryApprovalView;
   executionId: string;
@@ -190,7 +205,7 @@ export class RecoveryApprovalService {
       128,
     );
 
-    if ((await this.policyRoles(identity, tenantId)).length === 0) {
+    if (!(await this.dutyOf(identity, tenantId))) {
       throw forbidden('REQUESTER_NOT_PERMITTED');
     }
 
@@ -201,7 +216,10 @@ export class RecoveryApprovalService {
       const same =
         existing.recoveryPath === recoveryPath &&
         existing.tenantId === tenantId &&
-        existing.targetUserId === targetUserId;
+        existing.targetUserId === targetUserId &&
+        existing.reason === reason &&
+        existing.ticketId === ticketId &&
+        existing.custodyRecordId === custodyRecordId;
       if (!same) {
         throw conflict('IDEMPOTENCY_CONFLICT');
       }
@@ -210,12 +228,7 @@ export class RecoveryApprovalService {
 
     const target = await this.prisma.user.findFirst({
       where: { id: targetUserId },
-      select: {
-        id: true,
-        provider: true,
-        externalSubject: true,
-        status: true,
-      },
+      select: { id: true, externalSubject: true, status: true },
     });
     if (!target) {
       throw notFound('TARGET_NOT_FOUND');
@@ -230,9 +243,6 @@ export class RecoveryApprovalService {
       if (!membership) {
         throw notFound('TARGET_NOT_FOUND');
       }
-    }
-    if (target.externalSubject === identity.subject) {
-      throw forbidden('SELF_RECOVERY_NOT_ALLOWED');
     }
     if (rule.requiresCustodyRecord && !custodyRecordId) {
       throw conflict('CUSTODY_EVIDENCE_REQUIRED');
@@ -287,11 +297,10 @@ export class RecoveryApprovalService {
     }
 
     const request = await this.load(approvalId);
-    if (this.isExpired(request)) {
-      await this.markExpired(request);
-      throw conflict('APPROVAL_EXPIRED', toView(await this.load(approvalId)));
+    await this.requireOpen(request);
+    if (request.state !== RECOVERY_APPROVAL_STATES.PENDING) {
+      throw conflict('APPROVAL_TERMINAL');
     }
-    this.assertPending(request);
     const rule = RECOVERY_POLICY[request.recoveryPath as RecoveryPath];
 
     const recorded = await this.prisma.recoveryApprovalDecision.findUnique({
@@ -334,13 +343,13 @@ export class RecoveryApprovalService {
       throw error;
     }
 
-    const after = [
+    const after: RecoveryApproval[] = [
       ...approvals,
       {
         actorSubject: identity.subject,
         policyRole,
         approvedAt: new Date(),
-      } satisfies RecoveryApproval,
+      },
     ];
     const state: RecoveryApprovalState =
       decision === DECISIONS.DENY
@@ -392,15 +401,12 @@ export class RecoveryApprovalService {
   ): Promise<ConsumeRecoveryApprovalResult> {
     this.requireMfa(assurance);
     const request = await this.load(approvalId);
-    if (this.isExpired(request)) {
-      await this.markExpired(request);
-      throw conflict('APPROVAL_EXPIRED', toView(await this.load(approvalId)));
-    }
+    await this.requireOpen(request);
     const tenantId = readOptionalUuid(input?.tenantId, 'tenantId');
     if (tenantId !== request.tenantId) {
       throw notFound('TENANT_SCOPE_MISMATCH');
     }
-    if ((await this.policyRoles(identity, request.tenantId)).length === 0) {
+    if (!(await this.dutyOf(identity, request.tenantId))) {
       throw forbidden('EXECUTOR_NOT_PERMITTED');
     }
 
@@ -472,12 +478,8 @@ export class RecoveryApprovalService {
     const failureCode = readOptionalFailureCode(input?.failureCode);
 
     const request = await this.load(approvalId);
-    if (request.state === RECOVERY_APPROVAL_STATES.COMPLETED) {
-      if (
-        request.executionId === executionId &&
-        request.failureCode === null &&
-        result === RESULTS.SUCCEEDED
-      ) {
+    if (isTerminal(request)) {
+      if (this.isSameResult(request, executionId, result, failureCode)) {
         return toView(request);
       }
       throw conflict('EXECUTION_ALREADY_COMPLETED');
@@ -493,13 +495,13 @@ export class RecoveryApprovalService {
     }
 
     const now = new Date();
-    if (this.isExecutionExpired(request, now) && result === RESULTS.SUCCEEDED) {
+    if (isExecutionTimedOut(request, now) && result === RESULTS.SUCCEEDED) {
       await this.transition(request, RECOVERY_APPROVAL_STATES.FAILED, {
         completedAt: now,
         failureCode: 'EXECUTION_TIMEOUT',
         stateReason: 'EXECUTION_TIMEOUT',
       });
-      throw conflict('EXECUTION_EXPIRED', toView(await this.load(request.id)));
+      throw conflict('EXECUTION_EXPIRED');
     }
 
     const state =
@@ -538,10 +540,7 @@ export class RecoveryApprovalService {
     if (request.requestedBy !== identity.subject) {
       throw forbidden('CANCEL_NOT_PERMITTED');
     }
-    if (this.isExpired(request)) {
-      await this.markExpired(request);
-      throw conflict('APPROVAL_EXPIRED', toView(await this.load(approvalId)));
-    }
+    await this.requireOpen(request);
     if (
       request.state !== RECOVERY_APPROVAL_STATES.PENDING &&
       request.state !== RECOVERY_APPROVAL_STATES.APPROVED
@@ -567,15 +566,14 @@ export class RecoveryApprovalService {
     approvalId: string,
   ): Promise<RecoveryApprovalView> {
     const request = await this.load(approvalId);
-    if (this.isExpired(request)) {
+    if (isApprovalExpiredRow(request)) {
       await this.markExpired(request);
       return toView(await this.load(approvalId));
     }
-    const role = await this.policyRole(identity, request.tenantId);
     const allowed =
       request.requestedBy === identity.subject ||
       request.targetSubject === identity.subject ||
-      role !== null;
+      (await this.dutyOf(identity, request.tenantId)) !== null;
     if (!allowed) {
       throw forbidden('READ_NOT_PERMITTED');
     }
@@ -585,22 +583,23 @@ export class RecoveryApprovalService {
   async listMine(
     identity: AuthenticatedIdentity,
     query: ListRecoveryApprovalQuery,
-  ): Promise<{ items: RecoveryApprovalView[] }> {
+  ): Promise<{ items: RecoveryApprovalSummary[] }> {
     const tenantId = readOptionalUuid(query?.tenantId, 'tenantId');
     const state = readOptionalState(query?.state);
     const limit = readLimit(query?.limit);
     const rows = (await this.prisma.recoveryApprovalRequest.findMany({
       where: {
         requestedBy: identity.subject,
-        ...(tenantId === undefined ? {} : { tenantId }),
+        ...(tenantId === null ? {} : { tenantId }),
         ...(state ? { state } : {}),
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
     })) as unknown as (RequestRow & { decisions?: DecisionRow[] })[];
+
     return {
       items: rows.map((row) =>
-        toView({ ...row, decisions: row.decisions ?? [] }),
+        toSummary({ ...row, decisions: row.decisions ?? [] }),
       ),
     };
   }
@@ -622,26 +621,13 @@ export class RecoveryApprovalService {
     }
   }
 
-  private assertPending(request: RequestWithDecisions): void {
-    if (request.state !== RECOVERY_APPROVAL_STATES.PENDING) {
-      throw conflict('APPROVAL_TERMINAL');
+  /** Mark an expired request and refuse the action (D-62 section 7). */
+  private async requireOpen(request: RequestRow): Promise<void> {
+    if (!isApprovalExpiredRow(request)) {
+      return;
     }
-  }
-
-  private isExpired(request: RequestRow): boolean {
-    return (
-      (request.state === RECOVERY_APPROVAL_STATES.PENDING ||
-        request.state === RECOVERY_APPROVAL_STATES.APPROVED) &&
-      isApprovalExpired(request.approvalExpiresAt, new Date())
-    );
-  }
-
-  private isExecutionExpired(request: RequestRow, now: Date): boolean {
-    return (
-      request.state === RECOVERY_APPROVAL_STATES.CONSUMED &&
-      (request.executionExpiresAt === null ||
-        request.executionExpiresAt.getTime() <= now.getTime())
-    );
+    await this.markExpired(request);
+    throw conflict('APPROVAL_EXPIRED');
   }
 
   private async markExpired(request: RequestRow): Promise<void> {
@@ -677,47 +663,50 @@ export class RecoveryApprovalService {
     }
   }
 
+  /** A caller reports the same result twice without a second state change. */
+  private isSameResult(
+    request: RequestRow,
+    executionId: string,
+    result: ExecutionResult,
+    failureCode: string | null,
+  ): boolean {
+    if (request.executionId !== executionId) return false;
+    if (result === RESULTS.SUCCEEDED) {
+      return request.state === RECOVERY_APPROVAL_STATES.COMPLETED;
+    }
+    return (
+      request.state === RECOVERY_APPROVAL_STATES.FAILED &&
+      (request.failureCode ?? null) === (failureCode ?? null)
+    );
+  }
+
   private async eligibleRole(
     identity: AuthenticatedIdentity,
     request: RequestRow,
     rule: RecoveryPolicyRule,
     approvals: readonly RecoveryApproval[],
   ): Promise<RecoveryPolicyRole> {
-    const roles = await this.policyRoles(identity, request.tenantId);
-    if (roles.length === 0) {
+    const policyRole = await this.dutyOf(identity, request.tenantId);
+    if (!policyRole) {
       throw forbidden('APPROVER_NOT_ELIGIBLE');
     }
-    for (const policyRole of roles) {
-      const denial = approvalDenial({
-        rule,
-        approvals,
-        actorSubject: identity.subject,
-        requestedBy: request.requestedBy,
-        targetUserId: request.targetSubject,
-        policyRole,
-      });
-      if (denial === null) {
-        return policyRole;
-      }
-      if (denial === 'SELF_APPROVAL' || denial === 'TARGET_APPROVAL') {
-        throw forbidden(denial);
-      }
-      if (denial === 'ROLE_QUOTA_FILLED') {
-        throw conflict('DUPLICATE_APPROVAL');
-      }
+    const denial = approvalDenial({
+      rule,
+      approvals,
+      actorSubject: identity.subject,
+      requestedBy: request.requestedBy,
+      targetUserId: request.targetSubject,
+      policyRole,
+    });
+    if (denial === null) {
+      return policyRole;
     }
-    throw forbidden('APPROVER_NOT_ELIGIBLE');
+    throw denial === 'ROLE_QUOTA_FILLED'
+      ? conflict('DUPLICATE_APPROVAL')
+      : forbidden(denial);
   }
 
-  private async policyRoles(
-    identity: AuthenticatedIdentity,
-    tenantId: string | null,
-  ): Promise<RecoveryPolicyRole[]> {
-    const role = await this.policyRole(identity, tenantId);
-    return role ? [role] : [];
-  }
-
-  private async policyRole(
+  private async dutyOf(
     identity: AuthenticatedIdentity,
     tenantId: string | null,
   ): Promise<RecoveryPolicyRole | null> {
@@ -727,6 +716,28 @@ export class RecoveryApprovalService {
     });
     return canonical ? (RECOVERY_ROLE_MAP[canonical] ?? null) : null;
   }
+}
+
+function isTerminal(request: RequestRow): boolean {
+  return (
+    request.state === RECOVERY_APPROVAL_STATES.COMPLETED ||
+    request.state === RECOVERY_APPROVAL_STATES.FAILED
+  );
+}
+
+function isApprovalExpiredRow(request: RequestRow): boolean {
+  return (
+    (request.state === RECOVERY_APPROVAL_STATES.PENDING ||
+      request.state === RECOVERY_APPROVAL_STATES.APPROVED) &&
+    isApprovalExpired(request.approvalExpiresAt, new Date())
+  );
+}
+
+function isExecutionTimedOut(request: RequestRow, now: Date): boolean {
+  return (
+    request.executionExpiresAt === null ||
+    request.executionExpiresAt.getTime() <= now.getTime()
+  );
 }
 
 function toApprovals(decisions: readonly DecisionRow[]): RecoveryApproval[] {
@@ -765,6 +776,22 @@ function toView(request: RequestWithDecisions): RecoveryApprovalView {
   };
 }
 
+function toSummary(request: RequestWithDecisions): RecoveryApprovalSummary {
+  return {
+    approvalId: request.id,
+    state: request.state as RecoveryApprovalState,
+    recoveryPath: request.recoveryPath,
+    tenantId: request.tenantId,
+    targetUserId: request.targetUserId,
+    requestedAt: request.createdAt,
+    expiresAt: request.approvalExpiresAt,
+    requiredApprovals: request.requiredApprovals,
+    approvalCount: toApprovals(request.decisions).length,
+    stateReason: request.stateReason,
+    failureCode: request.failureCode,
+  };
+}
+
 function readUuid(value: unknown, field: string): string {
   if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
     throw badRequest(`${field} must be a UUID`);
@@ -791,9 +818,10 @@ function readPath(value: unknown): RecoveryPath {
 
 function readTenant(rule: RecoveryPolicyRule, value: unknown): string | null {
   if (!rule.tenantScoped) {
-    return value === undefined || value === null || value === ''
-      ? null
-      : readUuid(value, 'tenantId');
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    throw badRequest('tenantId is not allowed for this recovery path');
   }
   if (value === undefined || value === null || value === '') {
     throw badRequest('tenantId is required for this recovery path');
@@ -887,14 +915,10 @@ function forbidden(code: string): ForbiddenException {
   return new ForbiddenException({ code, message: 'The action is not allowed' });
 }
 
-function conflict(
-  code: string,
-  view?: RecoveryApprovalView,
-): ConflictException {
+function conflict(code: string): ConflictException {
   return new ConflictException({
     code,
     message: 'The approval state does not allow this action',
-    ...(view ? { state: view.state } : {}),
   });
 }
 

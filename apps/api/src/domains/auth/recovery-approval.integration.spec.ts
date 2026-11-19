@@ -20,13 +20,7 @@
  * reach its full quota until D-62 seeds the other duties.
  */
 
-import {
-  Controller,
-  Get,
-  INestApplication,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
@@ -53,7 +47,6 @@ import { TokenRevocationService } from './token-revocation.service.js';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const TARGET_ID = '22222222-2222-4222-8222-222222222222';
-const SECOND_TARGET_ID = '33333333-3333-4333-8333-333333333333';
 const ROUTE_REQUEST_ID = '44444444-4444-4444-8444-444444444444';
 const FOREIGN_TENANT_ID = '55555555-5555-4555-8555-555555555555';
 const CURRENT_PASSWORD = 'Old-passphrase-12';
@@ -163,7 +156,6 @@ function fakeStore() {
   const audits: Record<string, unknown>[] = [];
   const tenants = [
     { tenantId: TENANT_ID, userId: TARGET_ID, status: 'ACTIVE' },
-    { tenantId: TENANT_ID, userId: SECOND_TARGET_ID, status: 'ACTIVE' },
   ];
 
   function withDecisions(row: RequestRow) {
@@ -198,7 +190,7 @@ function fakeStore() {
   const prisma = {
     user: {
       findFirst: vi.fn(async ({ where }: { where: { id?: string } }) =>
-        where.id === TARGET_ID || where.id === SECOND_TARGET_ID
+        where.id === TARGET_ID
           ? {
               id: where.id,
               provider: 'supabase',
@@ -411,21 +403,6 @@ function fakeStore() {
   };
 }
 
-@Controller('harness')
-class RecoveryHarnessController {
-  @Get('ping')
-  @UseGuards(SupabaseAuthGuard)
-  ping(): { ok: true } {
-    return { ok: true };
-  }
-
-  @Post('ping')
-  @UseGuards(SupabaseAuthGuard)
-  pingPost(): { ok: true } {
-    return { ok: true };
-  }
-}
-
 describe('privileged recovery approvals (integration)', () => {
   let app: INestApplication<App>;
   let store: ReturnType<typeof fakeStore>;
@@ -434,11 +411,7 @@ describe('privileged recovery approvals (integration)', () => {
 
   async function createApp() {
     const moduleRef = await Test.createTestingModule({
-      controllers: [
-        RecoveryApprovalController,
-        AuthSecurityController,
-        RecoveryHarnessController,
-      ],
+      controllers: [RecoveryApprovalController, AuthSecurityController],
       providers: [
         SupabaseAuthGuard,
         SupabaseTokenVerifier,
@@ -880,7 +853,6 @@ describe('privileged recovery approvals (integration)', () => {
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('APPROVAL_EXPIRED');
     expect(store.requests[0].state).toBe('EXPIRED');
-    expect(res.body.state).toBe('EXPIRED');
   });
 
   it('lets the requester cancel a pending request once', async () => {
@@ -909,6 +881,8 @@ describe('privileged recovery approvals (integration)', () => {
       .set('Authorization', `Bearer ${token}`);
     expect(mine.status).toBe(200);
     expect(mine.body.items).toHaveLength(1);
+    expect(mine.body.items[0]).not.toHaveProperty('approvals');
+    expect(mine.body.items[0].approvalCount).toBe(0);
 
     const other = await request(app.getHttpServer())
       .get('/auth/recovery/requests')
@@ -931,7 +905,6 @@ describe('privileged recovery approvals (integration)', () => {
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('EXECUTION_EXPIRED');
-    expect(res.body.state).toBe('FAILED');
     expect(store.requests[0].state).toBe('FAILED');
     expect(store.requests[0].failureCode).toBe('EXECUTION_TIMEOUT');
   });
@@ -1007,6 +980,85 @@ describe('privileged recovery approvals (integration)', () => {
     expect(res.status).toBe(404);
     expect(res.body.code).toBe('TENANT_SCOPE_MISMATCH');
     expect(store.requests[0].state).toBe('APPROVED');
+  });
+
+  it('refuses an identical create key with a different payload', async () => {
+    const token = accessToken();
+    await createRequest(token);
+    const stepUp = await grant(
+      STEP_UP_ACTIONS.RECOVERY_REQUEST,
+      token,
+      TENANT_ID,
+    );
+
+    const res = await request(app.getHttpServer())
+      .post('/auth/recovery/requests')
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-step-up-token', stepUp)
+      .send({
+        requestId: ROUTE_REQUEST_ID,
+        recoveryPath: RECOVERY_PATHS.TENANT_ADMIN_MFA_RESET,
+        tenantId: TENANT_ID,
+        targetUserId: TARGET_ID,
+        reason: 'A different reason under the same request key',
+        ticketId: 'INC-1042',
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('IDEMPOTENCY_CONFLICT');
+    expect(store.requests).toHaveLength(1);
+  });
+
+  it('refuses a tenant id on a platform recovery path', async () => {
+    const token = accessToken();
+    const stepUp = await grant(
+      STEP_UP_ACTIONS.RECOVERY_REQUEST,
+      token,
+      TENANT_ID,
+    );
+
+    const res = await request(app.getHttpServer())
+      .post('/auth/recovery/requests')
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-step-up-token', stepUp)
+      .send({
+        requestId: ROUTE_REQUEST_ID,
+        recoveryPath: RECOVERY_PATHS.ENTERPRISE_ADMIN_MFA_RESET,
+        tenantId: TENANT_ID,
+        targetUserId: TARGET_ID,
+        reason: 'Lost the backup factor after a device reset',
+        ticketId: 'INC-1042',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_INPUT');
+  });
+
+  it('returns the current view for a repeated failed result', async () => {
+    const token = accessToken();
+    const created = await approveFully(token);
+    const consumed = await consume(created.approvalId, token);
+    const body = {
+      executionId: consumed,
+      result: 'FAILED',
+      failureCode: 'PROVIDER_RESET_FAILED',
+    };
+
+    const first = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/complete`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+    const second = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/complete`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(second.body.state).toBe('FAILED');
+    expect(
+      store.audits.filter((event) => event.action === 'auth.mfa_reset_failed'),
+    ).toHaveLength(1);
   });
 
   async function approveFully(token: string) {

@@ -38,6 +38,7 @@ import {
   type CreateRecoveryApprovalInput,
   type DecideRecoveryApprovalInput,
   type ListRecoveryApprovalQuery,
+  type RecoveryApprovalSummary,
   type RecoveryApprovalView,
 } from './recovery-approval.service.js';
 import { StepUpGuard } from './step-up.guard.js';
@@ -71,7 +72,7 @@ export class RecoveryApprovalController {
   async listMine(
     @Req() request: RecoveryRequest,
     @Query() query: ListRecoveryApprovalQuery,
-  ): Promise<{ items: RecoveryApprovalView[] }> {
+  ): Promise<{ items: RecoveryApprovalSummary[] }> {
     const { identity } = readContext(request);
     return this.approvals.listMine(identity, query ?? {});
   }
