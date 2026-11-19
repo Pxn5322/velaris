@@ -407,6 +407,7 @@ function fakeStore() {
     requests,
     decisions,
     audits,
+    updateMany: prisma.recoveryApprovalRequest.updateMany,
   };
 }
 
@@ -915,6 +916,97 @@ describe('privileged recovery approvals (integration)', () => {
       .set('Authorization', `Bearer ${accessToken({ subject: 'sub-other' })}`);
     expect(other.status).toBe(200);
     expect(other.body.items).toHaveLength(0);
+  });
+
+  it('fails an execution that runs past its window', async () => {
+    const token = accessToken();
+    const created = await approveFully(token);
+    const consumed = await consume(created.approvalId, token);
+    store.requests[0].executionExpiresAt = new Date(Date.now() - 1_000);
+
+    const res = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/complete`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ executionId: consumed, result: 'SUCCEEDED' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('EXECUTION_EXPIRED');
+    expect(res.body.state).toBe('FAILED');
+    expect(store.requests[0].state).toBe('FAILED');
+    expect(store.requests[0].failureCode).toBe('EXECUTION_TIMEOUT');
+  });
+
+  it('records a safe failure code when the execution fails', async () => {
+    const token = accessToken();
+    const created = await approveFully(token);
+    const consumed = await consume(created.approvalId, token);
+
+    const res = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/complete`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        executionId: consumed,
+        result: 'FAILED',
+        failureCode: 'PROVIDER_RESET_FAILED',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.state).toBe('FAILED');
+    expect(res.body.failureCode).toBe('PROVIDER_RESET_FAILED');
+    expect(store.audits.map((event) => event.action)).toContain(
+      'auth.mfa_reset_failed',
+    );
+    expect(
+      store.audits.some(
+        (event) =>
+          event.action === 'auth.mfa_reset_failed' &&
+          (event.metadata as { failureCode?: string }).failureCode ===
+            'PROVIDER_RESET_FAILED',
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses a decision when another writer changed the row', async () => {
+    const created = await createRequest(accessToken());
+    const original = store.updateMany.getMockImplementation();
+    let staleOnce = true;
+    store.updateMany.mockImplementation(async (args) => {
+      if (staleOnce) {
+        staleOnce = false;
+        store.requests[0].version += 1;
+        return { count: 0 };
+      }
+      return original ? original(args) : { count: 0 };
+    });
+
+    const res = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/decision`)
+      .set('Authorization', `Bearer ${accessToken({ subject: 'sub-owner-2' })}`)
+      .send({ decision: 'APPROVE' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('APPROVAL_VERSION_CONFLICT');
+  });
+
+  it('refuses an execute call whose tenant does not match the request', async () => {
+    const token = accessToken();
+    const created = await approveFully(token);
+    roleByTenant[FOREIGN_TENANT_ID] = 'R-enterprise-admin';
+    const stepUp = await grant(
+      STEP_UP_ACTIONS.RECOVERY_EXECUTE,
+      token,
+      FOREIGN_TENANT_ID,
+    );
+
+    const res = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/execute`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-step-up-token', stepUp)
+      .send({ tenantId: FOREIGN_TENANT_ID });
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('TENANT_SCOPE_MISMATCH');
+    expect(store.requests[0].state).toBe('APPROVED');
   });
 
   async function approveFully(token: string) {
