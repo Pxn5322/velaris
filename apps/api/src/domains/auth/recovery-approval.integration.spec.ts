@@ -1029,6 +1029,24 @@ describe('privileged recovery approvals (integration)', () => {
     expect(store.requests[0].state).toBe('CONSUMED');
   });
 
+  it('expires a consumed execution that recorded no outcome', async () => {
+    const token = accessToken();
+    const created = await approveFully(token);
+    const consumed = await consume(created.approvalId, token);
+    store.requests[0].resetOutcome = null;
+    store.requests[0].executionExpiresAt = new Date(Date.now() - 1_000);
+
+    const res = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/complete`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ executionId: consumed });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('EXECUTION_EXPIRED');
+    expect(store.requests[0].state).toBe('FAILED');
+    expect(store.requests[0].failureCode).toBe('EXECUTION_TIMEOUT');
+  });
+
   it('reports SESSION_REVOKE_FAILED when the token cutoff write fails', async () => {
     store.userUpdate.mockRejectedValueOnce(new Error('db down'));
     const token = accessToken();

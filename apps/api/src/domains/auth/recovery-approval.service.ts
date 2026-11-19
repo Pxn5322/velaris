@@ -524,19 +524,18 @@ export class RecoveryApprovalService {
     if (request.executionId !== executionId) {
       throw notFound('EXECUTION_NOT_FOUND');
     }
+    const now = new Date();
+    const timedOut = isExecutionTimedOut(request, now);
+    if (timedOut && !request.resetOutcome) {
+      await this.expireExecution(request, now);
+    }
+
     const result = readRecordedResult(request);
     if (claim !== null && claim !== result) {
       throw conflict('EXECUTION_RESULT_MISMATCH');
     }
-
-    const now = new Date();
-    if (result === RESULTS.SUCCEEDED && isExecutionTimedOut(request, now)) {
-      await this.transition(request, RECOVERY_APPROVAL_STATES.FAILED, {
-        completedAt: now,
-        failureCode: 'EXECUTION_TIMEOUT',
-        stateReason: 'EXECUTION_TIMEOUT',
-      });
-      throw conflict('EXECUTION_EXPIRED');
+    if (timedOut && result === RESULTS.SUCCEEDED) {
+      await this.expireExecution(request, now);
     }
 
     const state =
@@ -695,6 +694,24 @@ export class RecoveryApprovalService {
     if (updated.count !== 1) {
       throw conflict('APPROVAL_VERSION_CONFLICT');
     }
+  }
+
+  /**
+   * End a consumed execution whose window closed before it recorded a result.
+   * Without this, a crash between the consume and the reset would leave the
+   * request CONSUMED forever, because `complete` cannot finalize an absent
+   * outcome. The transition happens before the error, so the request ends.
+   */
+  private async expireExecution(
+    request: RequestRow,
+    now: Date,
+  ): Promise<never> {
+    await this.transition(request, RECOVERY_APPROVAL_STATES.FAILED, {
+      completedAt: now,
+      failureCode: 'EXECUTION_TIMEOUT',
+      stateReason: 'EXECUTION_TIMEOUT',
+    });
+    throw conflict('EXECUTION_EXPIRED');
   }
 
   /** A caller reports the same result twice without a second state change. */
