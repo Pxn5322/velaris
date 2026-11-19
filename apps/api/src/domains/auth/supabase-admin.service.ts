@@ -200,8 +200,12 @@ export class SupabaseAdminService {
    * List every MFA factor of one account. The recovery reset removes them all
    * before the target can set a new factor (D-59). A refusal is a provider
    * fault, never an empty list, so a reset cannot look successful by accident.
+   * `verified` separates a finished enrollment from a factor the user has not
+   * confirmed yet; only a verified factor lifts the post-reset denial.
    */
-  async listMfaFactors(userId: string): Promise<{ id: string }[]> {
+  async listMfaFactors(
+    userId: string,
+  ): Promise<{ id: string; verified: boolean }[]> {
     this.requireConfigured();
     const response = await fetch(
       `${process.env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(userId)}/factors`,
@@ -221,10 +225,13 @@ export class SupabaseAdminService {
     }
     return body
       .filter(
-        (factor): factor is { id: string } =>
+        (factor): factor is { id: string; status?: unknown } =>
           typeof (factor as { id?: unknown })?.id === 'string',
       )
-      .map((factor) => ({ id: factor.id }));
+      .map((factor) => ({
+        id: factor.id,
+        verified: factor.status === 'verified',
+      }));
   }
 
   /**

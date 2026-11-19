@@ -29,6 +29,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuditService } from '../audit/audit.service.js';
+import { AllowMfaResetRequired } from './allow-mfa-reset-required.decorator.js';
 import { AllowPasswordResetRequired } from './allow-password-reset-required.decorator.js';
 import type {
   AuthSessionResponse,
@@ -51,6 +52,7 @@ type SessionRequest = Request & {
   user?: AuthenticatedIdentity;
   accessToken?: string;
   passwordResetRequired?: boolean;
+  mfaResetRequired?: boolean;
 };
 
 @Controller('auth')
@@ -90,6 +92,7 @@ export class AuthController {
 
   @Get('session')
   @AllowPasswordResetRequired()
+  @AllowMfaResetRequired()
   @UseGuards(SupabaseAuthGuard)
   async session(@Req() request: SessionRequest): Promise<AuthSessionResponse> {
     // The guard set user before the controller runs; the cast states that.
@@ -115,6 +118,7 @@ export class AuthController {
       tenantContext,
       role,
       passwordResetRequired,
+      mfaResetRequired: request.mfaResetRequired === true,
     };
   }
 
@@ -148,6 +152,7 @@ export class AuthController {
   @Post('signout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @AllowPasswordResetRequired()
+  @AllowMfaResetRequired()
   @UseGuards(SupabaseAuthGuard)
   async signout(@Req() request: SessionRequest): Promise<void> {
     const token = request.accessToken;

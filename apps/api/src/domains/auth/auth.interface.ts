@@ -40,4 +40,10 @@ export interface AuthSessionResponse {
    * reset form, but tenantContext and role stay null while the flag is set.
    */
   passwordResetRequired: boolean;
+  /**
+   * True when a privileged recovery reset removed every MFA factor. Normal
+   * routes stay refused until the account verifies a new factor; the session
+   * read still answers so the client can open the enrollment UI (AC-F02-4).
+   */
+  mfaResetRequired: boolean;
 }

@@ -99,6 +99,8 @@ model User {
   passwordResetRequired Boolean @default(false) @map("password_reset_required")
   /** T6.08: access tokens issued at or before this instant are refused. */
   tokenInvalidBefore DateTime? @map("token_invalid_before")
+  /** T6.09: normal routes are refused until a new MFA factor is verified. */
+  mfaResetRequired Boolean @default(false) @map("mfa_reset_required")
   status          UserStatus @default(ACTIVE)
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")

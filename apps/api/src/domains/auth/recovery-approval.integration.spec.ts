@@ -829,7 +829,10 @@ describe('privileged recovery approvals (integration)', () => {
     expect(store.userUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: TARGET_ID },
-        data: { tokenInvalidBefore: expect.any(Date) },
+        data: {
+          mfaResetRequired: true,
+          tokenInvalidBefore: expect.any(Date),
+        },
       }),
     );
 

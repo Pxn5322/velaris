@@ -9,7 +9,9 @@
  * On success the guard attaches AuthenticatedIdentity, the token assurance
  * claims and the application account state to request.user. T6.08 uses that
  * state to refuse a flagged account outside its reset routes and to refuse a
- * token issued before a password change or global session revocation.
+ * token issued before a password change or global session revocation. T6.09
+ * uses `mfaResetRequired` to refuse normal routes after a privileged factor
+ * reset until the account verifies a new factor (AC-F02-4).
  *
  * The account lookup is mandatory. A verified provider identity with no
  * application user row is refused instead of being treated as an account with
@@ -27,6 +29,7 @@ import {
   type CanActivate,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { ALLOW_MFA_RESET_KEY } from './allow-mfa-reset-required.decorator.js';
 import { ALLOW_PASSWORD_RESET_KEY } from './allow-password-reset-required.decorator.js';
 import type { AuthAccountState } from './auth-account.service.js';
 import { AuthAccountService } from './auth-account.service.js';
@@ -34,6 +37,7 @@ import type { AuthAssurance } from './auth-assurance.js';
 import { readAuthAssurance } from './auth-assurance.js';
 import type { AuthenticatedIdentity } from './auth.interface.js';
 import { TokenRevocationService } from './token-revocation.service.js';
+import { SupabaseAdminService } from './supabase-admin.service.js';
 import { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
 
 const BEARER_PATTERN = /^\s*Bearer\s+(\S+)\s*$/i;
@@ -45,6 +49,7 @@ type GuardedRequest = {
   authAssurance?: AuthAssurance;
   account?: AuthAccountState;
   passwordResetRequired?: boolean;
+  mfaResetRequired?: boolean;
 };
 
 @Injectable()
@@ -56,6 +61,9 @@ export class SupabaseAuthGuard implements CanActivate {
     @Optional()
     @Inject(TokenRevocationService)
     private readonly revocations: TokenRevocationService | null = null,
+    @Optional()
+    @Inject(SupabaseAdminService)
+    private readonly admin: SupabaseAdminService | null = null,
     private readonly reflector: Reflector = new Reflector(),
   ) {}
 
@@ -101,12 +109,23 @@ export class SupabaseAuthGuard implements CanActivate {
         message: 'The account must change its password before normal use',
       });
     }
+    if (
+      account.mfaResetRequired &&
+      !this.allowsMfaResetRequired(context) &&
+      !(await this.enrollsNewFactor(identity, account))
+    ) {
+      throw new ForbiddenException({
+        code: 'MFA_RESET_REQUIRED',
+        message: 'The account must verify a new MFA factor before normal use',
+      });
+    }
 
     request.user = identity;
     request.accessToken = token;
     request.authAssurance = assurance;
     request.account = account;
     request.passwordResetRequired = account.passwordResetRequired;
+    request.mfaResetRequired = account.mfaResetRequired;
     return true;
   }
 
@@ -117,5 +136,39 @@ export class SupabaseAuthGuard implements CanActivate {
         context.getClass(),
       ]) === true
     );
+  }
+
+  private allowsMfaResetRequired(context: ExecutionContext): boolean {
+    return (
+      this.reflector.getAllAndOverride<boolean>(ALLOW_MFA_RESET_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]) === true
+    );
+  }
+
+  /**
+   * Read the provider's factor list once the reset flag is set. A verified
+   * factor clears the flag, so the next request is normal again. A provider
+   * fault keeps the flag and the denial: the reset stays fail-closed.
+   */
+  private async enrollsNewFactor(
+    identity: AuthenticatedIdentity,
+    account: AuthAccountState,
+  ): Promise<boolean> {
+    if (!this.admin) {
+      return false;
+    }
+    let factors: { id: string; verified: boolean }[];
+    try {
+      factors = await this.admin.listMfaFactors(identity.subject);
+    } catch {
+      return false;
+    }
+    if (!factors.some((factor) => factor.verified)) {
+      return false;
+    }
+    await this.accounts.clearFactorReset(account.userId);
+    return true;
   }
 }

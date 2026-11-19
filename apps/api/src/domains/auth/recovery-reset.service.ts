@@ -9,7 +9,9 @@
  * GoTrue has no admin endpoint that logs out another user. Deleting a verified
  * factor revokes that user's provider sessions, and the local token cutoff
  * refuses every access token issued before this instant on every API instance
- * (D-39, D-51). The reset never reads or stores a TOTP secret.
+ * (D-39, D-51). The same write sets `mfaResetRequired`, so normal routes stay
+ * refused until the target verifies a new factor (AC-F02-4). The reset never
+ * reads or stores a TOTP secret.
  */
 
 import { Injectable } from '@nestjs/common';
@@ -53,7 +55,7 @@ export class RecoveryResetService {
     }
 
     try {
-      await this.accounts.revokeAllSessions(targetUserId);
+      await this.accounts.beginFactorReset(targetUserId);
     } catch {
       return {
         result: RESET_RESULTS.FAILED,

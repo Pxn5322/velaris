@@ -15,6 +15,8 @@ import type { AuthenticatedIdentity } from './auth.interface.js';
 export interface AuthAccountState {
   userId: string;
   passwordResetRequired: boolean;
+  /** A privileged reset removed the factors; a new one must be verified. */
+  mfaResetRequired: boolean;
   /** Access tokens issued at or before this instant are refused. */
   tokenInvalidBefore: Date | null;
 }
@@ -37,6 +39,7 @@ export class AuthAccountService {
       select: {
         id: true,
         passwordResetRequired: true,
+        mfaResetRequired: true,
         tokenInvalidBefore: true,
       },
     });
@@ -46,6 +49,7 @@ export class AuthAccountService {
     return {
       userId: user.id,
       passwordResetRequired: user.passwordResetRequired,
+      mfaResetRequired: user.mfaResetRequired,
       tokenInvalidBefore: user.tokenInvalidBefore,
     };
   }
@@ -70,6 +74,25 @@ export class AuthAccountService {
     await this.prisma.user.update({
       where: { id: userId },
       data: { tokenInvalidBefore: new Date() },
+    });
+  }
+
+  /**
+   * Close a privileged factor reset in one write: cut off every earlier token
+   * and refuse normal routes until a new factor is verified (AC-F02-4).
+   */
+  async beginFactorReset(userId: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { mfaResetRequired: true, tokenInvalidBefore: new Date() },
+    });
+  }
+
+  /** The account verified a new factor; normal routes are allowed again. */
+  async clearFactorReset(userId: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { mfaResetRequired: false },
     });
   }
 }

@@ -13,8 +13,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Reflector } from '@nestjs/core';
 import type { AuthAccountService } from './auth-account.service.js';
 import { SupabaseAuthGuard } from './supabase-auth.guard.js';
+import type { SupabaseAdminService } from './supabase-admin.service.js';
 import type { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
 
 function contextWith(header: string | undefined) {
@@ -34,7 +36,12 @@ function contextWith(header: string | undefined) {
 
 describe('SupabaseAuthGuard', () => {
   let verifier: { verify: ReturnType<typeof vi.fn> };
-  let accounts: { findState: ReturnType<typeof vi.fn> };
+  let accounts: {
+    findState: ReturnType<typeof vi.fn>;
+    clearFactorReset: ReturnType<typeof vi.fn>;
+  };
+  let admin: { listMfaFactors: ReturnType<typeof vi.fn> };
+  let reflector: { getAllAndOverride: ReturnType<typeof vi.fn> };
   let guard: SupabaseAuthGuard;
 
   beforeEach(() => {
@@ -43,12 +50,19 @@ describe('SupabaseAuthGuard', () => {
       findState: vi.fn().mockResolvedValue({
         userId: 'user-1',
         passwordResetRequired: false,
+        mfaResetRequired: false,
         tokenInvalidBefore: null,
       }),
+      clearFactorReset: vi.fn().mockResolvedValue(undefined),
     };
+    admin = { listMfaFactors: vi.fn().mockResolvedValue([]) };
+    reflector = { getAllAndOverride: vi.fn().mockReturnValue(undefined) };
     guard = new SupabaseAuthGuard(
       verifier as unknown as SupabaseTokenVerifier,
       accounts as unknown as AuthAccountService,
+      null,
+      admin as unknown as SupabaseAdminService,
+      reflector as unknown as Reflector,
     );
   });
 
@@ -141,6 +155,7 @@ describe('SupabaseAuthGuard', () => {
     accounts.findState.mockResolvedValue({
       userId: 'user-1',
       passwordResetRequired: true,
+      mfaResetRequired: false,
       tokenInvalidBefore: null,
     });
     const { context } = contextWith('Bearer verified-token');
@@ -148,5 +163,85 @@ describe('SupabaseAuthGuard', () => {
     await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
       ForbiddenException,
     );
+  });
+
+  describe('factor reset (T6.09, AC-F02-4)', () => {
+    function resetAccount(mfaResetRequired = true) {
+      verifier.verify.mockResolvedValue({
+        provider: 'supabase',
+        subject: 'sub-123',
+      });
+      accounts.findState.mockResolvedValue({
+        userId: 'user-1',
+        passwordResetRequired: false,
+        mfaResetRequired,
+        tokenInvalidBefore: null,
+      });
+    }
+
+    it('refuses every protected route until a new factor is verified', async () => {
+      resetAccount();
+      admin.listMfaFactors.mockResolvedValue([]);
+      const { context, request } = contextWith('Bearer verified-token');
+
+      await expect(guard.canActivate(context)).rejects.toMatchObject({
+        response: { code: 'MFA_RESET_REQUIRED' },
+      });
+      expect(admin.listMfaFactors).toHaveBeenCalledWith('sub-123');
+      expect(accounts.clearFactorReset).not.toHaveBeenCalled();
+      expect(request.user).toBeUndefined();
+    });
+
+    it('admits the account once a verified factor exists and clears the flag', async () => {
+      resetAccount();
+      admin.listMfaFactors.mockResolvedValue([
+        { id: 'factor-new', verified: true },
+      ]);
+      const { context } = contextWith('Bearer verified-token');
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(accounts.clearFactorReset).toHaveBeenCalledWith('user-1');
+    });
+
+    it('keeps the denial for an unverified factor', async () => {
+      resetAccount();
+      admin.listMfaFactors.mockResolvedValue([
+        { id: 'factor-new', verified: false },
+      ]);
+      const { context } = contextWith('Bearer verified-token');
+
+      await expect(guard.canActivate(context)).rejects.toMatchObject({
+        response: { code: 'MFA_RESET_REQUIRED' },
+      });
+      expect(accounts.clearFactorReset).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the provider cannot list the factors', async () => {
+      resetAccount();
+      admin.listMfaFactors.mockRejectedValue(new Error('provider down'));
+      const { context } = contextWith('Bearer verified-token');
+
+      await expect(guard.canActivate(context)).rejects.toMatchObject({
+        response: { code: 'MFA_RESET_REQUIRED' },
+      });
+      expect(accounts.clearFactorReset).not.toHaveBeenCalled();
+    });
+
+    it('keeps the session and sign-out routes reachable while flagged', async () => {
+      resetAccount();
+      reflector.getAllAndOverride.mockReturnValue(true);
+      const { context } = contextWith('Bearer verified-token');
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(admin.listMfaFactors).not.toHaveBeenCalled();
+    });
+
+    it('ignores the flag when the account has no factor reset', async () => {
+      resetAccount(false);
+      const { context } = contextWith('Bearer verified-token');
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(admin.listMfaFactors).not.toHaveBeenCalled();
+    });
   });
 });

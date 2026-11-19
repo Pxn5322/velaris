@@ -163,6 +163,18 @@ curl -fsS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
 
 Expected result: the six settings print as JSON. A 401 means the token is absent or lacks `auth_config_read`. Do not paste the token or the response into a document.
 
+### 5.9 Sealed platform-owner account (D-59, T6.09)
+
+The sealed account is the last-resort platform owner used when no privileged approver can sign in. D-59 owns it and D-63 creates no second one. This section documents the runbook; the names, safe identifiers and dates are owner evidence in `.agents/evidence-d59-sealed-account.md` and are never recorded in this repository.
+
+1. **Parts and custody.** Split the TOTP enrollment secret into two sealed parts. One named custodian holds each part in a separate physical safe with separate access control. No single person, and no repository, deployment or password manager, holds both parts. The platform security owner is not a custodian.
+2. **Successor.** Each custodian names one successor and one alternate in the evidence file, with the same conflict-of-interest rule. A custodian change is a custody event: reseal or rotate the parts and record it.
+3. **Provisioning.** Two custodians and the platform security owner, together, create the account, enroll the first TOTP factor, verify it, seal the parts and record the provisioning date. The account is a platform owner with no tenant membership and no standing step-up grant.
+4. **Use.** Recovery of the sealed account needs the two custodian approvals plus the security-owner approval that the recovery policy requires; the first use never bypasses the approval table. Every use is audited with the request id and ends with a fresh factor enrolled for the real owner.
+5. **Annual test.** Rehearse the whole runbook once a year in the development project: open both parts, sign in, verify `aal2`, exercise one privileged action and a refused action, reseal, and record the date, participants, duration and any defect in the evidence file. The first test is November 2027, owned by Operations. A missed or failed test is an open incident, not a pass.
+6. **Incident record and retirement.** Record lost, exposed or compromised parts in the incident record named in the evidence file and reseal or rotate immediately. Retire the account only through the approval table, with the retirement audited.
+7. **Verify:** the evidence file names both custodians, both successors, the safes, the provisioning date and the last test; the repository contains no custody name, secret or safe identifier.
+
 ## 6. CI, hosting, domains
 - CI jobs (all verified): .github/workflows/ci.yml runs docs check, lint, type-check, unit tests, build and the npm audit gate on every push and PR; .github/workflows/e2e.yml runs the Playwright landing journeys; .github/workflows/merge-gate.yml blocks direct commits to master and pull requests without owner approval.
 - Hosting: Vercel hosts `apps/web` and Render hosts `apps/api` in Singapore. The current Supabase project is in `ap-northeast-1` (Tokyo), so the API crosses regions. A free-plan candidate project in `ap-southeast-1` (Singapore) was built from the nine tracked migrations on 2026-11-10 and measured over the 200 ms budget (section 6.4); the previous `DATABASE_URL` was restored. The current deployment is the single environment (D-37). Section 6.3 records the origins, settings and manual steps. Vercel Hobby and the Render free instance are development plans, not production commitments.
