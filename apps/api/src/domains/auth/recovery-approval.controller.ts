@@ -31,6 +31,7 @@ import type { Request } from 'express';
 import type { AuthAssurance } from './auth-assurance.js';
 import type { AuthenticatedIdentity } from './auth.interface.js';
 import { RequireStepUp } from './require-step-up.decorator.js';
+import type { ConsumeRecoveryApprovalResult } from './recovery-approval.service.js';
 import {
   RecoveryApprovalService,
   type CompleteRecoveryApprovalInput,
@@ -108,7 +109,7 @@ export class RecoveryApprovalController {
     @Req() request: RecoveryRequest,
     @Param('approvalId') approvalId: string,
     @Body() body: ConsumeRecoveryApprovalInput,
-  ) {
+  ): Promise<ConsumeRecoveryApprovalResult> {
     const { identity, assurance } = readContext(request);
     return this.approvals.consume(identity, assurance, approvalId, body ?? {});
   }

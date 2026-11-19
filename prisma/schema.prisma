@@ -249,6 +249,8 @@ model RecoveryApprovalRequest {
   executionId        String?   @map("execution_id") @db.Uuid
   executionExpiresAt DateTime? @map("execution_expires_at")
   consumedAt         DateTime? @map("consumed_at")
+  /// The provider reset outcome observed during the execution window.
+  resetOutcome       String?   @map("reset_outcome") @db.VarChar(16)
   executedBy         String?   @map("executed_by") @db.VarChar(128)
   completedAt        DateTime? @map("completed_at")
   stateReason        String?   @map("state_reason") @db.VarChar(32)

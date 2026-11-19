@@ -8,6 +8,7 @@ import { AuthSecurityController } from './auth-security.controller.js';
 import { PasswordChangeService } from './password-change.service.js';
 import { RecoveryApprovalController } from './recovery-approval.controller.js';
 import { RecoveryApprovalService } from './recovery-approval.service.js';
+import { RecoveryResetService } from './recovery-reset.service.js';
 import { PasswordPolicyService } from './password-policy.service.js';
 import { SignupService } from './signup.service.js';
 import { StepUpGuard } from './step-up.guard.js';
@@ -35,6 +36,7 @@ import { ProfileService } from './profile.service.js';
     StepUpService,
     StepUpGuard,
     RecoveryApprovalService,
+    RecoveryResetService,
     SignupService,
     TokenRevocationService,
     ProfileService,

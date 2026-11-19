@@ -49,6 +49,10 @@ import type {
   RecoveryPolicyRole,
   RecoveryPolicyRule,
 } from './recovery-approval-policy.js';
+import {
+  RecoveryResetService,
+  type ResetResult,
+} from './recovery-reset.service.js';
 import { mfaRequired } from './step-up.service.js';
 
 /** The only canonical role that maps to a policy duty today (D-68). */
@@ -58,7 +62,6 @@ const RECOVERY_ROLE_MAP: Partial<Record<CanonicalRole, RecoveryPolicyRole>> = {
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const FAILURE_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
 const DECISIONS = { APPROVE: 'APPROVE', DENY: 'DENY' } as const;
 const RESULTS = { SUCCEEDED: 'SUCCEEDED', FAILED: 'FAILED' } as const;
 
@@ -86,8 +89,8 @@ export interface ConsumeRecoveryApprovalInput {
 
 export interface CompleteRecoveryApprovalInput {
   executionId?: unknown;
+  /** Optional echo of the stored outcome; a different value is refused. */
   result?: unknown;
-  failureCode?: unknown;
 }
 
 export interface ListRecoveryApprovalQuery {
@@ -138,6 +141,9 @@ export interface ConsumeRecoveryApprovalResult {
   approval: RecoveryApprovalView;
   executionId: string;
   executionExpiresAt: Date;
+  /** The provider reset outcome observed in this execution window. */
+  result: ResetResult;
+  failureCode: string | null;
 }
 
 interface RequestRow {
@@ -157,6 +163,7 @@ interface RequestRow {
   executionId: string | null;
   executionExpiresAt: Date | null;
   consumedAt: Date | null;
+  resetOutcome: string | null;
   executedBy: string | null;
   completedAt: Date | null;
   stateReason: string | null;
@@ -184,6 +191,7 @@ export class RecoveryApprovalService {
     @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     @Inject(ROLE_RESOLVER) private readonly roles: RoleResolver,
+    private readonly resets: RecoveryResetService,
   ) {}
 
   async create(
@@ -425,6 +433,8 @@ export class RecoveryApprovalService {
           approval: toView(request),
           executionId: request.executionId as string,
           executionExpiresAt: request.executionExpiresAt as Date,
+          result: readRecordedResult(request),
+          failureCode: request.failureCode,
         };
       }
       throw conflict('APPROVAL_ALREADY_CONSUMED');
@@ -459,10 +469,32 @@ export class RecoveryApprovalService {
         expiresAt: executionExpiresAt.toISOString(),
       },
     });
+    const outcome = await this.resets.perform(
+      request.targetUserId,
+      request.targetSubject,
+    );
+    await this.recordOutcome(request, outcome.result, outcome.failureCode);
+    if (outcome.result === RESULTS.FAILED) {
+      await this.audit.record({
+        action: 'auth.mfa_reset_failed',
+        resourceType: 'recovery_approval',
+        resourceId: request.id,
+        tenantId: request.tenantId ?? undefined,
+        actorId: identity.subject,
+        metadata: {
+          executionId,
+          targetUserId: request.targetUserId,
+          failureCode: outcome.failureCode,
+        },
+      });
+    }
+
     return {
       approval: toView(await this.load(request.id)),
       executionId,
       executionExpiresAt,
+      result: outcome.result,
+      failureCode: outcome.failureCode,
     };
   }
 
@@ -474,12 +506,11 @@ export class RecoveryApprovalService {
   ): Promise<RecoveryApprovalView> {
     this.requireMfa(assurance);
     const executionId = readUuid(input?.executionId, 'executionId');
-    const result = readResult(input?.result);
-    const failureCode = readOptionalFailureCode(input?.failureCode);
+    const claim = readOptionalResult(input?.result);
 
     const request = await this.load(approvalId);
     if (isTerminal(request)) {
-      if (this.isSameResult(request, executionId, result, failureCode)) {
+      if (this.isSameResult(request, executionId, claim)) {
         return toView(request);
       }
       throw conflict('EXECUTION_ALREADY_COMPLETED');
@@ -493,9 +524,16 @@ export class RecoveryApprovalService {
     if (request.executionId !== executionId) {
       throw notFound('EXECUTION_NOT_FOUND');
     }
+    if (!request.resetOutcome) {
+      throw conflict('EXECUTION_RESULT_MISSING');
+    }
+    const result = readRecordedResult(request);
+    if (claim !== null && claim !== result) {
+      throw conflict('EXECUTION_RESULT_MISMATCH');
+    }
 
     const now = new Date();
-    if (isExecutionTimedOut(request, now) && result === RESULTS.SUCCEEDED) {
+    if (result === RESULTS.SUCCEEDED && isExecutionTimedOut(request, now)) {
       await this.transition(request, RECOVERY_APPROVAL_STATES.FAILED, {
         completedAt: now,
         failureCode: 'EXECUTION_TIMEOUT',
@@ -510,23 +548,22 @@ export class RecoveryApprovalService {
         : RECOVERY_APPROVAL_STATES.FAILED;
     await this.transition(request, state, {
       completedAt: now,
-      failureCode: result === RESULTS.FAILED ? (failureCode ?? null) : null,
+      failureCode: result === RESULTS.FAILED ? request.failureCode : null,
     });
-    await this.audit.record({
-      action:
-        state === RECOVERY_APPROVAL_STATES.COMPLETED
-          ? 'auth.mfa_reset_completed'
-          : 'auth.mfa_reset_failed',
-      resourceType: 'recovery_approval',
-      resourceId: request.id,
-      tenantId: request.tenantId ?? undefined,
-      actorId: identity.subject,
-      metadata: {
-        executionId,
-        targetUserId: request.targetUserId,
-        failureCode: failureCode ?? null,
-      },
-    });
+    if (state === RECOVERY_APPROVAL_STATES.COMPLETED) {
+      await this.audit.record({
+        action: 'auth.mfa_reset_completed',
+        resourceType: 'recovery_approval',
+        resourceId: request.id,
+        tenantId: request.tenantId ?? undefined,
+        actorId: identity.subject,
+        metadata: {
+          executionId,
+          targetUserId: request.targetUserId,
+          failureCode: null,
+        },
+      });
+    }
     return toView(await this.load(request.id));
   }
 
@@ -667,17 +704,40 @@ export class RecoveryApprovalService {
   private isSameResult(
     request: RequestRow,
     executionId: string,
-    result: ExecutionResult,
-    failureCode: string | null,
+    claim: ExecutionResult | null,
   ): boolean {
     if (request.executionId !== executionId) return false;
-    if (result === RESULTS.SUCCEEDED) {
-      return request.state === RECOVERY_APPROVAL_STATES.COMPLETED;
+    const stored =
+      request.state === RECOVERY_APPROVAL_STATES.COMPLETED
+        ? RESULTS.SUCCEEDED
+        : request.state === RECOVERY_APPROVAL_STATES.FAILED
+          ? RESULTS.FAILED
+          : null;
+    return stored !== null && (claim === null || claim === stored);
+  }
+
+  /** Store the observed reset outcome before `complete` can finalize it. */
+  private async recordOutcome(
+    request: RequestRow,
+    result: ResetResult,
+    failureCode: string | null,
+  ): Promise<void> {
+    const consumedVersion = request.version + 1;
+    const updated = await this.prisma.recoveryApprovalRequest.updateMany({
+      where: {
+        id: request.id,
+        state: RECOVERY_APPROVAL_STATES.CONSUMED,
+        version: consumedVersion,
+      },
+      data: {
+        resetOutcome: result,
+        failureCode,
+        version: consumedVersion + 1,
+      },
+    });
+    if (updated.count !== 1) {
+      throw conflict('APPROVAL_VERSION_CONFLICT');
     }
-    return (
-      request.state === RECOVERY_APPROVAL_STATES.FAILED &&
-      (request.failureCode ?? null) === (failureCode ?? null)
-    );
   }
 
   private async eligibleRole(
@@ -866,21 +926,20 @@ function readDecision(value: unknown): DecisionKind {
   throw badRequest('decision must be APPROVE or DENY');
 }
 
-function readResult(value: unknown): ExecutionResult {
+function readOptionalResult(value: unknown): ExecutionResult | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
   if (value === RESULTS.SUCCEEDED || value === RESULTS.FAILED) {
     return value;
   }
   throw badRequest('result must be SUCCEEDED or FAILED');
 }
 
-function readOptionalFailureCode(value: unknown): string | null {
-  if (value === undefined || value === null) {
-    return null;
-  }
-  if (typeof value !== 'string' || !FAILURE_CODE_PATTERN.test(value)) {
-    throw badRequest('failureCode must be an upper-case code');
-  }
-  return value;
+function readRecordedResult(request: RequestRow): ExecutionResult {
+  return request.resetOutcome === RESULTS.SUCCEEDED
+    ? RESULTS.SUCCEEDED
+    : RESULTS.FAILED;
 }
 
 function readOptionalState(value: unknown): string | null {

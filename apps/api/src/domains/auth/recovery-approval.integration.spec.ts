@@ -41,7 +41,9 @@ import { RecoveryApprovalService } from './recovery-approval.service.js';
 import { SignupService } from './signup.service.js';
 import { StepUpGuard } from './step-up.guard.js';
 import { STEP_UP_ACTIONS, StepUpService } from './step-up.service.js';
+import { SupabaseAdminService } from './supabase-admin.service.js';
 import { SupabaseAuthGuard } from './supabase-auth.guard.js';
+import { RecoveryResetService } from './recovery-reset.service.js';
 import { SupabaseTokenVerifier } from './supabase-token-verifier.service.js';
 import { TokenRevocationService } from './token-revocation.service.js';
 
@@ -198,6 +200,15 @@ function fakeStore() {
               status: 'ACTIVE',
             }
           : null,
+      ),
+      update: vi.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: { id: string };
+          data: Record<string, unknown>;
+        }) => ({ id: where.id, ...data }),
       ),
       findUnique: vi.fn(
         async ({
@@ -408,6 +419,11 @@ describe('privileged recovery approvals (integration)', () => {
   let store: ReturnType<typeof fakeStore>;
   let fetchMock: ReturnType<typeof vi.fn>;
   let roleByTenant: Record<string, string | null>;
+  let admin: {
+    isConfigured: () => boolean;
+    listMfaFactors: ReturnType<typeof vi.fn>;
+    deleteMfaFactor: ReturnType<typeof vi.fn>;
+  };
 
   async function createApp() {
     const moduleRef = await Test.createTestingModule({
@@ -421,6 +437,8 @@ describe('privileged recovery approvals (integration)', () => {
         StepUpService,
         StepUpGuard,
         RecoveryApprovalService,
+        RecoveryResetService,
+        { provide: SupabaseAdminService, useValue: admin },
         {
           provide: PRISMA_SERVICE,
           useValue: store.prisma,
@@ -528,6 +546,14 @@ describe('privileged recovery approvals (integration)', () => {
     roleByTenant = {
       [TENANT_ID]: 'R-enterprise-admin',
       platform: 'R-enterprise-admin',
+    };
+    admin = {
+      isConfigured: () => true,
+      listMfaFactors: vi.fn(async () => [
+        { id: 'factor-1' },
+        { id: 'factor-2' },
+      ]),
+      deleteMfaFactor: vi.fn(async () => undefined),
     };
     store = fakeStore();
     await createApp();
@@ -786,6 +812,22 @@ describe('privileged recovery approvals (integration)', () => {
     expect(consumed.status).toBe(200);
     expect(consumed.body.approval.state).toBe('CONSUMED');
     expect(consumed.body.executionId).toEqual(expect.any(String));
+    expect(consumed.body.result).toBe('SUCCEEDED');
+    expect(admin.listMfaFactors).toHaveBeenCalledWith(`sub-${TARGET_ID}`);
+    expect(admin.deleteMfaFactor).toHaveBeenCalledWith(
+      `sub-${TARGET_ID}`,
+      'factor-1',
+    );
+    expect(admin.deleteMfaFactor).toHaveBeenCalledWith(
+      `sub-${TARGET_ID}`,
+      'factor-2',
+    );
+    expect(store.prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: TARGET_ID },
+        data: { tokenInvalidBefore: expect.any(Date) },
+      }),
+    );
 
     const completed = await request(app.getHttpServer())
       .post(`/auth/recovery/requests/${created.approvalId}/complete`)
@@ -909,34 +951,44 @@ describe('privileged recovery approvals (integration)', () => {
     expect(store.requests[0].failureCode).toBe('EXECUTION_TIMEOUT');
   });
 
-  it('records a safe failure code when the execution fails', async () => {
+  it('reports FAILED when the provider refuses the factor reset', async () => {
+    admin.deleteMfaFactor.mockRejectedValueOnce(new Error('provider down'));
     const token = accessToken();
     const created = await approveFully(token);
-    const consumed = await consume(created.approvalId, token);
-
-    const res = await request(app.getHttpServer())
-      .post(`/auth/recovery/requests/${created.approvalId}/complete`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({
-        executionId: consumed,
-        result: 'FAILED',
-        failureCode: 'PROVIDER_RESET_FAILED',
-      });
-
-    expect(res.status).toBe(200);
-    expect(res.body.state).toBe('FAILED');
-    expect(res.body.failureCode).toBe('PROVIDER_RESET_FAILED');
-    expect(store.audits.map((event) => event.action)).toContain(
-      'auth.mfa_reset_failed',
+    const stepUp = await grant(
+      STEP_UP_ACTIONS.RECOVERY_EXECUTE,
+      token,
+      TENANT_ID,
     );
+    const consumed = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/execute`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-step-up-token', stepUp)
+      .send({ tenantId: TENANT_ID });
+
+    expect(consumed.status).toBe(200);
+    expect(consumed.body.result).toBe('FAILED');
+    expect(consumed.body.approval.failureCode).toBe(
+      'PROVIDER_FACTOR_RESET_FAILED',
+    );
+    expect(store.requests[0].state).toBe('CONSUMED');
+    expect(store.prisma.user.update).not.toHaveBeenCalled();
     expect(
       store.audits.some(
         (event) =>
           event.action === 'auth.mfa_reset_failed' &&
           (event.metadata as { failureCode?: string }).failureCode ===
-            'PROVIDER_RESET_FAILED',
+            'PROVIDER_FACTOR_RESET_FAILED',
       ),
     ).toBe(true);
+
+    const completed = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/complete`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ executionId: consumed.body.executionId });
+    expect(completed.status).toBe(200);
+    expect(completed.body.state).toBe('FAILED');
+    expect(completed.body.failureCode).toBe('PROVIDER_FACTOR_RESET_FAILED');
   });
 
   it('refuses a decision when another writer changed the row', async () => {
@@ -1036,13 +1088,19 @@ describe('privileged recovery approvals (integration)', () => {
 
   it('returns the current view for a repeated failed result', async () => {
     const token = accessToken();
+    admin.deleteMfaFactor.mockRejectedValueOnce(new Error('provider down'));
     const created = await approveFully(token);
-    const consumed = await consume(created.approvalId, token);
-    const body = {
-      executionId: consumed,
-      result: 'FAILED',
-      failureCode: 'PROVIDER_RESET_FAILED',
-    };
+    const stepUp = await grant(
+      STEP_UP_ACTIONS.RECOVERY_EXECUTE,
+      token,
+      TENANT_ID,
+    );
+    const executed = await request(app.getHttpServer())
+      .post(`/auth/recovery/requests/${created.approvalId}/execute`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-step-up-token', stepUp)
+      .send({ tenantId: TENANT_ID });
+    const body = { executionId: executed.body.executionId };
 
     const first = await request(app.getHttpServer())
       .post(`/auth/recovery/requests/${created.approvalId}/complete`)
