@@ -92,6 +92,48 @@ const AUTHENTICATED_WITHOUT_PERMISSION = [
     reason:
       "Self-service session revocation: the caller revokes only its own sessions and must present a step-up grant",
   },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "create",
+    reason:
+      "Privileged recovery approval: the D-62 policy duty check, the aal2 gate and the recovery.request step-up grant are the authorization boundary; the reserved permission seeds are not granted yet (D-65, D-68)",
+  },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "listMine",
+    reason:
+      "Privileged recovery approval: the requester reads only the records it created, so there is no wider resource to scope",
+  },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "get",
+    reason:
+      "Privileged recovery approval: the service allows only the requester, the target or an eligible policy duty to read one record (D-62)",
+  },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "decide",
+    reason:
+      "Privileged recovery approval: the D-62 policy duty, the aal2 gate and the no-self rule are the authorization boundary; the reserved permission seeds are not granted yet (D-65, D-68)",
+  },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "execute",
+    reason:
+      "Privileged recovery approval: the D-62 policy duty, the aal2 gate and the recovery.execute step-up grant are the authorization boundary; the reserved permission seeds are not granted yet (D-65, D-68)",
+  },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "complete",
+    reason:
+      "Privileged recovery approval: only the executor that consumed the approval can report its result (D-62 section 7)",
+  },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "cancel",
+    reason:
+      "Privileged recovery approval: only the requester can cancel its own pending or approved request (D-62 section 5)",
+  },
 ];
 
 function listControllerFiles(directory) {

@@ -225,6 +225,63 @@ model StepUpGrant {
   @@map("step_up_grants")
 }
 
+/// E-recovery-approval (T6.09; D-62 contract): one privileged MFA recovery
+/// request and its recorded decisions (D-59 matrix, D-66 policy). The requester
+/// cannot choose the approval count or the approver roles; the policy table
+/// decides both. The target user id and tenant id carry no foreign key, so a
+/// later account or tenant change cannot rewrite the approval history.
+model RecoveryApprovalRequest {
+  id                 String    @id @default(uuid()) @db.Uuid
+  /** Caller-supplied idempotency key for one recovery request. */
+  requestId          String    @map("request_id") @db.Uuid
+  recoveryPath       String    @map("recovery_path") @db.VarChar(48)
+  tenantId           String?   @map("tenant_id") @db.Uuid
+  targetUserId       String    @map("target_user_id") @db.Uuid
+  /** Identity-provider subject of the target; the target can never approve. */
+  targetSubject      String    @map("target_subject") @db.VarChar(128)
+  requestedBy        String    @map("requested_by") @db.VarChar(128)
+  reason             String    @db.VarChar(500)
+  ticketId           String    @map("ticket_id") @db.VarChar(100)
+  custodyRecordId    String?   @map("custody_record_id") @db.VarChar(128)
+  state              String    @db.VarChar(16)
+  requiredApprovals  Int       @map("required_approvals")
+  approvalExpiresAt  DateTime  @map("approval_expires_at")
+  executionId        String?   @map("execution_id") @db.Uuid
+  executionExpiresAt DateTime? @map("execution_expires_at")
+  consumedAt         DateTime? @map("consumed_at")
+  executedBy         String?   @map("executed_by") @db.VarChar(128)
+  completedAt        DateTime? @map("completed_at")
+  stateReason        String?   @map("state_reason") @db.VarChar(32)
+  failureCode        String?   @map("failure_code") @db.VarChar(64)
+  version            Int       @default(0)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  decisions RecoveryApprovalDecision[]
+
+  @@unique([requestedBy, requestId])
+  @@index([state, approvalExpiresAt])
+  @@index([tenantId, state, createdAt(sort: Desc)])
+  @@map("recovery_approval_requests")
+}
+
+/// One immutable decision by one actor. The unique pair stops a second
+/// decision by the same actor under another policy role.
+model RecoveryApprovalDecision {
+  id           String   @id @default(uuid()) @db.Uuid
+  requestId    String   @map("request_id") @db.Uuid
+  actorSubject String   @map("actor_subject") @db.VarChar(128)
+  policyRole   String   @map("policy_role") @db.VarChar(32)
+  decision     String   @db.VarChar(8)
+  reason       String?  @db.VarChar(500)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  request RecoveryApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, actorSubject])
+  @@map("recovery_approval_decisions")
+}
+
 // ---- Phase 2: core support vertical slice (T2.01) ----
 // Proposed baseline per docs/DATABASE.md section 6 (E-customer,
 // E-conversation, E-message, E-ticket). Enum values are proposed defaults
