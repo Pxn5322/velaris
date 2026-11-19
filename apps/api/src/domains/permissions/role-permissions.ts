@@ -26,6 +26,10 @@ const ENTERPRISE_ADMIN: readonly PermissionCode[] = [
   P.INTEGRATION_MANAGE,
   // T4.04 (D-20): a platform owner may decide a consequential tool action.
   P.AI_TOOL_APPROVE,
+  // D-58 to D-62 code reservations (D-65): `user.mfa.reset` (D-59),
+  // `audit.export` (D-60), `access.review.manage` and `role.change.approve`
+  // (D-62) exist in the catalog but stay unassigned until those records are
+  // Recorded. A role without a code is refused, so the capability fails shut.
 ];
 
 /** Own-tenant scope only. Platform governance stays denied (AC-F03-3). */
@@ -53,6 +57,12 @@ const TENANT_ADMIN: readonly PermissionCode[] = [
   P.ANALYTICS_READ,
   // T5.05 (D-30): a tenant owner registers the tenant's own endpoints.
   P.INTEGRATION_MANAGE,
+  // D-58 to D-62 code reservations (D-65): the four security-policy codes are
+  // deliberately absent here too, so no tenant administrator gains a recovery,
+  // export, access-review or role-approval capability before D-58, D-60 and
+  // D-62 are Recorded. D-59 forbids a tenant administrator from resetting a
+  // peer, a foreign member or a platform administrator; the recovery service
+  // enforces that matrix and the two-person rule when the codes are assigned.
 ];
 
 /** Support work on permitted tickets; no governance, no knowledge admin. */

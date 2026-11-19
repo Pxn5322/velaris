@@ -27,6 +27,10 @@ export const STEP_UP_ACTIONS = {
   PROVIDER_CHANGE: 'provider.change',
   RETENTION_CHANGE: 'retention.change',
   ATTACHMENT_SEND: 'attachment.send',
+  // D-62 privileged recovery (D-66): creating a request and executing a reset
+  // are separate one-time steps, so each needs its own grant.
+  RECOVERY_REQUEST: 'recovery.request',
+  RECOVERY_EXECUTE: 'recovery.execute',
 } as const;
 
 export type StepUpAction =
@@ -40,6 +44,8 @@ const ACTION_POLICY: Record<StepUpAction, { mfa: boolean }> = {
   [STEP_UP_ACTIONS.PROVIDER_CHANGE]: { mfa: true },
   [STEP_UP_ACTIONS.RETENTION_CHANGE]: { mfa: true },
   [STEP_UP_ACTIONS.ATTACHMENT_SEND]: { mfa: true },
+  [STEP_UP_ACTIONS.RECOVERY_REQUEST]: { mfa: true },
+  [STEP_UP_ACTIONS.RECOVERY_EXECUTE]: { mfa: true },
 };
 
 export const STEP_UP_TTL_MS = 10 * 60 * 1_000;

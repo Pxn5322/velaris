@@ -149,6 +149,20 @@ Each section remains a setup plan, not a verified instruction, until the provide
 ### 5.7 Other third-party services
 N/A — no specific email, chat channel, CRM or external integration provider is confirmed for the first release. Add provider-specific setup only after the integration priority is approved.
 
+### 5.8 Owner inputs for blocked security decisions (D-58–D-63)
+These steps need an owner, legal or vendor action. None has run from this repository. `docs/IMPLEMENTATION_PLAN.md` section 9A is the single source: it holds the missing value, its source, its owner, its evidence artifact and the recommended answer for each record. Do not copy that table here.
+
+Read the project's auth settings without printing a secret:
+
+```bash
+# Not run from this repository. Keep the token in the shell or a secret store.
+curl -fsS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+  "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/config/auth" \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const c=JSON.parse(s);console.log(JSON.stringify({password_min_length:c.password_min_length,password_required_characters:c.password_required_characters,password_hibp_enabled:c.password_hibp_enabled,mfa_totp_enroll_enabled:c.mfa_totp_enroll_enabled,mfa_totp_verify_enabled:c.mfa_totp_verify_enabled,mfa_max_enrolled_factors:c.mfa_max_enrolled_factors},null,2))})'
+```
+
+Expected result: the six settings print as JSON. A 401 means the token is absent or lacks `auth_config_read`. Do not paste the token or the response into a document.
+
 ## 6. CI, hosting, domains
 - CI jobs (all verified): .github/workflows/ci.yml runs docs check, lint, type-check, unit tests, build and the npm audit gate on every push and PR; .github/workflows/e2e.yml runs the Playwright landing journeys; .github/workflows/merge-gate.yml blocks direct commits to master and pull requests without owner approval.
 - Hosting: Vercel hosts `apps/web` and Render hosts `apps/api` in Singapore. The current Supabase project is in `ap-northeast-1` (Tokyo), so the API crosses regions. A free-plan candidate project in `ap-southeast-1` (Singapore) was built from the nine tracked migrations on 2026-11-10 and measured over the 200 ms budget (section 6.4); the previous `DATABASE_URL` was restored. The current deployment is the single environment (D-37). Section 6.3 records the origins, settings and manual steps. Vercel Hobby and the Render free instance are development plans, not production commitments.
