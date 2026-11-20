@@ -32,6 +32,12 @@ export interface SessionProfile {
    * normal routes until a new factor is verified (T6.09, AC-F02-4).
    */
   mfaResetRequired: boolean;
+  /**
+   * True when the account must change its password. The API refuses normal
+   * routes with `403 PASSWORD_RESET_REQUIRED` until POST /auth/password
+   * succeeds (T6.08, D-58).
+   */
+  passwordResetRequired: boolean;
 }
 
 /** Human label for the navigation identity block. */
@@ -130,11 +136,13 @@ export async function readSessionProfile(): Promise<SessionProfile> {
     };
     tenantContext?: { displayName?: string } | null;
     mfaResetRequired?: boolean;
+    passwordResetRequired?: boolean;
   }>("/auth/session");
   const email = session.identity?.email ?? null;
   return {
     role: mapUiRole(session.role),
     mfaResetRequired: session.mfaResetRequired === true,
+    passwordResetRequired: session.passwordResetRequired === true,
     identity: {
       displayName:
         session.identity?.displayName ??
@@ -155,7 +163,12 @@ export async function fetchSessionProfile(): Promise<SessionProfile> {
   try {
     return await readSessionProfile();
   } catch {
-    return { role: null, identity: null, mfaResetRequired: false };
+    return {
+      role: null,
+      identity: null,
+      mfaResetRequired: false,
+      passwordResetRequired: false,
+    };
   }
 }
 

@@ -6,6 +6,7 @@ import { NavigationHeader } from "@/components/NavigationHeader";
 import { BackgroundCanvas } from "@/components/BackgroundCanvas";
 import { RequireSession } from "@/components/auth/RequireSession";
 import { MfaResetGate } from "@/components/auth/MfaResetGate";
+import { PasswordResetGate } from "@/components/auth/PasswordResetGate";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -17,6 +18,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <RequireSession>
+      <PasswordResetGate />
       <MfaResetGate />
       <BackgroundCanvas />
       <div className="relative z-10 flex flex-col min-h-screen pt-20">

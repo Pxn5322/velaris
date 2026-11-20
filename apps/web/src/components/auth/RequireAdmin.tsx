@@ -21,20 +21,23 @@ import { getSession } from "@/lib/auth/session";
  * role. The guard never uses client state to grant access.
  */
 export function RequireAdmin({ children }: { children: ReactNode }) {
-  const { role, roleLoading } = useRole();
+  const { role, roleLoading, passwordResetRequired } = useRole();
   const router = useRouter();
   const allowed = role === "ENTERPRISE" || role === "ADMIN";
+  // A required password reset hides the role, so this guard must not redirect
+  // that caller away from the gate that asks for the new password.
+  const gated = allowed || passwordResetRequired;
 
   useEffect(() => {
     if (!getSession()) {
       router.replace("/?signin=1");
       return;
     }
-    if (roleLoading || allowed) return;
+    if (roleLoading || gated) return;
     router.replace("/?signin=1");
-  }, [allowed, roleLoading, router]);
+  }, [gated, roleLoading, router]);
 
-  if (roleLoading || !allowed) {
+  if (roleLoading || !gated) {
     return (
       <div
         className="flex-1 flex items-center justify-center p-8"

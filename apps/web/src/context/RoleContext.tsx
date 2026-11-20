@@ -36,6 +36,11 @@ interface RoleContextType {
    * Normal API routes answer `403 MFA_RESET_REQUIRED` until it is cleared.
    */
   mfaResetRequired: boolean;
+  /**
+   * True while the account must change its password (T6.08, D-58).
+   * Normal API routes answer `403 PASSWORD_RESET_REQUIRED` until it is cleared.
+   */
+  passwordResetRequired: boolean;
   /** Re-read GET /auth/session and apply its role, identity and reset flags. */
   refreshSession: () => Promise<void>;
   activeView: string;
@@ -53,6 +58,8 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   const [identity, setIdentity] = useState<SessionIdentity | null>(null);
   const [roleLoading, setRoleLoading] = useState<boolean>(true);
   const [mfaResetRequired, setMfaResetRequired] = useState<boolean>(false);
+  const [passwordResetRequired, setPasswordResetRequired] =
+    useState<boolean>(false);
   const [activeView, setActiveView] = useState<string>("admin");
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [tenantId, setTenantId] = useState<string>("tenant_acme_corp");
@@ -75,6 +82,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     setRoleState(null);
     setIdentity(null);
     setMfaResetRequired(false);
+    setPasswordResetRequired(false);
     setActiveView("admin");
   };
 
@@ -82,6 +90,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     setRoleState(profile.role);
     setIdentity(profile.identity);
     setMfaResetRequired(profile.mfaResetRequired);
+    setPasswordResetRequired(profile.passwordResetRequired);
     if (profile.role) setActiveView(viewForRole(profile.role));
     setRoleLoading(false);
   }, []);
@@ -132,6 +141,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         setIdentity,
         endSession,
         mfaResetRequired,
+        passwordResetRequired,
         refreshSession,
         activeView,
         setActiveView,
