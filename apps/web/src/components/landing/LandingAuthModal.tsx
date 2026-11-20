@@ -11,7 +11,11 @@ import {
   signIn,
   signOut,
 } from "@/lib/auth/session";
-import { fetchSessionProfile, routeForRole } from "@/lib/auth/uiRole";
+import {
+  fetchSessionProfile,
+  hasWorkspaceAccess,
+  routeForSessionProfile,
+} from "@/lib/auth/uiRole";
 
 interface LandingAuthModalProps {
   isOpen: boolean;
@@ -78,7 +82,7 @@ export function LandingAuthModal({
       // A required password reset hides the role and the tenant context, so a
       // flagged account has no role to route by. It is still a real account:
       // enter the workspace, where PasswordResetGate asks for the new password.
-      if (!profile.role && !profile.passwordResetRequired) {
+      if (!hasWorkspaceAccess(profile)) {
         await signOut();
         setError(
           isSignup
@@ -92,7 +96,7 @@ export function LandingAuthModal({
       // the workspace gate reads the reset flags from this same read.
       applySessionProfile(profile);
       onClose();
-      router.push(profile.role ? routeForRole(profile.role) : "/admin");
+      router.push(routeForSessionProfile(profile));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed.");
       setSubmitting(false);

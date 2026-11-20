@@ -75,6 +75,33 @@ test.describe("Password reset", () => {
     await expect(page.getByTestId("sign-in-error")).toHaveCount(0);
   });
 
+  test("routes a flagged portal sign-in into the gate", async ({ page }) => {
+    await page.route("**/auth/v1/token*", (route) =>
+      route.fulfill(
+        json({
+          access_token: "e2e-access-token",
+          refresh_token: "e2e-refresh-token",
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          user: { email: "customer@acme.test" },
+        }),
+      ),
+    );
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+
+    await page.goto("/portal/sign-in");
+    await page.getByTestId("sign-in-email").fill("customer@acme.test");
+    await page.getByTestId("sign-in-password").fill(CURRENT_PASSWORD);
+    await page.getByTestId("sign-in-submit").click();
+
+    // The portal form used to answer "no portal access" for the same hidden
+    // role. The flagged account now enters the workspace and the gate opens.
+    await expect(page).toHaveURL(/\/admin$/);
+    await expect(page.getByTestId("password-reset")).toBeVisible();
+    await expect(page.getByTestId("sign-in-error")).toHaveCount(0);
+  });
+
   test("requires a new password and signs out after the change", async ({
     page,
   }) => {

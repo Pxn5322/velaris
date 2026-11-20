@@ -122,6 +122,24 @@ export function routeForRole(role: UserRole): string {
 }
 
 /**
+ * True when a signed-in profile may enter the workspace. A required reset
+ * hides the role, but the account still owns a workspace: the reset gates
+ * render there and refuse every other route until the reset is complete.
+ */
+export function hasWorkspaceAccess(profile: SessionProfile): boolean {
+  return profile.role !== null || profile.passwordResetRequired;
+}
+
+/**
+ * Route a signed-in profile enters. A role routes to its own view; a flagged
+ * account has no role to route by, so it enters the administration workspace
+ * where the reset gates render.
+ */
+export function routeForSessionProfile(profile: SessionProfile): string {
+  return profile.role ? routeForRole(profile.role) : "/admin";
+}
+
+/**
  * Reads the session profile and throws on a refusal or an outage. A caller
  * that must not mistake a failed read for a cleared state uses this, because
  * `fetchSessionProfile` answers an empty profile for both.
