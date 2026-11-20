@@ -45,6 +45,36 @@ function json(body, status = 200) {
 }
 
 test.describe("Password reset", () => {
+  test("signs a flagged account into the workspace so the gate opens", async ({
+    page,
+  }) => {
+    await page.route("**/auth/v1/token*", (route) =>
+      route.fulfill(
+        json({
+          access_token: "e2e-access-token",
+          refresh_token: "e2e-refresh-token",
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          user: { email: "admin@acme.test" },
+        }),
+      ),
+    );
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+
+    await page.goto("/?signin=1");
+    await page.getByTestId("sign-in-email").fill("admin@acme.test");
+    await page.getByTestId("sign-in-password").fill(CURRENT_PASSWORD);
+    await page.getByTestId("sign-in-submit").click();
+
+    // The role is hidden while the reset is pending, so the sign-in form must
+    // not answer "no workspace access": it routes into the workspace, where
+    // the workspace gate asks for the new password.
+    await expect(page).toHaveURL(/\/admin$/);
+    await expect(page.getByTestId("password-reset")).toBeVisible();
+    await expect(page.getByTestId("sign-in-error")).toHaveCount(0);
+  });
+
   test("requires a new password and signs out after the change", async ({
     page,
   }) => {

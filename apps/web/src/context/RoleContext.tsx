@@ -29,6 +29,8 @@ interface RoleContextType {
   identity: SessionIdentity | null;
   /** Apply the identity returned by the same session read as the role. */
   setIdentity: (identity: SessionIdentity | null) => void;
+  /** Apply a whole session profile, including both reset flags. */
+  applySessionProfile: (profile: SessionProfile) => void;
   /** Revoke the server session and clear the local identity. */
   endSession: () => Promise<void>;
   /**
@@ -139,6 +141,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         roleLoading,
         identity,
         setIdentity,
+        applySessionProfile: applyProfile,
         endSession,
         mfaResetRequired,
         passwordResetRequired,

@@ -25,7 +25,7 @@ export function LandingAuthModal({
   onClose,
 }: LandingAuthModalProps) {
   const router = useRouter();
-  const { setRole, setIdentity } = useRole();
+  const { applySessionProfile } = useRole();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
@@ -75,7 +75,10 @@ export function LandingAuthModal({
       // The role and identity come from the server (membership_roles and
       // the user row), never a picker or a client-side guess.
       const profile = await fetchSessionProfile();
-      if (!profile.role) {
+      // A required password reset hides the role and the tenant context, so a
+      // flagged account has no role to route by. It is still a real account:
+      // enter the workspace, where PasswordResetGate asks for the new password.
+      if (!profile.role && !profile.passwordResetRequired) {
         await signOut();
         setError(
           isSignup
@@ -85,10 +88,11 @@ export function LandingAuthModal({
         setSubmitting(false);
         return;
       }
-      setRole(profile.role);
-      setIdentity(profile.identity);
+      // Apply the whole profile: a flagged account keeps its role hidden, and
+      // the workspace gate reads the reset flags from this same read.
+      applySessionProfile(profile);
       onClose();
-      router.push(routeForRole(profile.role));
+      router.push(profile.role ? routeForRole(profile.role) : "/admin");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed.");
       setSubmitting(false);
