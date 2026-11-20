@@ -122,21 +122,14 @@ export function routeForRole(role: UserRole): string {
 }
 
 /**
- * True when a signed-in profile may enter the workspace. A required reset
- * hides the role, but the account still owns a workspace: the reset gates
- * render there and refuse every other route until the reset is complete.
+ * Route a signed-in profile enters, or null when the account has no workspace
+ * access. A required reset hides the role, but the account still owns a
+ * workspace: it enters `/admin`, where the reset gates render and refuse every
+ * other route until the reset is complete.
  */
-export function hasWorkspaceAccess(profile: SessionProfile): boolean {
-  return profile.role !== null || profile.passwordResetRequired;
-}
-
-/**
- * Route a signed-in profile enters. A role routes to its own view; a flagged
- * account has no role to route by, so it enters the administration workspace
- * where the reset gates render.
- */
-export function routeForSessionProfile(profile: SessionProfile): string {
-  return profile.role ? routeForRole(profile.role) : "/admin";
+export function workspaceRouteFor(profile: SessionProfile): string | null {
+  if (profile.role) return routeForRole(profile.role);
+  return profile.passwordResetRequired ? "/admin" : null;
 }
 
 /**

@@ -186,12 +186,14 @@ export function MfaSettingsDialog({
       setEnrollment(null);
       setCode("");
       if (mandatory) {
-        // Read the factors first, so a session read that does not clear the
-        // flag leaves a usable panel instead of an empty dialog.
+        // Refresh the panel in parallel: the session read decides whether the
+        // gate closes, so a slow factor-list read must not hold it open. The
+        // panel still gets its factors when the flag does not clear.
         setNotice("Authenticator verified.");
         setStage("list");
-        await loadFactors().catch(() => undefined);
+        const panelRefresh = loadFactors().catch(() => undefined);
         await onVerified?.();
+        await panelRefresh;
         return;
       }
       await loadFactors();

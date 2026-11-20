@@ -11,11 +11,7 @@ import {
   signIn,
   signOut,
 } from "@/lib/auth/session";
-import {
-  fetchSessionProfile,
-  hasWorkspaceAccess,
-  routeForSessionProfile,
-} from "@/lib/auth/uiRole";
+import { fetchSessionProfile, workspaceRouteFor } from "@/lib/auth/uiRole";
 
 interface LandingAuthModalProps {
   isOpen: boolean;
@@ -79,10 +75,8 @@ export function LandingAuthModal({
       // The role and identity come from the server (membership_roles and
       // the user row), never a picker or a client-side guess.
       const profile = await fetchSessionProfile();
-      // A required password reset hides the role and the tenant context, so a
-      // flagged account has no role to route by. It is still a real account:
-      // enter the workspace, where PasswordResetGate asks for the new password.
-      if (!hasWorkspaceAccess(profile)) {
+      const target = workspaceRouteFor(profile);
+      if (!target) {
         await signOut();
         setError(
           isSignup
@@ -92,11 +86,11 @@ export function LandingAuthModal({
         setSubmitting(false);
         return;
       }
-      // Apply the whole profile: a flagged account keeps its role hidden, and
-      // the workspace gate reads the reset flags from this same read.
+      // Apply the whole profile, so the workspace gate reads the reset flags
+      // from this same read.
       applySessionProfile(profile);
       onClose();
-      router.push(routeForSessionProfile(profile));
+      router.push(target);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed.");
       setSubmitting(false);

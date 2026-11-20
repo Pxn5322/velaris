@@ -17,11 +17,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogIn } from "lucide-react";
 import { isAuthConfigured, signIn, signOut } from "@/lib/auth/session";
-import {
-  fetchSessionProfile,
-  hasWorkspaceAccess,
-  routeForSessionProfile,
-} from "@/lib/auth/uiRole";
+import { fetchSessionProfile, workspaceRouteFor } from "@/lib/auth/uiRole";
 import { useRole } from "@/context/RoleContext";
 
 export default function PortalSignInPage() {
@@ -46,20 +42,15 @@ export default function PortalSignInPage() {
       // Read the server role before navigating; the provider on this public
       // page still holds the signed-out state from before the login.
       const profile = await fetchSessionProfile();
-      // A required password reset hides the role, but the account is real:
-      // enter the workspace, where PasswordResetGate asks for a new password.
-      if (!hasWorkspaceAccess(profile)) {
+      const target = workspaceRouteFor(profile);
+      if (!target) {
         await signOut();
         setError("This account has no portal access.");
         setSubmitting(false);
         return;
       }
       applySessionProfile(profile);
-      router.push(
-        profile.role
-          ? "/portal/conversations"
-          : routeForSessionProfile(profile),
-      );
+      router.push(profile.role ? "/portal/conversations" : target);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Sign-in failed.");
       setSubmitting(false);

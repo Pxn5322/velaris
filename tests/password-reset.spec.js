@@ -9,7 +9,8 @@ import { test, expect } from "@playwright/test";
  * The journey checks the browser contract: the app opens a non-dismissible
  * password dialog without a click, shows the server's policy refusal, and a
  * successful change ends the session so the user signs in with the new
- * password (the change advances the access-token cutoff).
+ * password (the change advances the access-token cutoff). It also checks
+ * that both public sign-in pages route a flagged account into the gate.
  */
 
 const SESSION_KEY = "velaris.auth.session.v1";
@@ -44,56 +45,47 @@ function json(body, status = 200) {
   };
 }
 
+/**
+ * Sign in at a public sign-in page as an account whose role the API hides
+ * behind `passwordResetRequired`, with the standard mocked auth and session.
+ */
+async function signInAsFlagged(page, path, email) {
+  await page.route("**/auth/v1/token*", (route) =>
+    route.fulfill(
+      json({
+        access_token: "e2e-access-token",
+        refresh_token: "e2e-refresh-token",
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        user: { email },
+      }),
+    ),
+  );
+  await page.route("**/auth/session*", (route) =>
+    route.fulfill(json(sessionResponse)),
+  );
+
+  await page.goto(path);
+  await page.getByTestId("sign-in-email").fill(email);
+  await page.getByTestId("sign-in-password").fill(CURRENT_PASSWORD);
+  await page.getByTestId("sign-in-submit").click();
+}
+
 test.describe("Password reset", () => {
   test("signs a flagged account into the workspace so the gate opens", async ({
     page,
   }) => {
-    await page.route("**/auth/v1/token*", (route) =>
-      route.fulfill(
-        json({
-          access_token: "e2e-access-token",
-          refresh_token: "e2e-refresh-token",
-          expires_at: Math.floor(Date.now() / 1000) + 3600,
-          user: { email: "admin@acme.test" },
-        }),
-      ),
-    );
-    await page.route("**/auth/session*", (route) =>
-      route.fulfill(json(sessionResponse)),
-    );
-
-    await page.goto("/?signin=1");
-    await page.getByTestId("sign-in-email").fill("admin@acme.test");
-    await page.getByTestId("sign-in-password").fill(CURRENT_PASSWORD);
-    await page.getByTestId("sign-in-submit").click();
+    await signInAsFlagged(page, "/?signin=1", "admin@acme.test");
 
     // The role is hidden while the reset is pending, so the sign-in form must
     // not answer "no workspace access": it routes into the workspace, where
-    // the workspace gate asks for the new password.
+    // the gate asks for the new password.
     await expect(page).toHaveURL(/\/admin$/);
     await expect(page.getByTestId("password-reset")).toBeVisible();
     await expect(page.getByTestId("sign-in-error")).toHaveCount(0);
   });
 
   test("routes a flagged portal sign-in into the gate", async ({ page }) => {
-    await page.route("**/auth/v1/token*", (route) =>
-      route.fulfill(
-        json({
-          access_token: "e2e-access-token",
-          refresh_token: "e2e-refresh-token",
-          expires_at: Math.floor(Date.now() / 1000) + 3600,
-          user: { email: "customer@acme.test" },
-        }),
-      ),
-    );
-    await page.route("**/auth/session*", (route) =>
-      route.fulfill(json(sessionResponse)),
-    );
-
-    await page.goto("/portal/sign-in");
-    await page.getByTestId("sign-in-email").fill("customer@acme.test");
-    await page.getByTestId("sign-in-password").fill(CURRENT_PASSWORD);
-    await page.getByTestId("sign-in-submit").click();
+    await signInAsFlagged(page, "/portal/sign-in", "customer@acme.test");
 
     // The portal form used to answer "no portal access" for the same hidden
     // role. The flagged account now enters the workspace and the gate opens.

@@ -113,4 +113,60 @@ test.describe("MFA reset", () => {
     await expect(page.getByTestId("nav-identity")).toContainText("Acme Admin");
     expect(sessionReads).toBeGreaterThanOrEqual(2);
   });
+
+  test("closes the gate without waiting for the factor list read", async ({
+    page,
+  }) => {
+    let mfaResetRequired = true;
+
+    await page.addInitScript(
+      ([key, value]) => window.localStorage.setItem(key, value),
+      [SESSION_KEY, JSON.stringify(SESSION)],
+    );
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json({ ...sessionResponse, mfaResetRequired })),
+    );
+    await page.route("**/auth/v1/factors", (route) =>
+      route.fulfill(
+        json({
+          id: "factor-new",
+          totp: {
+            qr_code: null,
+            secret: "NEWFACTORSECRET",
+            uri: "otpauth://totp/VELARIS",
+          },
+        }),
+      ),
+    );
+    await page.route("**/auth/v1/factors/factor-new/challenge", (route) =>
+      route.fulfill(json({ id: "challenge-new" })),
+    );
+    await page.route("**/auth/v1/factors/factor-new/verify", (route) => {
+      mfaResetRequired = false;
+      return route.fulfill(
+        json({
+          access_token: "aal2-access-token",
+          refresh_token: "aal2-refresh-token",
+          expires_in: 3600,
+          user: { email: "admin@acme.test" },
+        }),
+      );
+    });
+    // The panel refresh reads the factor list from the provider. That read
+    // settles the gate's state, not the reset, so a slow provider must not
+    // hold the dialog open.
+    await page.route("**/auth/v1/user", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 6000));
+      return route.fulfill(json({ factors: [] }));
+    });
+
+    await page.goto("/admin");
+
+    const dialog = page.getByTestId("mfa-settings");
+    await expect(dialog).toHaveAttribute("data-stage", "enroll");
+    await page.getByTestId("mfa-new-code").fill("123456");
+    await page.getByTestId("mfa-new-submit").click();
+
+    await expect(dialog).toHaveCount(0);
+  });
 });

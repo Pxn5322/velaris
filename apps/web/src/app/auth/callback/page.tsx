@@ -16,11 +16,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, ShieldAlert } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
-import {
-  fetchSessionProfile,
-  hasWorkspaceAccess,
-  routeForSessionProfile,
-} from "@/lib/auth/uiRole";
+import { fetchSessionProfile, workspaceRouteFor } from "@/lib/auth/uiRole";
 import {
   getSession,
   storeSession,
@@ -125,14 +121,13 @@ export default function AuthCallbackPage() {
       return;
     }
     const profile = await fetchSessionProfile();
-    // A required password reset hides the role, but the account is real:
-    // enter the workspace, where PasswordResetGate asks for a new password.
-    if (!hasWorkspaceAccess(profile)) {
+    const target = workspaceRouteFor(profile);
+    if (!target) {
       router.push("/");
       return;
     }
     applySessionProfile(profile);
-    router.push(routeForSessionProfile(profile));
+    router.push(target);
   };
 
   return (
