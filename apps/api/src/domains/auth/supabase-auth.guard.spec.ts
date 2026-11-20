@@ -23,6 +23,7 @@ function contextWith(header: string | undefined) {
   const request: {
     headers: Record<string, string | undefined>;
     user?: unknown;
+    mfaResetRequired?: boolean;
   } = {
     headers: header === undefined ? {} : { authorization: header },
   };
@@ -230,10 +231,39 @@ describe('SupabaseAuthGuard', () => {
     it('keeps the session and sign-out routes reachable while flagged', async () => {
       resetAccount();
       reflector.getAllAndOverride.mockReturnValue(true);
-      const { context } = contextWith('Bearer verified-token');
+      admin.listMfaFactors.mockResolvedValue([
+        { id: 'factor-old', verified: false },
+      ]);
+      const { context, request } = contextWith('Bearer verified-token');
 
       await expect(guard.canActivate(context)).resolves.toBe(true);
-      expect(admin.listMfaFactors).not.toHaveBeenCalled();
+      expect(admin.listMfaFactors).toHaveBeenCalledWith('sub-123');
+      expect(accounts.clearFactorReset).not.toHaveBeenCalled();
+      expect(request.mfaResetRequired).toBe(true);
+    });
+
+    it('reports the cleared flag on the session read after the new factor', async () => {
+      resetAccount();
+      reflector.getAllAndOverride.mockReturnValue(true);
+      admin.listMfaFactors.mockResolvedValue([
+        { id: 'factor-new', verified: true },
+      ]);
+      const { context, request } = contextWith('Bearer verified-token');
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(accounts.clearFactorReset).toHaveBeenCalledWith('user-1');
+      expect(request.mfaResetRequired).toBe(false);
+    });
+
+    it('keeps the session read and the flag when the provider is down', async () => {
+      resetAccount();
+      reflector.getAllAndOverride.mockReturnValue(true);
+      admin.listMfaFactors.mockRejectedValue(new Error('provider down'));
+      const { context, request } = contextWith('Bearer verified-token');
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(accounts.clearFactorReset).not.toHaveBeenCalled();
+      expect(request.mfaResetRequired).toBe(true);
     });
 
     it('ignores the flag when the account has no factor reset', async () => {

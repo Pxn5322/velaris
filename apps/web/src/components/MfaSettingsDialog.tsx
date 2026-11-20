@@ -7,6 +7,9 @@
  * factor. Supabase requires an AAL2 session before it enrolls another factor,
  * so an existing factor is verified first. The new factor is removed when the
  * user closes the dialog before verification.
+ *
+ * Mandatory mode serves a reset account (T6.09): no factor exists, so the
+ * dialog enrolls one at once, cannot be dismissed, and offers sign-out.
  */
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
@@ -30,6 +33,10 @@ import {
 
 interface MfaSettingsDialogProps {
   onClose: () => void;
+  /** A privileged reset removed every factor; enrollment is required. */
+  mandatory?: boolean;
+  /** Runs after the new factor is verified so the caller can read state again. */
+  onVerified?: () => void | Promise<void>;
 }
 
 type Stage = "loading" | "list" | "verify" | "enroll";
@@ -53,7 +60,11 @@ function ErrorNotice({ message }: { message: string }) {
   );
 }
 
-export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
+export function MfaSettingsDialog({
+  onClose,
+  mandatory = false,
+  onVerified,
+}: MfaSettingsDialogProps) {
   const [stage, setStage] = useState<Stage>("loading");
   const [factors, setFactors] = useState<TotpFactor[]>([]);
   const [factorId, setFactorId] = useState<string | null>(null);
@@ -71,6 +82,24 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
 
   useEffect(() => {
     let active = true;
+    if (mandatory) {
+      // A reset account has no factor to verify first, so enroll at once.
+      enrollTotp("VELARIS")
+        .then((created) => {
+          if (!active) return;
+          setEnrollment(created);
+          setFactorId(created.factorId);
+          setStage("enroll");
+        })
+        .catch((caught) => {
+          if (!active) return;
+          setError(describe(caught));
+          setStage("list");
+        });
+      return () => {
+        active = false;
+      };
+    }
     listTotpFactors()
       .then((list) => {
         if (!active) return;
@@ -85,24 +114,25 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [mandatory]);
 
   const close = useCallback(() => {
-    if (enrollment) {
+    // A mandatory enrollment belongs to the reset account; sign-out keeps it.
+    if (enrollment && !mandatory) {
       void removeTotpFactor(enrollment.factorId);
     }
     onClose();
-  }, [enrollment, onClose]);
+  }, [enrollment, mandatory, onClose]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) {
+      if (event.key === "Escape" && !busy && !mandatory) {
         close();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [busy, close]);
+  }, [busy, close, mandatory]);
 
   const createEnrollment = async (name: string): Promise<void> => {
     const created = await enrollTotp(name);
@@ -155,6 +185,15 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
       await verifyTotp(enrolledId, code.trim());
       setEnrollment(null);
       setCode("");
+      if (mandatory) {
+        // Read the factors first, so a session read that does not clear the
+        // flag leaves a usable panel instead of an empty dialog.
+        setNotice("Authenticator verified.");
+        setStage("list");
+        await loadFactors().catch(() => undefined);
+        await onVerified?.();
+        return;
+      }
       await loadFactors();
       setNotice("Backup authenticator added.");
     });
@@ -193,7 +232,8 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !busy) close();
+        if (event.target === event.currentTarget && !busy && !mandatory)
+          close();
       }}
     >
       <div
@@ -202,18 +242,21 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
         aria-labelledby="mfa-settings-title"
         data-testid="mfa-settings"
         data-stage={stage}
+        data-required={mandatory ? "true" : undefined}
         className="glass-panel relative w-full max-w-md space-y-5 rounded-3xl border border-[var(--card-border)] p-6 shadow-2xl"
       >
-        <button
-          type="button"
-          onClick={close}
-          disabled={busy}
-          aria-label="Close authenticator settings"
-          data-testid="mfa-settings-close"
-          className="absolute right-4 top-4 text-muted-custom hover:text-heading disabled:opacity-60"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        {!mandatory && (
+          <button
+            type="button"
+            onClick={close}
+            disabled={busy}
+            aria-label="Close authenticator settings"
+            data-testid="mfa-settings-close"
+            className="absolute right-4 top-4 text-muted-custom hover:text-heading disabled:opacity-60"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
 
         <div className="flex items-start gap-3 pr-8">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-500/40 bg-cyan-500/10">
@@ -224,10 +267,14 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
               id="mfa-settings-title"
               className="font-display text-xl font-bold text-heading"
             >
-              Authenticator settings
+              {mandatory
+                ? "Set up your authenticator"
+                : "Authenticator settings"}
             </h2>
             <p className="text-xs text-muted-custom">
-              Add a backup authenticator so a lost device does not lock you out.
+              {mandatory
+                ? "A privileged reset removed your authenticator. Set up a new one to continue."
+                : "Add a backup authenticator so a lost device does not lock you out."}
             </p>
           </div>
         </div>
@@ -246,8 +293,9 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
           <div className="space-y-4 font-mono text-xs">
             {factors.length === 0 ? (
               <p className="rounded-xl border border-[var(--card-border)] bg-[var(--pill-bg)] p-3 text-muted-custom">
-                No authenticator is enrolled. Set up one before you add a
-                backup.
+                {mandatory
+                  ? "No authenticator is enrolled. Set one up to continue."
+                  : "No authenticator is enrolled. Set up one before you add a backup."}
               </p>
             ) : (
               <ul className="space-y-2">
@@ -270,13 +318,13 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
               </ul>
             )}
 
-            {factors.length === 1 && (
+            {!mandatory && factors.length === 1 && (
               <p className="text-[11px] text-muted-custom">
                 Verify the current authenticator before you add a backup.
               </p>
             )}
 
-            {factors.length > 1 && (
+            {!mandatory && factors.length > 1 && (
               <p
                 className="inline-flex items-center gap-1 text-[11px] text-emerald-300"
                 data-testid="mfa-backup-ready"
@@ -315,7 +363,7 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
                   Set up authenticator
                 </button>
               )}
-              {factors.length === 1 && (
+              {!mandatory && factors.length === 1 && (
                 <button
                   type="button"
                   onClick={startBackup}
@@ -332,7 +380,7 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
                 onClick={close}
                 className="rounded-xl glass-panel px-4 py-2 font-bold text-muted-custom hover:text-heading"
               >
-                Close
+                {mandatory ? "Sign out" : "Close"}
               </button>
             </div>
           </div>
@@ -391,11 +439,14 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
             <div className="space-y-3 rounded-xl border border-[var(--card-border)] bg-[var(--pill-bg)] p-3">
               <p className="flex items-center gap-2 font-bold text-heading">
                 <Smartphone className="h-4 w-4 text-cyan-300" />
-                Set up the backup authenticator
+                {mandatory
+                  ? "Set up the new authenticator"
+                  : "Set up the backup authenticator"}
               </p>
               <p className="text-[11px] text-muted-custom">
-                Scan the code or enter the secret in the backup device, then
-                enter the six-digit code below.
+                {mandatory
+                  ? "Scan the code or enter the secret in the authenticator app, then enter the six-digit code below."
+                  : "Scan the code or enter the secret in the backup device, then enter the six-digit code below."}
               </p>
               {qrImage && (
                 // The data URL comes from the identity provider.
@@ -428,9 +479,10 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
                 type="button"
                 onClick={close}
                 disabled={busy}
+                data-testid="mfa-enroll-cancel"
                 className="rounded-xl glass-panel px-4 py-2 font-bold text-muted-custom hover:text-heading disabled:opacity-60"
               >
-                Cancel setup
+                {mandatory ? "Sign out" : "Cancel setup"}
               </button>
               <button
                 type="submit"
@@ -439,7 +491,11 @@ export function MfaSettingsDialog({ onClose }: MfaSettingsDialogProps) {
                 className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-purple to-brand-cyan px-4 py-2 font-bold text-white disabled:opacity-60"
               >
                 {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                {busy ? "Verifying…" : "Verify backup"}
+                {busy
+                  ? "Verifying…"
+                  : mandatory
+                    ? "Verify authenticator"
+                    : "Verify backup"}
               </button>
             </div>
           </form>

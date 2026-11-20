@@ -11,7 +11,8 @@
  * state to refuse a flagged account outside its reset routes and to refuse a
  * token issued before a password change or global session revocation. T6.09
  * uses `mfaResetRequired` to refuse normal routes after a privileged factor
- * reset until the account verifies a new factor (AC-F02-4).
+ * reset until the account verifies a new factor (AC-F02-4). The exempt session
+ * read clears the flag too, so the client learns that the reset ended.
  *
  * The account lookup is mandatory. A verified provider identity with no
  * application user row is refused instead of being treated as an account with
@@ -109,15 +110,19 @@ export class SupabaseAuthGuard implements CanActivate {
         message: 'The account must change its password before normal use',
       });
     }
-    if (
-      account.mfaResetRequired &&
-      !this.allowsMfaResetRequired(context) &&
-      !(await this.enrollsNewFactor(identity, account))
-    ) {
-      throw new ForbiddenException({
-        code: 'MFA_RESET_REQUIRED',
-        message: 'The account must verify a new MFA factor before normal use',
-      });
+    let mfaResetRequired = account.mfaResetRequired;
+    if (mfaResetRequired) {
+      // Read the provider on every flagged request, including the exempt
+      // session read. A verified factor ends the reset, so the client sees the
+      // cleared flag as soon as it verifies the new factor (T6.09, AC-F02-4).
+      const cleared = await this.enrollsNewFactor(identity, account);
+      if (!cleared && !this.allowsMfaResetRequired(context)) {
+        throw new ForbiddenException({
+          code: 'MFA_RESET_REQUIRED',
+          message: 'The account must verify a new MFA factor before normal use',
+        });
+      }
+      mfaResetRequired = !cleared;
     }
 
     request.user = identity;
@@ -125,7 +130,7 @@ export class SupabaseAuthGuard implements CanActivate {
     request.authAssurance = assurance;
     request.account = account;
     request.passwordResetRequired = account.passwordResetRequired;
-    request.mfaResetRequired = account.mfaResetRequired;
+    request.mfaResetRequired = mfaResetRequired;
     return true;
   }
 

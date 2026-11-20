@@ -27,6 +27,11 @@ export interface SessionIdentity {
 export interface SessionProfile {
   role: UserRole | null;
   identity: SessionIdentity | null;
+  /**
+   * True when a privileged reset removed every MFA factor. The API refuses
+   * normal routes until a new factor is verified (T6.09, AC-F02-4).
+   */
+  mfaResetRequired: boolean;
 }
 
 /** Human label for the navigation identity block. */
@@ -111,35 +116,46 @@ export function routeForRole(role: UserRole): string {
 }
 
 /**
- * Reads the server-resolved role for the current session. Returns null
- * when signed out, when the API is unreachable, or when the session has
- * no mapped UI role (deny by default).
+ * Reads the session profile and throws on a refusal or an outage. A caller
+ * that must not mistake a failed read for a cleared state uses this, because
+ * `fetchSessionProfile` answers an empty profile for both.
+ */
+export async function readSessionProfile(): Promise<SessionProfile> {
+  const session = await apiFetch<{
+    role: string | null;
+    identity?: {
+      email?: string;
+      displayName?: string;
+      avatarUrl?: string | null;
+    };
+    tenantContext?: { displayName?: string } | null;
+    mfaResetRequired?: boolean;
+  }>("/auth/session");
+  const email = session.identity?.email ?? null;
+  return {
+    role: mapUiRole(session.role),
+    mfaResetRequired: session.mfaResetRequired === true,
+    identity: {
+      displayName:
+        session.identity?.displayName ??
+        session.tenantContext?.displayName ??
+        email,
+      email,
+      avatarUrl: session.identity?.avatarUrl ?? null,
+    },
+  };
+}
+
+/**
+ * Reads the session profile for the current session. Returns an empty profile
+ * when signed out, when the API is unreachable, or when the session has no
+ * mapped UI role (deny by default).
  */
 export async function fetchSessionProfile(): Promise<SessionProfile> {
   try {
-    const session = await apiFetch<{
-      role: string | null;
-      identity?: {
-        email?: string;
-        displayName?: string;
-        avatarUrl?: string | null;
-      };
-      tenantContext?: { displayName?: string } | null;
-    }>("/auth/session");
-    const email = session.identity?.email ?? null;
-    return {
-      role: mapUiRole(session.role),
-      identity: {
-        displayName:
-          session.identity?.displayName ??
-          session.tenantContext?.displayName ??
-          email,
-        email,
-        avatarUrl: session.identity?.avatarUrl ?? null,
-      },
-    };
+    return await readSessionProfile();
   } catch {
-    return { role: null, identity: null };
+    return { role: null, identity: null, mfaResetRequired: false };
   }
 }
 
