@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Camera, Pencil } from "lucide-react";
+import { Camera, KeyRound, Pencil } from "lucide-react";
 
-export type ProfileSection = "photo" | "name";
+export type ProfileSection = "photo" | "name" | "mfa";
 
 interface AccountMenuProps {
   open: boolean;
@@ -14,8 +14,8 @@ interface AccountMenuProps {
 
 /**
  * Account actions opened by clicking the identity block. The menu keeps the
- * header free of extra icon buttons and offers only the two editable profile
- * fields. Sign out stays a separate control in the drawer.
+ * header free of extra icon buttons and offers the editable profile fields
+ * and authenticator settings. Sign out stays a separate control in the drawer.
  */
 export function AccountMenu({
   open,
@@ -78,6 +78,16 @@ export function AccountMenu({
       >
         <Pencil className="h-3.5 w-3.5 text-cyan-300" />
         Edit name
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        data-testid={`account-menu-mfa-${variant}`}
+        className={itemClass}
+        onClick={() => onSelect("mfa")}
+      >
+        <KeyRound className="h-3.5 w-3.5 text-cyan-300" />
+        Authenticators
       </button>
     </div>
   );

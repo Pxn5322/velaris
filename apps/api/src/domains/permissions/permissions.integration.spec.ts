@@ -26,6 +26,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { AUTH_ACCOUNT_TEST_PROVIDER } from '../../../test/auth-account.stub.js';
 import type { Request } from 'express';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
@@ -164,6 +165,8 @@ describe('RBAC checks (integration)', () => {
       providers: [
         AuthorizationService,
         SupabaseAuthGuard,
+
+        AUTH_ACCOUNT_TEST_PROVIDER,
         SupabaseTokenVerifier,
         PermissionsGuard,
         {

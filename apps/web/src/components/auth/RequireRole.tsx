@@ -20,20 +20,23 @@ export function RequireRole({
   roles: readonly UserRole[];
   children: ReactNode;
 }) {
-  const { role, roleLoading } = useRole();
+  const { role, roleLoading, passwordResetRequired } = useRole();
   const router = useRouter();
   const allowed = role !== null && roles.includes(role);
+  // A required password reset hides the role, so the reset gate must render
+  // instead of this guard redirecting the caller to sign-in.
+  const gated = allowed || passwordResetRequired;
 
   useEffect(() => {
     if (!getSession()) {
       router.replace("/?signin=1");
       return;
     }
-    if (roleLoading || allowed) return;
+    if (roleLoading || gated) return;
     router.replace("/?signin=1");
-  }, [allowed, roleLoading, router]);
+  }, [gated, roleLoading, router]);
 
-  if (roleLoading || !allowed) {
+  if (roleLoading || !gated) {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
         <p role="status" className="text-xs font-mono text-muted-custom">

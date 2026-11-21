@@ -52,7 +52,7 @@ export function configureApp(app: INestApplication): void {
   app.enableCors({
     origin: origins,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-step-up-token'],
     maxAge: 600,
   });
 }

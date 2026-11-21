@@ -5,9 +5,9 @@ import { test, expect } from "@playwright/test";
  * Profile editing from the identity menu.
  *
  * The API is intercepted, so the journey checks the browser contract:
- * clicking the identity opens a two-item menu, the name dialog sends only
- * displayName, and the photo dialog uploads a local image as a bounded data
- * URL instead of asking for a remote URL.
+ * clicking the identity opens the account menu, the name dialog sends only
+ * displayName, the photo dialog uploads a local image as a bounded data URL,
+ * and the authenticator dialog adds one backup TOTP factor after AAL2.
  */
 
 const SESSION_KEY = "velaris.auth.session.v1";
@@ -84,6 +84,117 @@ async function routeProfile(page, bodies) {
 }
 
 test.describe("profile settings", () => {
+  test("enrolls a backup authenticator after verifying the primary", async ({
+    page,
+  }) => {
+    const enrollments = [];
+    let factors = [
+      {
+        id: "factor-1",
+        friendly_name: "VELARIS",
+        factor_type: "totp",
+        status: "verified",
+      },
+    ];
+
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/auth/v1/user", (route) =>
+      route.fulfill(json({ factors })),
+    );
+    await page.route("**/auth/v1/factors", (route) => {
+      const body = route.request().postDataJSON();
+      enrollments.push(body);
+      return route.fulfill(
+        json({
+          id: "factor-2",
+          totp: {
+            qr_code: "data:image/svg+xml;base64,PHN2Zy8+",
+            secret: "BACKUPSECRET",
+            uri: "otpauth://totp/VELARIS",
+          },
+        }),
+      );
+    });
+    await page.route("**/auth/v1/factors/factor-1/challenge", (route) =>
+      route.fulfill(json({ id: "challenge-1" })),
+    );
+    await page.route("**/auth/v1/factors/factor-1/verify", (route) =>
+      route.fulfill(
+        json({
+          access_token: "aal2-access-token",
+          refresh_token: "aal2-refresh-token",
+          expires_in: 3600,
+          user: { email: "admin@acme.test" },
+        }),
+      ),
+    );
+    await page.route("**/auth/v1/factors/factor-2/challenge", (route) =>
+      route.fulfill(json({ id: "challenge-2" })),
+    );
+    await page.route("**/auth/v1/factors/factor-2/verify", (route) => {
+      factors = [
+        ...factors,
+        {
+          id: "factor-2",
+          friendly_name: "VELARIS backup",
+          factor_type: "totp",
+          status: "verified",
+        },
+      ];
+      return route.fulfill(
+        json({
+          access_token: "aal2-access-token-2",
+          refresh_token: "aal2-refresh-token-2",
+          expires_in: 3600,
+          user: { email: "admin@acme.test" },
+        }),
+      );
+    });
+
+    await openAccountMenu(page);
+    await page.getByTestId("account-menu-mfa-desktop").click();
+    await expect(page.getByTestId("mfa-settings")).toHaveAttribute(
+      "data-stage",
+      "list",
+    );
+    await expect(page.getByTestId("mfa-factor")).toHaveCount(1);
+    await expect(page.getByTestId("mfa-factor")).toContainText(
+      "Primary authenticator",
+    );
+
+    await page.getByTestId("mfa-add-backup").click();
+    await expect(page.getByTestId("mfa-settings")).toHaveAttribute(
+      "data-stage",
+      "verify",
+    );
+    await page.getByTestId("mfa-existing-code").fill("123456");
+    await page.getByTestId("mfa-existing-submit").click();
+
+    await expect(page.getByTestId("mfa-settings")).toHaveAttribute(
+      "data-stage",
+      "enroll",
+    );
+    await expect(page.getByTestId("mfa-enroll-form")).toContainText(
+      "BACKUPSECRET",
+    );
+    await page.getByTestId("mfa-new-code").fill("654321");
+    await page.getByTestId("mfa-new-submit").click();
+
+    await expect(page.getByTestId("mfa-settings-notice")).toContainText(
+      "Backup authenticator added",
+    );
+    await expect(page.getByTestId("mfa-factor")).toHaveCount(2);
+    await expect(page.getByTestId("mfa-factor").nth(1)).toContainText(
+      "Backup authenticator",
+    );
+    expect(enrollments).toEqual([
+      { factor_type: "totp", friendly_name: "VELARIS backup" },
+    ]);
+  });
+
   test("opens the account menu instead of a separate profile button", async ({
     page,
   }) => {

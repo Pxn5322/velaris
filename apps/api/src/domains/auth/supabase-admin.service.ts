@@ -22,6 +22,13 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 
+function providerFailure(code: string): HttpException {
+  return new HttpException(
+    { code, message: 'The identity provider refused the request' },
+    HttpStatus.BAD_GATEWAY,
+  );
+}
+
 export interface CreatedUser {
   id: string;
   email: string;
@@ -186,6 +193,66 @@ export class SupabaseAdminService {
     } catch {
       // Lookup is opportunistic; absence is a normal outcome.
       return null;
+    }
+  }
+
+  /**
+   * List every MFA factor of one account. The recovery reset removes them all
+   * before the target can set a new factor (D-59). A refusal is a provider
+   * fault, never an empty list, so a reset cannot look successful by accident.
+   * `verified` separates a finished enrollment from a factor the user has not
+   * confirmed yet; only a verified factor lifts the post-reset denial.
+   */
+  async listMfaFactors(
+    userId: string,
+  ): Promise<{ id: string; verified: boolean }[]> {
+    this.requireConfigured();
+    const response = await fetch(
+      `${process.env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(userId)}/factors`,
+      {
+        headers: {
+          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+      },
+    );
+    if (!response.ok) {
+      throw providerFailure('PROVIDER_FACTOR_LIST_FAILED');
+    }
+    const body = (await response.json().catch(() => null)) as unknown;
+    if (!Array.isArray(body)) {
+      throw providerFailure('PROVIDER_FACTOR_LIST_FAILED');
+    }
+    return body
+      .filter(
+        (factor): factor is { id: string; status?: unknown } =>
+          typeof (factor as { id?: unknown })?.id === 'string',
+      )
+      .map((factor) => ({
+        id: factor.id,
+        verified: factor.status === 'verified',
+      }));
+  }
+
+  /**
+   * Remove one MFA factor. A verified factor also revokes the user's provider
+   * sessions (GoTrue behaviour), which the reset relies on. A missing factor is
+   * already gone, so 404 counts as success.
+   */
+  async deleteMfaFactor(userId: string, factorId: string): Promise<void> {
+    this.requireConfigured();
+    const response = await fetch(
+      `${process.env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(userId)}/factors/${encodeURIComponent(factorId)}`,
+      {
+        method: 'DELETE',
+        headers: {
+          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+      },
+    );
+    if (!response.ok && response.status !== 404) {
+      throw providerFailure('PROVIDER_FACTOR_DELETE_FAILED');
     }
   }
 

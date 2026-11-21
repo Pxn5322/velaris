@@ -95,6 +95,12 @@ model User {
   displayName     String     @map("display_name")
   /** Small browser-compressed image; empty string records removal. */
   avatarDataUrl   String?    @map("avatar_data_url") @db.Text
+  /** T6.08: normal routes are refused until the password is changed. */
+  passwordResetRequired Boolean @default(false) @map("password_reset_required")
+  /** T6.08: access tokens issued at or before this instant are refused. */
+  tokenInvalidBefore DateTime? @map("token_invalid_before")
+  /** T6.09: normal routes are refused until a new MFA factor is verified. */
+  mfaResetRequired Boolean @default(false) @map("mfa_reset_required")
   status          UserStatus @default(ACTIVE)
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
@@ -197,6 +203,87 @@ model RevokedAccessToken {
   @@index([sessionId])
   @@index([expiresAt])
   @@map("revoked_access_tokens")
+}
+
+/// E-step-up-grant: one short-lived, single-use grant for a sensitive action
+/// (T6.08, D-58; INV-02). The row stores only a SHA-256 digest of the bearer
+/// value. The grant is bound to the identity subject, Supabase session, tenant
+/// and action, and is consumed by the first successful verification.
+model StepUpGrant {
+  id        String    @id @default(uuid()) @db.Uuid
+  subject   String    @db.VarChar(128)
+  sessionId String    @map("session_id") @db.VarChar(64)
+  tenantId  String?   @map("tenant_id") @db.Uuid
+  action    String    @db.VarChar(64)
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([subject, action, expiresAt])
+  @@index([sessionId])
+  @@index([expiresAt])
+  @@map("step_up_grants")
+}
+
+/// E-recovery-approval (T6.09; D-62 contract): one privileged MFA recovery
+/// request and its recorded decisions (D-59 matrix, D-66 policy). The requester
+/// cannot choose the approval count or the approver roles; the policy table
+/// decides both. The target user id and tenant id carry no foreign key, so a
+/// later account or tenant change cannot rewrite the approval history.
+model RecoveryApprovalRequest {
+  id                 String    @id @default(uuid()) @db.Uuid
+  /** Caller-supplied idempotency key for one recovery request. */
+  requestId          String    @map("request_id") @db.Uuid
+  recoveryPath       String    @map("recovery_path") @db.VarChar(48)
+  tenantId           String?   @map("tenant_id") @db.Uuid
+  targetUserId       String    @map("target_user_id") @db.Uuid
+  /** Identity-provider subject of the target; the target can never approve. */
+  targetSubject      String    @map("target_subject") @db.VarChar(128)
+  requestedBy        String    @map("requested_by") @db.VarChar(128)
+  reason             String    @db.VarChar(500)
+  ticketId           String    @map("ticket_id") @db.VarChar(100)
+  custodyRecordId    String?   @map("custody_record_id") @db.VarChar(128)
+  state              String    @db.VarChar(16)
+  requiredApprovals  Int       @map("required_approvals")
+  approvalExpiresAt  DateTime  @map("approval_expires_at")
+  executionId        String?   @map("execution_id") @db.Uuid
+  executionExpiresAt DateTime? @map("execution_expires_at")
+  consumedAt         DateTime? @map("consumed_at")
+  /// The provider reset outcome observed during the execution window.
+  resetOutcome       String?   @map("reset_outcome") @db.VarChar(16)
+  executedBy         String?   @map("executed_by") @db.VarChar(128)
+  completedAt        DateTime? @map("completed_at")
+  stateReason        String?   @map("state_reason") @db.VarChar(32)
+  failureCode        String?   @map("failure_code") @db.VarChar(64)
+  version            Int       @default(0)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  decisions RecoveryApprovalDecision[]
+
+  @@unique([requestedBy, requestId])
+  @@index([state, approvalExpiresAt])
+  @@index([tenantId, state, createdAt(sort: Desc)])
+  @@map("recovery_approval_requests")
+}
+
+/// One immutable decision by one actor. The unique pair stops a second
+/// decision by the same actor under another policy role.
+model RecoveryApprovalDecision {
+  id           String   @id @default(uuid()) @db.Uuid
+  requestId    String   @map("request_id") @db.Uuid
+  actorSubject String   @map("actor_subject") @db.VarChar(128)
+  policyRole   String   @map("policy_role") @db.VarChar(32)
+  decision     String   @db.VarChar(8)
+  reason       String?  @db.VarChar(500)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  request RecoveryApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, actorSubject])
+  @@map("recovery_approval_decisions")
 }
 
 // ---- Phase 2: core support vertical slice (T2.01) ----

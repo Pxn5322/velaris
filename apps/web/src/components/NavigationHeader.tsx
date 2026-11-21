@@ -26,6 +26,7 @@ import {
   roleLabelFor,
   type SessionIdentity,
 } from "@/lib/auth/uiRole";
+import { MfaSettingsDialog } from "@/components/MfaSettingsDialog";
 import { ProfileSettingsDialog } from "@/components/ProfileSettingsDialog";
 import { AccountMenu, type ProfileSection } from "@/components/AccountMenu";
 
@@ -429,12 +430,14 @@ export function NavigationHeader() {
         </div>
       )}
 
-      {profileSection && (
+      {profileSection === "mfa" ? (
+        <MfaSettingsDialog onClose={() => setProfileSection(null)} />
+      ) : profileSection ? (
         <ProfileSettingsDialog
           section={profileSection}
           onClose={() => setProfileSection(null)}
         />
-      )}
+      ) : null}
     </header>
   );
 }

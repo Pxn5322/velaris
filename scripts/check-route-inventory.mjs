@@ -20,10 +20,12 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const CONTROLLERS_ROOT = "apps/api/src";
 const PERMISSION_SOURCE =
   "apps/api/src/domains/permissions/permission.codes.ts";
+const STEP_UP_SOURCE = "apps/api/src/domains/auth/step-up.service.ts";
 
 const HTTP_METHODS = ["Get", "Post", "Put", "Patch", "Delete"];
 
@@ -72,6 +74,66 @@ const AUTHENTICATED_WITHOUT_PERMISSION = [
     reason:
       "Self-service profile edit: the caller writes only its own name and avatar",
   },
+  {
+    controller: "domains/auth/auth-security.controller.ts",
+    handler: "stepUp",
+    reason:
+      "Self-service re-authentication: the caller proves its own password and receives a grant bound to its own session",
+  },
+  {
+    controller: "domains/auth/auth-security.controller.ts",
+    handler: "changePassword",
+    reason:
+      "Self-service password change: the caller changes only its own password and must prove the current one",
+  },
+  {
+    controller: "domains/auth/auth-security.controller.ts",
+    handler: "revokeSessions",
+    reason:
+      "Self-service session revocation: the caller revokes only its own sessions and must present a step-up grant",
+  },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "create",
+    reason:
+      "Privileged recovery approval: the D-62 policy duty check, the aal2 gate and the recovery.request step-up grant are the authorization boundary; the reserved permission seeds are not granted yet (D-65, D-68)",
+  },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "listMine",
+    reason:
+      "Privileged recovery approval: the requester reads only the records it created, so there is no wider resource to scope",
+  },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "get",
+    reason:
+      "Privileged recovery approval: the service allows only the requester, the target or an eligible policy duty to read one record (D-62)",
+  },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "decide",
+    reason:
+      "Privileged recovery approval: the D-62 policy duty, the aal2 gate and the no-self rule are the authorization boundary; the reserved permission seeds are not granted yet (D-65, D-68)",
+  },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "execute",
+    reason:
+      "Privileged recovery approval: the D-62 policy duty, the aal2 gate and the recovery.execute step-up grant are the authorization boundary; the reserved permission seeds are not granted yet (D-65, D-68)",
+  },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "complete",
+    reason:
+      "Privileged recovery approval: only the executor that consumed the approval can report its result (D-62 section 7)",
+  },
+  {
+    controller: "domains/auth/recovery-approval.controller.ts",
+    handler: "cancel",
+    reason:
+      "Privileged recovery approval: only the requester can cancel its own pending or approved request (D-62 section 5)",
+  },
 ];
 
 function listControllerFiles(directory) {
@@ -90,20 +152,100 @@ function listControllerFiles(directory) {
   return found.sort();
 }
 
-function readPermissionCodes() {
-  const source = readFileSync(PERMISSION_SOURCE, "utf8");
-  const codes = new Map();
+function readQuotedConstants(source) {
+  const constants = new Map();
   for (const match of source.matchAll(
     /([A-Z][A-Z0-9_]*):\s*'([a-z][a-z0-9.]*)'/g,
   )) {
-    codes.set(match[1], match[2]);
+    constants.set(match[1], match[2]);
   }
-  return codes;
+  return constants;
+}
+
+function readPermissionCodes() {
+  const source = readFileSync(PERMISSION_SOURCE, "utf8");
+  const block =
+    /export const PERMISSIONS = \{([\s\S]*?)\n\} as const;/.exec(source)?.[1] ?? "";
+  return readQuotedConstants(block);
+}
+
+/** Map each STEP_UP_ACTIONS key to its action code and MFA policy. */
+function readStepUpActions() {
+  const source = readFileSync(STEP_UP_SOURCE, "utf8");
+  const actionsBlock =
+    /export const STEP_UP_ACTIONS = \{([\s\S]*?)\n\};/.exec(source)?.[1] ?? "";
+  const codes = readQuotedConstants(actionsBlock);
+  const policy = /const ACTION_POLICY[\s\S]*?\n};/.exec(source)?.[0] ?? "";
+  const mfa = new Map();
+  for (const match of policy.matchAll(
+    /\[STEP_UP_ACTIONS\.([A-Z0-9_]+)\]:\s*\{\s*mfa:\s*(true|false)/g,
+  )) {
+    mfa.set(match[1], match[2] === "true");
+  }
+  const actions = new Map();
+  for (const [key, code] of codes) {
+    actions.set(key, { code, mfa: mfa.get(key) ?? null });
+  }
+  return actions;
+}
+
+/**
+ * Join a decorator that spans several lines into one entry. This keeps the
+ * line-oriented parser correct after Prettier wraps a long decorator.
+ */
+export function collapseDecorators(source) {
+  const lines = source.split(/\r?\n/);
+  const collapsed = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    let text = line.trim();
+    if (!text.startsWith("@")) {
+      collapsed.push(line);
+      continue;
+    }
+    let depth = bracketDepth(text);
+    while (depth > 0 && index + 1 < lines.length) {
+      index += 1;
+      text += ` ${lines[index].trim()}`;
+      depth = bracketDepth(text);
+    }
+    collapsed.push(text);
+  }
+  return collapsed;
+}
+
+function bracketDepth(text) {
+  let depth = 0;
+  let quote = null;
+  let escaped = false;
+  for (const character of text) {
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === quote) quote = null;
+      continue;
+    }
+    if (character === "'" || character === '"' || character === "`") {
+      quote = character;
+    } else if ("([{".includes(character)) {
+      depth += 1;
+    } else if (")]}".includes(character)) {
+      depth -= 1;
+    }
+  }
+  return depth;
 }
 
 /** Collect decorator lines, then attach them to the following method. */
 function parseController(path) {
-  const lines = readFileSync(path, "utf8").split(/\r?\n/);
+  return parseControllerSource(
+    readFileSync(path, "utf8"),
+    relative(CONTROLLERS_ROOT, path).split(sep).join("/"),
+  );
+}
+
+export function parseControllerSource(source, file) {
+  const lines = collapseDecorators(source);
   let prefix = "";
   let classDecorators = [];
   const routes = [];
@@ -124,10 +266,10 @@ function parseController(path) {
         entry.startsWith("@Controller("),
       );
       prefix = controllerLine
-        ? (controllerLine.match(/@Controller\('([^']*)'\)/)?.[1] ?? "")
+        ? (controllerLine.match(/@Controller\(\s*'([^']*)'/)?.[1] ?? "")
         : "";
-      classDecorators = pending.filter((entry) =>
-        entry.startsWith("@UseGuards("),
+      classDecorators = pending.filter(
+        (entry) => !entry.startsWith("@Controller("),
       );
       insideClass = true;
       pending = [];
@@ -142,14 +284,14 @@ function parseController(path) {
         const verb = HTTP_METHODS.find((method) =>
           httpLine.startsWith(`@${method}(`),
         );
-        const suffix = httpLine.match(/@\w+\('([^']*)'\)/)?.[1] ?? "";
+        const suffix = httpLine.match(/@\w+\(\s*'([^']*)'/)?.[1] ?? "";
         const fullPath =
           ("/" + [prefix, suffix].filter(Boolean).join("/")).replace(
             /\/+$/,
             "",
           ) || "/";
         routes.push({
-          file: relative(CONTROLLERS_ROOT, path).split(sep).join("/"),
+          file,
           handler: methodMatch[1],
           method: verb.toUpperCase(),
           path: fullPath,
@@ -166,120 +308,216 @@ function parseController(path) {
   return routes;
 }
 
-function declaredPermissions(decorators) {
-  const codes = [];
-  for (const entry of decorators) {
-    if (!entry.startsWith("@RequirePermission(")) {
-      continue;
-    }
-    for (const match of entry.matchAll(/PERMISSIONS\.([A-Z0-9_]+)/g)) {
-      codes.push(match[1]);
-    }
+export function declaredPermissions(decorators) {
+  return decorators
+    .filter((entry) => entry.startsWith("@RequirePermission("))
+    .flatMap((entry) =>
+      [...entry.matchAll(/PERMISSIONS\.([A-Z0-9_]+)/g)].map(
+        (match) => match[1],
+      ),
+    );
+}
+
+export function declaredStepUp(decorators) {
+  const entries = decorators.filter((entry) =>
+    entry.startsWith("@RequireStepUp("),
+  );
+  const actions = entries.flatMap((entry) =>
+    [...entry.matchAll(/STEP_UP_ACTIONS\.([A-Z0-9_]+)/g)].map(
+      (match) => match[1],
+    ),
+  );
+  return { actions, malformed: entries.length > 0 && actions.length === 0 };
+}
+
+function hasGuard(decorators, name) {
+  const pattern = new RegExp(`\\b${name}\\b`);
+  return decorators.some(
+    (entry) => entry.startsWith("@UseGuards(") && pattern.test(entry),
+  );
+}
+
+export function isAuthenticated(decorators) {
+  return hasGuard(decorators, "SupabaseAuthGuard");
+}
+
+export function hasStepUpGuard(decorators) {
+  return hasGuard(decorators, "StepUpGuard");
+}
+
+export function assuranceLabel(keys, knownActions) {
+  if (keys.length === 0) return "-";
+  return keys
+    .map((key) => {
+      const action = knownActions.get(key);
+      if (!action) return `unknown:${key}`;
+      if (action.mfa === null) return `no-policy:${action.code}`;
+      return action.mfa
+        ? `mfa+step-up:${action.code}`
+        : `step-up:${action.code}`;
+    })
+    .join(", ");
+}
+
+export function run() {
+  const knownCodes = readPermissionCodes();
+  const knownStepUps = readStepUpActions();
+  if (knownStepUps.size === 0) {
+    process.stderr.write(
+      `No step-up actions parsed from ${STEP_UP_SOURCE}; the parser no longer matches the source\n`,
+    );
+    process.exit(2);
   }
-  return codes;
-}
+  const files = listControllerFiles(CONTROLLERS_ROOT);
+  const routes = files.flatMap(parseController);
 
-function isAuthenticated(decorators) {
-  return decorators.some((entry) => entry.includes("SupabaseAuthGuard"));
-}
+  if (routes.length === 0) {
+    process.stderr.write(
+      `No routes parsed from ${files.length} controller file(s); the parser no longer matches the source\n`,
+    );
+    process.exit(2);
+  }
 
-const knownCodes = readPermissionCodes();
-const files = listControllerFiles(CONTROLLERS_ROOT);
-const routes = files.flatMap(parseController);
+  const findings = [];
+  const rows = [];
 
-if (routes.length === 0) {
-  process.stderr.write(
-    `No routes parsed from ${files.length} controller file(s); the parser no longer matches the source\n`,
-  );
-  process.exit(2);
-}
+  for (const route of routes) {
+    const publicEntry = PUBLIC_ROUTES.find(
+      (entry) =>
+        entry.controller === route.file && entry.handler === route.handler,
+    );
+    const selfOnly = AUTHENTICATED_WITHOUT_PERMISSION.find(
+      (entry) =>
+        entry.controller === route.file && entry.handler === route.handler,
+    );
+    const permissions = declaredPermissions(route.decorators);
+    const authenticated = isAuthenticated(route.decorators);
+    const stepUp = declaredStepUp(route.decorators);
+    const stepUpGuarded = hasStepUpGuard(route.decorators);
+    const assurance = assuranceLabel(stepUp.actions, knownStepUps);
 
-const findings = [];
-const rows = [];
-
-for (const route of routes) {
-  const publicEntry = PUBLIC_ROUTES.find(
-    (entry) =>
-      entry.controller === route.file && entry.handler === route.handler,
-  );
-  const selfOnly = AUTHENTICATED_WITHOUT_PERMISSION.find(
-    (entry) =>
-      entry.controller === route.file && entry.handler === route.handler,
-  );
-  const permissions = declaredPermissions(route.decorators);
-  const authenticated = isAuthenticated(route.decorators);
-
-  for (const code of permissions) {
-    if (!knownCodes.has(code)) {
+    for (const code of permissions) {
+      if (!knownCodes.has(code)) {
+        findings.push(
+          `${route.method} ${route.path} (${route.handler}) declares unknown permission ${code}`,
+        );
+      }
+    }
+    for (const key of stepUp.actions) {
+      const action = knownStepUps.get(key);
+      if (!action) {
+        findings.push(
+          `${route.method} ${route.path} (${route.handler}) declares unknown step-up action ${key}`,
+        );
+      } else if (action.mfa === null) {
+        findings.push(
+          `${route.method} ${route.path} (${route.handler}) step-up action ${action.code} has no MFA policy`,
+        );
+      }
+    }
+    if (stepUp.malformed) {
       findings.push(
-        `${route.method} ${route.path} (${route.handler}) declares unknown permission ${code}`,
+        `${route.method} ${route.path} (${route.handler}) declares a step-up action that is not a STEP_UP_ACTIONS constant`,
       );
     }
-  }
+    if (stepUp.actions.length > 0 && !stepUpGuarded) {
+      findings.push(
+        `${route.method} ${route.path} (${route.handler}) declares step-up but has no StepUpGuard`,
+      );
+    }
+    if (stepUpGuarded && stepUp.actions.length === 0) {
+      findings.push(
+        `${route.method} ${route.path} (${route.handler}) has StepUpGuard but declares no step-up action`,
+      );
+    }
+    if (stepUp.actions.length > 0 && !authenticated) {
+      findings.push(
+        `${route.method} ${route.path} (${route.handler}) declares step-up without SupabaseAuthGuard`,
+      );
+    }
 
-  if (publicEntry) {
-    rows.push({
-      ...route,
-      auth: "public",
-      permissions: permissions.join(", ") || "-",
-      note: publicEntry.reason,
-    });
-    continue;
-  }
-
-  if (!authenticated) {
-    findings.push(
-      `${route.method} ${route.path} (${route.handler}) has no authentication guard and is not on the public list`,
-    );
-  }
-  if (permissions.length === 0) {
-    if (selfOnly) {
+    if (publicEntry) {
       rows.push({
         ...route,
-        auth: "bearer",
-        permissions: "-",
-        note: selfOnly.reason,
+        auth: "public",
+        permissions: permissions.join(", ") || "-",
+        assurance,
+        note: publicEntry.reason,
       });
       continue;
     }
-    findings.push(
-      `${route.method} ${route.path} (${route.handler}) declares no permission code`,
+
+    if (!authenticated) {
+      findings.push(
+        `${route.method} ${route.path} (${route.handler}) has no authentication guard and is not on the public list`,
+      );
+    }
+    if (permissions.length === 0) {
+      if (selfOnly) {
+        rows.push({
+          ...route,
+          auth: "bearer",
+          permissions: "-",
+          assurance,
+          note: selfOnly.reason,
+        });
+        continue;
+      }
+      findings.push(
+        `${route.method} ${route.path} (${route.handler}) declares no permission code`,
+      );
+    }
+    rows.push({
+      ...route,
+      auth: authenticated ? "bearer" : "none",
+      permissions: permissions.join(", ") || "-",
+      assurance,
+      note: authenticated ? "" : "missing auth guard",
+    });
+  }
+
+  process.stdout.write(
+    `Route inventory: ${routes.length} route(s) in ${files.length} controller file(s)\n\n`,
+  );
+  process.stdout.write(
+    "| Method | Path | Handler | Auth | Permissions | Assurance |\n",
+  );
+  process.stdout.write("| --- | --- | --- | --- | --- | --- |\n");
+  for (const row of rows) {
+    process.stdout.write(
+      `| ${row.method} | ${row.path} | ${row.handler} | ${row.auth} | ${row.permissions} | ${row.assurance} |\n`,
     );
   }
-  rows.push({
-    ...route,
-    auth: authenticated ? "bearer" : "none",
-    permissions: permissions.join(", ") || "-",
-    note: authenticated ? "" : "missing auth guard",
-  });
-}
 
-process.stdout.write(
-  `Route inventory: ${routes.length} route(s) in ${files.length} controller file(s)\n\n`,
-);
-process.stdout.write("| Method | Path | Handler | Auth | Permissions |\n");
-process.stdout.write("| --- | --- | --- | --- | --- |\n");
-for (const row of rows) {
+  const declared = rows.filter((row) => row.permissions !== "-").length;
+  const publicCount = rows.filter((row) => row.auth === "public").length;
+  const stepUpCount = rows.filter((row) => row.assurance !== "-").length;
+  const mfaCount = rows.filter((row) =>
+    row.assurance.includes("mfa+step-up:"),
+  ).length;
   process.stdout.write(
-    `| ${row.method} | ${row.path} | ${row.handler} | ${row.auth} | ${row.permissions} |\n`,
+    `\n${rows.length - publicCount} protected route(s), ${publicCount} documented public route(s); ` +
+      `${declared} route(s) declare at least one permission code; ` +
+      `${stepUpCount} route(s) declare step-up protection (${mfaCount} require MFA)\n`,
+  );
+
+  if (findings.length > 0) {
+    process.stdout.write("\nFindings:\n");
+    for (const finding of findings) {
+      process.stdout.write(`- ${finding}\n`);
+    }
+    process.exit(1);
+  }
+
+  process.stdout.write(
+    "\nEvery route is authenticated and permission-scoped, or on the documented public list. " +
+      "Every step-up declaration has a StepUpGuard and a known MFA policy.\n",
   );
 }
 
-const declared = rows.filter((row) => row.permissions !== "-").length;
-const publicCount = rows.filter((row) => row.auth === "public").length;
-process.stdout.write(
-  `\n${rows.length - publicCount} protected route(s), ${publicCount} documented public route(s); ` +
-    `${declared} route(s) declare at least one permission code\n`,
-);
-
-if (findings.length > 0) {
-  process.stdout.write("\nFindings:\n");
-  for (const finding of findings) {
-    process.stdout.write(`- ${finding}\n`);
-  }
-  process.exit(1);
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  run();
 }
-
-process.stdout.write(
-  "\nEvery route is authenticated and permission-scoped, or on the documented public list.\n",
-);

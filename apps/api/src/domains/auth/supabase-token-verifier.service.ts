@@ -24,7 +24,11 @@
  */
 
 import { createHash } from 'node:crypto';
-import { ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { AuthenticatedIdentity } from './auth.interface.js';
 
 const REQUEST_TIMEOUT_MS = 5_000;
@@ -95,18 +99,112 @@ export class SupabaseTokenVerifier {
   }
 
   /**
+   * Check a password against Supabase Auth without keeping the session it
+   * creates. A refused credential is false; a transport fault stays 503.
+   */
+  async verifyPassword(email: string, password: string): Promise<boolean> {
+    const configuration = this.configuration();
+    let response: Response;
+    try {
+      response = await fetch(
+        `${configuration.baseUrl}/auth/v1/token?grant_type=password`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: configuration.apiKey,
+          },
+          body: JSON.stringify({ email, password }),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        },
+      );
+    } catch {
+      throw new ServiceUnavailableException('Supabase Auth is unreachable');
+    }
+    if (response.ok) {
+      // A password grant creates a session. The API already has the caller's
+      // session, so discard this extra one instead of leaving an untracked
+      // refresh token behind. Cleanup is best effort; the returned tokens are
+      // never stored or logged.
+      const issued = (await response.json().catch(() => ({}))) as {
+        access_token?: unknown;
+      };
+      if (typeof issued.access_token === 'string') {
+        await this.discardProviderSession(issued.access_token);
+      }
+      return true;
+    }
+    if ([400, 401, 403, 422].includes(response.status)) {
+      return false;
+    }
+    throw new ServiceUnavailableException(
+      'Supabase Auth could not verify the current password',
+    );
+  }
+
+  /**
+   * Set a new password with the caller's own access token. GoTrue checks the
+   * current password when the project enables that setting; the API already
+   * verified the same value before this call.
+   */
+  async changePassword(
+    token: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const configuration = this.configuration();
+    let response: Response;
+    try {
+      response = await fetch(`${configuration.baseUrl}/auth/v1/user`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: configuration.apiKey,
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          password: newPassword,
+          current_password: currentPassword,
+        }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      throw new ServiceUnavailableException('Supabase Auth is unreachable');
+    }
+    if (!response.ok) {
+      if (response.status === 400 || response.status === 422) {
+        throw new BadRequestException({
+          code: 'PASSWORD_CHANGE_REJECTED',
+          message: 'The identity provider rejected the new password',
+        });
+      }
+      if (response.status === 401 || response.status === 403) {
+        throw new UnauthorizedException();
+      }
+      throw new ServiceUnavailableException(
+        'Supabase Auth refused the password change',
+      );
+    }
+    this.forget(token);
+  }
+
+  /**
    * Revoke the Supabase session behind this access token. GoTrue removes the
    * session and its refresh token; the API guard separately records the token
    * so the access JWT is refused before its own expiry. A 401/403 means the
-   * session is already gone, which is the desired end state.
+   * session is already gone, which is the desired end state. The scope is
+   * local for one session or global for every session of the account.
    */
-  async revokeProviderSession(token: string): Promise<void> {
+  async revokeProviderSession(
+    token: string,
+    scope: 'local' | 'global' | 'others' = 'local',
+  ): Promise<void> {
     const configuration = this.configuration();
     this.forget(token);
     let response: Response;
     try {
       response = await fetch(
-        `${configuration.baseUrl}/auth/v1/logout?scope=local`,
+        `${configuration.baseUrl}/auth/v1/logout?scope=${scope}`,
         {
           method: 'POST',
           headers: {
@@ -126,6 +224,24 @@ export class SupabaseTokenVerifier {
 
   private forget(token: string): void {
     this.cache.delete(this.cacheKey(token));
+  }
+
+  /** Best-effort removal of the session created by a password check. */
+  private async discardProviderSession(token: string): Promise<void> {
+    const configuration = this.configuration();
+    try {
+      await fetch(`${configuration.baseUrl}/auth/v1/logout?scope=local`, {
+        method: 'POST',
+        headers: {
+          apikey: configuration.apiKey,
+          Authorization: `Bearer ${token}`,
+        },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      // The password check already succeeded. A failed cleanup must not turn
+      // a valid current password into an outage answer.
+    }
   }
 
   private configuration(): SupabaseConfiguration {

@@ -37,6 +37,20 @@ export const PERMISSIONS = {
   /** Decide a consequential AI tool approval (T4.04, F-10; D-20). */
   AI_TOOL_APPROVE: 'ai.tool.approve',
   AUDIT_READ: 'audit.read',
+  /**
+   * Export a signed audit artifact (D-60). Separate from `audit.read`, so a
+   * reader does not gain bulk export.
+   */
+  AUDIT_EXPORT: 'audit.export',
+  /**
+   * Request or execute an approved MFA reset for another account (D-59). The
+   * recovery matrix still limits the target and the approvers.
+   */
+  USER_MFA_RESET: 'user.mfa.reset',
+  /** Run access-review campaigns and apply their decisions (D-62). */
+  ACCESS_REVIEW_MANAGE: 'access.review.manage',
+  /** Approve another principal's high-risk role change (D-62). */
+  ROLE_CHANGE_APPROVE: 'role.change.approve',
   ANALYTICS_READ: 'analytics.read',
   /** Register webhook endpoints for the own tenant (T5.05, D-30). */
   INTEGRATION_MANAGE: 'integration.manage',

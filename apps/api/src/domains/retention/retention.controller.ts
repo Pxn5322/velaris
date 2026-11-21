@@ -26,6 +26,9 @@ import { PermissionsGuard } from '../../common/security/permissions.guard.js';
 import { RequirePermission } from '../../common/security/require-permission.decorator.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.interface.js';
+import { RequireStepUp } from '../auth/require-step-up.decorator.js';
+import { StepUpGuard } from '../auth/step-up.guard.js';
+import { STEP_UP_ACTIONS } from '../auth/step-up.service.js';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { PERMISSIONS } from '../permissions/permission.codes.js';
 import { TenantsService } from '../tenants/tenants.service.js';
@@ -69,6 +72,8 @@ export class RetentionController {
   /** Store one window and record who changed it (AC-F14-2, AC-F14-3). */
   @Put()
   @RequirePermission(PERMISSIONS.RETENTION_MANAGE)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.RETENTION_CHANGE)
   async update(
     @Req() request: AuthedRequest,
     @Body() body: UpdateRetentionPolicyBody,

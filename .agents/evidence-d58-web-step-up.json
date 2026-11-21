@@ -1,0 +1,101 @@
+{
+  "generatedAt": "2026-11-17T10:52:22.971Z",
+  "apiOrigin": "http://localhost:3000",
+  "webOrigin": "http://localhost:3001",
+  "supabaseHost": "lygekvhwmhbonsdeiaot.supabase.co",
+  "syntheticEmail": "smokecheck-mfa-web-mwkkpc8r-959d2a@velaris.test",
+  "roleCode": "R-web-mfa-mwkkpc8r-959d2a",
+  "network": [
+    {
+      "method": "GET",
+      "path": "/auth/session",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "GET",
+      "path": "/auth/session",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "GET",
+      "path": "/auth/session",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "GET",
+      "path": "/auth/session",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "GET",
+      "path": "/tenants/1d87e537-2d94-47d5-9dc1-f4223e28057a/roles",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/tenants/1d87e537-2d94-47d5-9dc1-f4223e28057a/roles",
+      "status": 403,
+      "code": "MFA_REQUIRED"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/step-up",
+      "status": 403,
+      "code": "MFA_REQUIRED"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/step-up",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/tenants/1d87e537-2d94-47d5-9dc1-f4223e28057a/roles",
+      "status": 201,
+      "code": "R-web-mfa-mwkkpc8r-959d2a"
+    }
+  ],
+  "signupStatus": 201,
+  "tenantId": "1d87e537-2d94-47d5-9dc1-f4223e28057a",
+  "passwordGrantStatus": 200,
+  "deniedRoleWrite": {
+    "method": "POST",
+    "path": "/tenants/1d87e537-2d94-47d5-9dc1-f4223e28057a/roles",
+    "status": 403,
+    "code": "MFA_REQUIRED"
+  },
+  "dialogOpened": true,
+  "enrollmentFormShown": true,
+  "grantedRoleWrite": {
+    "method": "POST",
+    "path": "/tenants/1d87e537-2d94-47d5-9dc1-f4223e28057a/roles",
+    "status": 201,
+    "code": "R-web-mfa-mwkkpc8r-959d2a"
+  },
+  "notice": "Web MFA mwkkpc8r-959d2a was created.",
+  "roleCardVisible": true,
+  "aal": "aal2",
+  "sessionIdPresent": true,
+  "stepUpCalls": [
+    {
+      "method": "POST",
+      "path": "/auth/step-up",
+      "status": 403,
+      "code": "MFA_REQUIRED"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/step-up",
+      "status": 200,
+      "code": null
+    }
+  ],
+  "cleanup": "removed",
+  "result": "pass"
+}

@@ -42,6 +42,9 @@ import { RequirePermission } from '../../common/security/require-permission.deco
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.interface.js';
+import { RequireStepUp } from '../auth/require-step-up.decorator.js';
+import { StepUpGuard } from '../auth/step-up.guard.js';
+import { STEP_UP_ACTIONS } from '../auth/step-up.service.js';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { AuthorizationService } from '../permissions/authorization.service.js';
 import type { CanonicalRole } from '../permissions/permission.codes.js';
@@ -198,6 +201,8 @@ export class ConversationsController {
 
   @Post(':conversationId/messages')
   @RequirePermission(PERMISSIONS.MESSAGE_CREATE)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.ATTACHMENT_SEND, { when: 'attachments' })
   async sendMessage(
     @Param('conversationId', ParseUUIDPipe) conversationId: string,
     @Query('tenantId') tenantId: string,

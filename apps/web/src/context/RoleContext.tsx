@@ -1,11 +1,19 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useState,
+  useEffect,
+} from "react";
 import { getSession, signOut as revokeSession } from "@/lib/auth/session";
 import {
   fetchSessionProfile,
+  readSessionProfile,
   viewForRole,
   type SessionIdentity,
+  type SessionProfile,
 } from "@/lib/auth/uiRole";
 
 export type UserRole = "ENTERPRISE" | "ADMIN" | "AGENT" | "USER";
@@ -21,8 +29,22 @@ interface RoleContextType {
   identity: SessionIdentity | null;
   /** Apply the identity returned by the same session read as the role. */
   setIdentity: (identity: SessionIdentity | null) => void;
+  /** Apply a whole session profile, including both reset flags. */
+  applySessionProfile: (profile: SessionProfile) => void;
   /** Revoke the server session and clear the local identity. */
   endSession: () => Promise<void>;
+  /**
+   * True while a privileged MFA reset requires a new factor (T6.09).
+   * Normal API routes answer `403 MFA_RESET_REQUIRED` until it is cleared.
+   */
+  mfaResetRequired: boolean;
+  /**
+   * True while the account must change its password (T6.08, D-58).
+   * Normal API routes answer `403 PASSWORD_RESET_REQUIRED` until it is cleared.
+   */
+  passwordResetRequired: boolean;
+  /** Re-read GET /auth/session and apply its role, identity and reset flags. */
+  refreshSession: () => Promise<void>;
   activeView: string;
   setActiveView: (view: string) => void;
   theme: ThemeMode;
@@ -37,6 +59,9 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   const [role, setRoleState] = useState<UserRole | null>(null);
   const [identity, setIdentity] = useState<SessionIdentity | null>(null);
   const [roleLoading, setRoleLoading] = useState<boolean>(true);
+  const [mfaResetRequired, setMfaResetRequired] = useState<boolean>(false);
+  const [passwordResetRequired, setPasswordResetRequired] =
+    useState<boolean>(false);
   const [activeView, setActiveView] = useState<string>("admin");
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [tenantId, setTenantId] = useState<string>("tenant_acme_corp");
@@ -58,8 +83,31 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     await revokeSession();
     setRoleState(null);
     setIdentity(null);
+    setMfaResetRequired(false);
+    setPasswordResetRequired(false);
     setActiveView("admin");
   };
+
+  const applyProfile = useCallback((profile: SessionProfile) => {
+    setRoleState(profile.role);
+    setIdentity(profile.identity);
+    setMfaResetRequired(profile.mfaResetRequired);
+    setPasswordResetRequired(profile.passwordResetRequired);
+    if (profile.role) setActiveView(viewForRole(profile.role));
+    setRoleLoading(false);
+  }, []);
+
+  // A mandatory factor enrollment ends the reset on the server, so the client
+  // reads the session again and lets the cleared flag close the gate. This read
+  // throws on a refusal or an outage: a failed read must not look like a
+  // cleared reset.
+  const refreshSession = useCallback(async () => {
+    if (!getSession()) {
+      setMfaResetRequired(false);
+      return;
+    }
+    applyProfile(await readSessionProfile());
+  }, [applyProfile]);
 
   // Hydrate the role from the server on load: the signed-in caller's
   // canonical role comes from GET /auth/session (membership_roles), never
@@ -74,15 +122,12 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     void fetchSessionProfile().then((profile) => {
       if (cancelled) return;
-      setRoleState(profile.role);
-      setIdentity(profile.identity);
-      if (profile.role) setActiveView(viewForRole(profile.role));
-      setRoleLoading(false);
+      applyProfile(profile);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyProfile]);
 
   const toggleTheme = () => {
     setTheme((t) => (t === "dark" ? "light" : "dark"));
@@ -96,7 +141,11 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         roleLoading,
         identity,
         setIdentity,
+        applySessionProfile: applyProfile,
         endSession,
+        mfaResetRequired,
+        passwordResetRequired,
+        refreshSession,
         activeView,
         setActiveView,
         theme,

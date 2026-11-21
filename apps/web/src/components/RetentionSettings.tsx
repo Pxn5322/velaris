@@ -26,6 +26,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { RefreshCw, ShieldAlert } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api/client";
+import { useStepUp } from "@/context/StepUpContext";
+import { STEP_UP_ACTIONS } from "@/lib/auth/step-up";
 import { retentionDetail, shortInstant } from "@/lib/audit/describe";
 import { getSession } from "@/lib/auth/session";
 
@@ -91,6 +93,7 @@ function parseWindow(value: string): number | null {
 type Phase = "loading" | "denied" | "error" | "ready";
 
 export function RetentionSettings() {
+  const { runWithStepUp } = useStepUp();
   const [phase, setPhase] = useState<Phase>("loading");
   const [denial, setDenial] = useState("");
   const [failure, setFailure] = useState("");
@@ -194,12 +197,19 @@ export function RetentionSettings() {
       setSaved(null);
       setErrors((current) => ({ ...current, [category]: "" }));
       try {
-        const updated = await apiFetch<RetentionPolicyView>(
-          "/settings/retention",
-          {
-            method: "PUT",
-            body: JSON.stringify({ tenantId, category, retentionDays: days }),
-          },
+        const updated = await runWithStepUp(
+          STEP_UP_ACTIONS.RETENTION_CHANGE,
+          tenantId,
+          (stepUpToken) =>
+            apiFetch<RetentionPolicyView>("/settings/retention", {
+              method: "PUT",
+              headers: { "x-step-up-token": stepUpToken },
+              body: JSON.stringify({
+                tenantId,
+                category,
+                retentionDays: days,
+              }),
+            }),
         );
         setPolicies((rows) =>
           rows.map((row) => (row.category === category ? updated : row)),
@@ -232,7 +242,7 @@ export function RetentionSettings() {
         setSaving(null);
       }
     },
-    [drafts, tenantId, loadRecentChanges],
+    [drafts, tenantId, loadRecentChanges, runWithStepUp],
   );
 
   return (

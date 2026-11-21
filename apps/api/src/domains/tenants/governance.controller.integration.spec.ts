@@ -14,6 +14,8 @@
 
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { AUTH_ACCOUNT_TEST_PROVIDER } from '../../../test/auth-account.stub.js';
+import { STEP_UP_SERVICE_TEST_PROVIDER } from '../../../test/step-up-service.stub.js';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -137,6 +139,10 @@ describe('Governance routes (integration)', () => {
         GovernanceService,
         AuthorizationService,
         SupabaseAuthGuard,
+
+        AUTH_ACCOUNT_TEST_PROVIDER,
+
+        STEP_UP_SERVICE_TEST_PROVIDER,
         SupabaseTokenVerifier,
         PermissionsGuard,
         // The controller also serves the tenant user-management routes;

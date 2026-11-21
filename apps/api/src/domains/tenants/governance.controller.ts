@@ -31,6 +31,9 @@ import { RequirePermission } from '../../common/security/require-permission.deco
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.interface.js';
+import { RequireStepUp } from '../auth/require-step-up.decorator.js';
+import { StepUpGuard } from '../auth/step-up.guard.js';
+import { STEP_UP_ACTIONS } from '../auth/step-up.service.js';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard.js';
 import { PERMISSIONS } from '../permissions/permission.codes.js';
 import {
@@ -64,6 +67,8 @@ export class GovernanceController {
 
   @Post()
   @RequirePermission(PERMISSIONS.TENANT_MANAGE_PLATFORM)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.TENANT_CHANGE)
   async createTenant(
     @Req() request: AuthedRequest,
     @Body() createTenantDto: CreateTenantDto,
@@ -82,6 +87,8 @@ export class GovernanceController {
 
   @Patch(':tenantId')
   @RequirePermission(PERMISSIONS.TENANT_MANAGE_PLATFORM)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.TENANT_CHANGE)
   async setTenantStatus(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Req() request: AuthedRequest,
@@ -122,6 +129,8 @@ export class GovernanceController {
 
   @Post(':tenantId/roles')
   @RequirePermission(PERMISSIONS.ROLE_MANAGE)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.ROLE_CHANGE)
   async createRole(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Req() request: AuthedRequest,
@@ -144,6 +153,8 @@ export class GovernanceController {
 
   @Patch(':tenantId/roles/:roleId')
   @RequirePermission(PERMISSIONS.ROLE_MANAGE)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.ROLE_CHANGE)
   async updateRole(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('roleId', ParseUUIDPipe) roleId: string,
@@ -164,6 +175,8 @@ export class GovernanceController {
 
   @Delete(':tenantId/roles/:roleId')
   @RequirePermission(PERMISSIONS.ROLE_MANAGE)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.ROLE_CHANGE)
   async deleteRole(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('roleId', ParseUUIDPipe) roleId: string,
@@ -182,6 +195,8 @@ export class GovernanceController {
 
   @Put(':tenantId/memberships/:membershipId/roles')
   @RequirePermission(PERMISSIONS.ROLE_MANAGE)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.ROLE_CHANGE)
   async setMembershipRole(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('membershipId', ParseUUIDPipe) membershipId: string,
@@ -221,6 +236,8 @@ export class GovernanceController {
 
   @Post(':tenantId/users')
   @RequirePermission(PERMISSIONS.USER_CREATE)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.MEMBERSHIP_CHANGE)
   async addUser(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Req() request: AuthedRequest,
@@ -240,6 +257,8 @@ export class GovernanceController {
 
   @Delete(':tenantId/memberships/:membershipId')
   @RequirePermission(PERMISSIONS.USER_DISABLE)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.MEMBERSHIP_CHANGE)
   async removeUser(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('membershipId', ParseUUIDPipe) membershipId: string,
@@ -259,6 +278,8 @@ export class GovernanceController {
 
   @Patch(':tenantId/memberships/:membershipId/status')
   @RequirePermission(PERMISSIONS.USER_DISABLE)
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_ACTIONS.MEMBERSHIP_CHANGE)
   async setMembershipStatus(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('membershipId', ParseUUIDPipe) membershipId: string,

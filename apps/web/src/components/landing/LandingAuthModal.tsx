@@ -11,7 +11,7 @@ import {
   signIn,
   signOut,
 } from "@/lib/auth/session";
-import { fetchSessionProfile, routeForRole } from "@/lib/auth/uiRole";
+import { fetchSessionProfile, workspaceRouteFor } from "@/lib/auth/uiRole";
 
 interface LandingAuthModalProps {
   isOpen: boolean;
@@ -25,7 +25,7 @@ export function LandingAuthModal({
   onClose,
 }: LandingAuthModalProps) {
   const router = useRouter();
-  const { setRole, setIdentity } = useRole();
+  const { applySessionProfile } = useRole();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
@@ -75,7 +75,8 @@ export function LandingAuthModal({
       // The role and identity come from the server (membership_roles and
       // the user row), never a picker or a client-side guess.
       const profile = await fetchSessionProfile();
-      if (!profile.role) {
+      const target = workspaceRouteFor(profile);
+      if (!target) {
         await signOut();
         setError(
           isSignup
@@ -85,10 +86,11 @@ export function LandingAuthModal({
         setSubmitting(false);
         return;
       }
-      setRole(profile.role);
-      setIdentity(profile.identity);
+      // Apply the whole profile, so the workspace gate reads the reset flags
+      // from this same read.
+      applySessionProfile(profile);
       onClose();
-      router.push(routeForRole(profile.role));
+      router.push(target);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed.");
       setSubmitting(false);

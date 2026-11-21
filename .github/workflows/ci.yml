@@ -160,6 +160,8 @@ jobs:
       # the documented public list in the script. It reads source only, so the
       # job needs no npm install and fails in seconds when a route is added
       # without a guard.
+      - name: Test the inventory parser
+        run: npm run inventory:test
       - name: Check every route is guarded
         run: node scripts/check-route-inventory.mjs
 
