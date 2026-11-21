@@ -10,7 +10,8 @@ import { test, expect } from "@playwright/test";
  * password dialog without a click, shows the server's policy refusal, and a
  * successful change ends the session so the user signs in with the new
  * password (the change advances the access-token cutoff). It also checks
- * that both public sign-in pages route a flagged account into the gate.
+ * that both public sign-in pages and the recovery callback route a flagged
+ * account into the gate.
  */
 
 const SESSION_KEY = "velaris.auth.session.v1";
@@ -92,6 +93,49 @@ test.describe("Password reset", () => {
     await expect(page).toHaveURL(/\/admin$/);
     await expect(page.getByTestId("password-reset")).toBeVisible();
     await expect(page.getByTestId("sign-in-error")).toHaveCount(0);
+  });
+
+  test("routes a flagged profile from a recovery link into the gate", async ({
+    page,
+  }) => {
+    // A recovery link signs the browser in from the URL fragment. The password
+    // it sets is not proof that the account is clean: the API still decides,
+    // and this profile keeps asking for the workspace reset.
+    await page.route("**/auth/v1/user*", (route) =>
+      route.fulfill({
+        status: 200,
+        headers: {
+          "access-control-allow-origin": "*",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ id: "sub-e2e" }),
+      }),
+    );
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+
+    await page.goto(
+      "/auth/callback#access_token=e2e-link-token&refresh_token=e2e-link-refresh&expires_at=4102444800&type=recovery",
+    );
+
+    await expect(
+      page.getByRole("heading", { name: "Choose a new password" }),
+    ).toBeVisible();
+    expect(page.url()).not.toContain("access_token");
+
+    await page.getByTestId("new-password").fill(NEW_PASSWORD);
+    await page.getByTestId("confirm-password").fill(NEW_PASSWORD);
+    await page.getByTestId("update-password").click();
+
+    // The callback used to push "/" for a role-less profile, so the flagged
+    // account was dropped back on the landing page with no way to the reset.
+    await page
+      .getByRole("button", { name: "Continue to workspace" })
+      .click();
+
+    await expect(page).toHaveURL(/\/admin$/);
+    await expect(page.getByTestId("password-reset")).toBeVisible();
   });
 
   test("requires a new password and signs out after the change", async ({
