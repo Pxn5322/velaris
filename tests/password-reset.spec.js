@@ -85,11 +85,12 @@ async function signInAsFlagged(page, path, email) {
 }
 
 /**
- * Open a recovery link, set the new password and continue to the workspace.
- * The link form itself belongs to tests/auth-recovery.spec.js; this helper only
- * reaches the Continue step so the cases below can check where it lands.
+ * Open a recovery link with the given API session, set the new password and
+ * continue to the workspace. The link form, the payload and the stored session
+ * belong to tests/auth-recovery.spec.js; this helper only reaches Continue, so
+ * the session argument is the one thing the cases below vary.
  */
-async function continueFromRecoveryLink(page) {
+async function continueFromRecoveryLink(page, session) {
   // The password update goes to the cross-origin provider, so the mocked
   // answer must carry CORS headers or the browser reports a network error.
   await page.route("**/auth/v1/user*", (route) =>
@@ -102,14 +103,15 @@ async function continueFromRecoveryLink(page) {
       body: JSON.stringify({ id: "sub-e2e" }),
     }),
   );
+  await page.route("**/auth/session*", (route) =>
+    route.fulfill(json(session)),
+  );
+
+  // The fill waits for the form, so no heading assertion repeats the
+  // auth-recovery.spec.js case that owns this page.
   await page.goto(
     "/auth/callback#access_token=e2e-link-token&refresh_token=e2e-link-refresh&expires_at=4102444800&type=recovery",
   );
-
-  await expect(
-    page.getByRole("heading", { name: "Choose a new password" }),
-  ).toBeVisible();
-  expect(page.url()).not.toContain("access_token");
 
   await page.getByTestId("new-password").fill(NEW_PASSWORD);
   await page.getByTestId("confirm-password").fill(NEW_PASSWORD);
@@ -147,14 +149,11 @@ test.describe("Password reset", () => {
   }) => {
     // A recovery link signs the browser in from the URL fragment. The password
     // it sets is not proof that the account is clean: the API still decides,
-    // and this profile keeps asking for the workspace reset.
-    await page.route("**/auth/session*", (route) =>
-      route.fulfill(json(sessionResponse)),
-    );
+    // and this session keeps asking for the workspace reset.
 
     // The callback used to push "/" for a role-less profile, so the flagged
     // account was dropped back on the landing page with no way to the reset.
-    await continueFromRecoveryLink(page);
+    await continueFromRecoveryLink(page, sessionResponse);
 
     await expect(page).toHaveURL(/\/admin$/);
     await expect(page.getByTestId("password-reset")).toBeVisible();
@@ -166,11 +165,7 @@ test.describe("Password reset", () => {
     // The same link, after the API no longer flags the account: Continue must
     // answer by role. An agent is the useful case, because /admin would hide a
     // callback that still fell back to the reset route.
-    await page.route("**/auth/session*", (route) =>
-      route.fulfill(json(agentSessionResponse)),
-    );
-
-    await continueFromRecoveryLink(page);
+    await continueFromRecoveryLink(page, agentSessionResponse);
 
     await expect(page).toHaveURL(/\/inbox$/);
     await expect(page.getByTestId("password-reset")).toHaveCount(0);
