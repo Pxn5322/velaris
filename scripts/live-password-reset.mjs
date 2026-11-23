@@ -56,9 +56,17 @@ const SERVICE_KEY =
 const DATABASE_URL = requireEnvironment('DATABASE_URL');
 
 let stepNumber = 0;
-function step(name, ok, detail = '') {
+
+/** Run one step: log PASS with its detail, or log FAIL and stop the check. */
+async function check(name, fn) {
   stepNumber += 1;
-  console.log(`${ok ? 'PASS' : 'FAIL'}  step ${stepNumber}: ${name}${detail ? ` — ${detail}` : ''}`);
+  try {
+    const detail = await fn();
+    console.log(`PASS  step ${stepNumber}: ${name}${detail ? ` — ${detail}` : ''}`);
+  } catch (error) {
+    console.log(`FAIL  step ${stepNumber}: ${name}`);
+    throw error;
+  }
 }
 
 function requireEnvironment(name) {
@@ -269,19 +277,6 @@ async function main() {
   let address = '';
   let account = null;
   let browser = null;
-  let failed = false;
-
-  const check = async (name, fn) => {
-    try {
-      const detail = await fn();
-      step(name, true, detail ?? '');
-      return true;
-    } catch (error) {
-      failed = true;
-      step(name, false, error instanceof Error ? error.message : String(error));
-      throw error;
-    }
-  };
 
   try {
     if (USE_ADMIN_LINK) {
@@ -339,27 +334,19 @@ async function main() {
       });
     }
 
-    let recovered = null;
+    // The link session sets the first new password; the gate then sets the
+    // final one, so the two differ exactly as the policy requires.
+    const recovered = { link: '', password: newPassword(), finalPassword: newPassword() };
     if (USE_ADMIN_LINK) {
       await check('the provider issues a recovery link for the account', async () => {
-        recovered = {
-          link: await generatedRecoveryLink(address),
-          password: newPassword(),
-          finalPassword: newPassword(),
-        };
+        recovered.link = await generatedRecoveryLink(address);
         return 'admin-generated link (same verify contract as the email)';
       });
     } else {
       await check('a real recovery email reaches the mailbox', async () => {
         const found = await recoverLinkFromInbox(mailbox);
         if (!found) throw new Error(`no recovery email within ${EMAIL_TIMEOUT_MS} ms`);
-        recovered = {
-          link: found.link,
-          // The link session sets the first new password; the gate then sets the
-          // final one, so the two differ exactly as the policy requires.
-          password: newPassword(),
-          finalPassword: newPassword(),
-        };
+        recovered.link = found.link;
         // The inbox has served its purpose; remove it before the browser work so
         // a later failure cannot leave the mailbox behind.
         await closeMailbox(mailbox);
@@ -499,8 +486,6 @@ async function main() {
     await closeMailbox(mailbox);
     await prisma.$disconnect();
   }
-
-  if (failed) process.exitCode = 1;
 }
 
 main().catch((error) => {
