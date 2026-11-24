@@ -2,7 +2,6 @@
   "@nestjs/mau": "moderate",
   "external-editor": "low",
   "inquirer": "low",
-  "next": "critical",
   "tmp": "high",
   "undici": "high"
 }
