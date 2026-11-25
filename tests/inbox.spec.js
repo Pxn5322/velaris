@@ -523,6 +523,59 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     );
   });
 
+  test("finds a ticket by the customer's own words in the description preview", async ({
+    page,
+  }) => {
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/tickets/assignees*", (route) =>
+      route.fulfill(json(assignees)),
+    );
+    await page.route(/\/tickets\?tenantId=/, (route) =>
+      route.fulfill(
+        json([
+          {
+            ...tickets[0],
+            primaryConversationId: "conv-linked",
+            descriptionPreview:
+              "Exporting November invoices returns a blank file.",
+          },
+          {
+            ...tickets[1],
+            primaryConversationId: "conv-other",
+            descriptionPreview: "The password reset email never arrives.",
+          },
+        ]),
+      ),
+    );
+
+    await page.goto("/inbox");
+
+    const rows = page.getByTestId("inbox-ticket");
+    const search = page.getByTestId("inbox-search");
+    await expect(rows).toHaveCount(2);
+
+    // Neither subject contains the phrase; only the preview does.
+    await search.fill("blank file");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("Refund not received");
+    await expect(rows.first().getByTestId("inbox-ticket-preview")).toContainText(
+      "blank file",
+    );
+
+    await search.fill("password reset");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("Other customer ticket");
+
+    // The subject and the id still match, and clearing shows all rows again.
+    await search.fill("Refund");
+    await expect(rows).toHaveCount(1);
+    await search.fill("");
+    await expect(rows).toHaveCount(2);
+  });
+
   test("offers the composer when a ticket has no conversation yet", async ({
     page,
   }) => {
