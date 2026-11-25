@@ -36,6 +36,7 @@ import { PERMISSIONS } from '../permissions/permission.codes.js';
 import type { CanonicalRole } from '../permissions/permission.codes.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import { TicketsService } from './tickets.service.js';
+import { CreateOwnTicketDto } from './dto/create-own-ticket.dto.js';
 import { CreateTicketDto } from './dto/create-ticket.dto.js';
 import { UpdateTicketDto } from './dto/update-ticket.dto.js';
 
@@ -80,6 +81,56 @@ export class TicketsController {
       tenantId,
       actorId: request.user?.subject,
       metadata: { title: created.title },
+    });
+    return created;
+  }
+
+  /**
+   * Self-service ticket (T2.04 follow-up): an R-customer opens a ticket for
+   * its own customer record. The tenant comes from the query scope, which
+   * already passed the membership check, and the customer row comes from the
+   * verified email; the client chooses neither, so this route cannot write
+   * for another customer or tenant.
+   */
+  @Post('self')
+  @RequirePermission(PERMISSIONS.TICKET_REQUEST)
+  async createOwn(
+    @Query('tenantId') tenantId: string,
+    @Req() request: AuthedRequest,
+    @Body() body: CreateOwnTicketDto,
+  ) {
+    await this.requireTenantScope(request, tenantId);
+    if (request.role !== 'R-customer') {
+      throw new ForbiddenException(
+        'Only a customer can open a self-service ticket',
+      );
+    }
+    const email = request.user?.email;
+    if (!email) {
+      // Deny by default: no verified address means no customer row to own it.
+      throw new ForbiddenException(
+        'A verified email is required to open a ticket',
+      );
+    }
+    const customerId = await this.scope.resolveOrCreateCustomer(
+      tenantId,
+      email,
+      email,
+    );
+    const created = await this.ticketsService.create({
+      title: body.title,
+      priority: body.priority,
+      tags: body.tags,
+      customerId,
+      tenantId,
+    });
+    await this.audit.record({
+      action: 'ticket.created',
+      resourceType: 'ticket',
+      resourceId: created.id,
+      tenantId,
+      actorId: request.user?.subject,
+      metadata: { title: created.title, channel: 'customer_portal' },
     });
     return created;
   }

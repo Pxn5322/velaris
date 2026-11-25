@@ -17,6 +17,13 @@ export const PERMISSIONS = {
   TICKET_READ: 'ticket.read',
   TICKET_WRITE: 'ticket.write',
   /**
+   * Open a support ticket for the caller's own customer record (T2.04
+   * follow-up). Separate from `ticket.write`: it can only create a new row
+   * whose customer and tenant the server derives from the verified identity,
+   * so it never grants a change to another customer's ticket.
+   */
+  TICKET_REQUEST: 'ticket.request',
+  /**
    * Post a message into a conversation the caller may see (API-13, T6.05).
    * Agents hold it through their ticket permissions; R-customer holds it for
    * its own customer-visible conversation only, and the ownership check in

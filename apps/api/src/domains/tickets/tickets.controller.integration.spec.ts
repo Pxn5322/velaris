@@ -72,9 +72,25 @@ function jsonResponse(status: number, body: unknown): Response {
 /** One in-memory tickets table shared by the fake Prisma client. */
 type FakeTicket = Record<string, unknown>;
 
+/** One in-memory customers table (T2.04 scope resolver). */
+type FakeCustomer = {
+  id: string;
+  tenantId: string;
+  email: string | null;
+  displayName: string;
+};
+
 function fakeTicketPrisma(tickets: FakeTicket[]) {
   const store = [...tickets];
   const assignments: FakeTicket[] = [];
+  const customers: FakeCustomer[] = [
+    {
+      id: 'customer-1',
+      tenantId: 'tenant-a',
+      email: 'user@example.test',
+      displayName: 'User Example',
+    },
+  ];
   let counter = 0;
   const client = {
     ticket: {
@@ -150,19 +166,33 @@ function fakeTicketPrisma(tickets: FakeTicket[]) {
       },
     },
     customer: {
-      // The identity email maps to customer-1 inside tenant A (scope resolver).
+      // The identity email maps to a customer row inside its own tenant; a
+      // missing row is what a first self-service ticket has to create.
       findFirst: async ({
         where,
       }: {
         where: { tenantId: string; email?: { equals: string } };
-      }) =>
-        where.tenantId === 'tenant-a' &&
-        where.email?.equals.toLowerCase() === 'user@example.test'
-          ? { id: 'customer-1' }
-          : null,
+      }) => {
+        const wanted = where.email?.equals.toLowerCase();
+        const row = customers.find(
+          (candidate) =>
+            candidate.tenantId === where.tenantId &&
+            candidate.email?.toLowerCase() === wanted,
+        );
+        return row ? { id: row.id } : null;
+      },
+      create: async ({ data }: { data: Omit<FakeCustomer, 'id'> }) => {
+        const row: FakeCustomer = {
+          id: 'customer-' + String(customers.length + 1),
+          ...data,
+        };
+        customers.push(row);
+        return row;
+      },
     },
     _store: store,
     _assignments: assignments,
+    _customers: customers,
   };
   return Object.assign(client, {
     $transaction: async (callback: (tx: typeof client) => unknown) =>
@@ -575,5 +605,100 @@ describe('Tickets routes (integration)', () => {
     expect(auditRecord).not.toHaveBeenCalledWith(
       expect.objectContaining({ action: 'ticket.updated' }),
     );
+  });
+
+  it('lets a customer open a ticket for their own customer record (AC-F05-1)', async () => {
+    role = 'R-customer';
+
+    const res = await request(app.getHttpServer())
+      .post('/tickets/self?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        title: 'Printer on floor 3 is offline',
+        // A client cannot choose whose ticket it writes, or which tenant.
+        customerId: 'customer-2',
+        tenantId: 'tenant-b',
+        tags: ['Hardware'],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      tenantId: 'tenant-a',
+      customerId: 'customer-1',
+      title: 'Printer on floor 3 is offline',
+      status: 'OPEN',
+      tags: ['Hardware'],
+    });
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'ticket.created',
+        tenantId: 'tenant-a',
+        actorId: 'sub-123',
+      }),
+    );
+
+    // The same customer reads it back through the list route.
+    const list = await request(app.getHttpServer())
+      .get('/tickets?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token');
+    expect(list.status).toBe(200);
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0]).toMatchObject({
+      title: 'Printer on floor 3 is offline',
+      customerId: 'customer-1',
+    });
+  });
+
+  it('creates the customer row on the first self-service ticket', async () => {
+    role = 'R-customer';
+    prismaFake._customers.length = 0;
+
+    const res = await request(app.getHttpServer())
+      .post('/tickets/self?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ title: 'My first request' });
+
+    expect(res.status).toBe(201);
+    expect(prismaFake._customers).toEqual([
+      expect.objectContaining({
+        tenantId: 'tenant-a',
+        email: 'user@example.test',
+        displayName: 'user@example.test',
+      }),
+    ]);
+    expect(res.body.customerId).toBe(prismaFake._customers[0].id);
+  });
+
+  it('refuses the self-service route to a non-customer role', async () => {
+    role = 'R-agent';
+
+    const res = await request(app.getHttpServer())
+      .post('/tickets/self?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ title: 'Agent attempt' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('refuses a self-service ticket without a title', async () => {
+    role = 'R-customer';
+
+    const res = await request(app.getHttpServer())
+      .post('/tickets/self?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ title: '   ' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 403 for a customer on the tenant-wide create route', async () => {
+    role = 'R-customer';
+
+    const res = await request(app.getHttpServer())
+      .post('/tickets?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ title: 'Bypass attempt', customerId: 'customer-2' });
+
+    expect(res.status).toBe(403);
   });
 });
