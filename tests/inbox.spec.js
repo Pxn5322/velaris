@@ -455,6 +455,74 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     expect(requests.some((url) => url.includes("conv-1"))).toBe(false);
   });
 
+  test("shows a customer description preview in the queue row for triage", async ({
+    page,
+  }) => {
+    const preview =
+      "Exporting November invoices returns a blank file every time.";
+    const conversationRequests = [];
+
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/tickets/assignees*", (route) =>
+      route.fulfill(json(assignees)),
+    );
+    await page.route(/\/tickets\?tenantId=/, (route) =>
+      route.fulfill(
+        json([
+          {
+            ...tickets[0],
+            primaryConversationId: "conv-linked",
+            descriptionPreview: preview,
+          },
+          tickets[1],
+        ]),
+      ),
+    );
+    await page.route("**/conversations**", (route) => {
+      conversationRequests.push(route.request().url());
+      return route.fulfill(
+        json({
+          ...conversations[0],
+          id: "conv-linked",
+          messages: [
+            {
+              id: "msg-preview",
+              body: preview,
+              authorType: "CUSTOMER",
+              visibility: "CUSTOMER_VISIBLE",
+              createdAt: "2026-11-20T09:00:00Z",
+            },
+          ],
+        }),
+      );
+    });
+
+    await page.goto("/inbox");
+
+    const rows = page.getByTestId("inbox-ticket");
+    await expect(rows).toHaveCount(2);
+    // The linked ticket carries its customer's first words in the queue...
+    await expect(rows.first().getByTestId("inbox-ticket-preview")).toHaveText(
+      preview,
+    );
+    // ...while a ticket with no linked conversation shows no preview line.
+    await expect(rows.nth(1).getByTestId("inbox-ticket-preview")).toHaveCount(
+      0,
+    );
+    // Triage needs no thread: the queue row alone answers "what is this?"
+    expect(conversationRequests).toEqual([]);
+
+    // Opening the same ticket still shows the full description in the detail
+    // pane, so the preview is a summary and never the only copy.
+    await rows.first().click();
+    await expect(page.getByTestId("inbox-ticket-description")).toContainText(
+      preview,
+    );
+  });
+
   test("offers the composer when a ticket has no conversation yet", async ({
     page,
   }) => {

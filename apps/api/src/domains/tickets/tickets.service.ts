@@ -96,12 +96,34 @@ export class TicketsService {
     });
   }
 
-  /** Tenant-scoped list, newest change first. */
-  findAll(tenantId: string) {
-    return this.prisma.ticket.findMany({
+  /**
+   * Tenant-scoped list, newest change first. Every row carries a short
+   * `descriptionPreview` from its linked conversation (D-75), so the inbox
+   * queue can be triaged without opening a thread. The nested read selects one
+   * customer-visible CUSTOMER message only: an internal note or a later reply
+   * can never become the preview (TH-05).
+   */
+  async findAll(tenantId: string) {
+    const rows = await this.prisma.ticket.findMany({
       where: { tenantId },
       orderBy: { updatedAt: 'desc' },
+      include: {
+        primaryConversation: {
+          select: {
+            messages: {
+              where: { authorType: 'CUSTOMER', visibility: 'CUSTOMER_VISIBLE' },
+              orderBy: { createdAt: 'asc' },
+              take: 1,
+              select: { body: true },
+            },
+          },
+        },
+      },
     });
+    return rows.map(({ primaryConversation, ...ticket }) => ({
+      ...ticket,
+      descriptionPreview: previewOf(primaryConversation?.messages[0]?.body),
+    }));
   }
 
   async findOne(id: string, tenantId: string) {
@@ -335,6 +357,18 @@ function requireOneOf<T extends string>(
       field + ' must be one of ' + allowed.join(', '),
     );
   }
+}
+
+/** Longest queue preview: one flattened line, cut once when too long. */
+const MAX_PREVIEW_LENGTH = 140;
+
+function previewOf(body: string | null | undefined): string | null {
+  if (typeof body !== 'string') return null;
+  const flat = body.replace(/\s+/g, ' ').trim();
+  if (!flat) return null;
+  return flat.length > MAX_PREVIEW_LENGTH
+    ? flat.slice(0, MAX_PREVIEW_LENGTH - 1).trimEnd() + '…'
+    : flat;
 }
 
 /** Ticket labels: at most five short, trimmed, non-empty strings. */

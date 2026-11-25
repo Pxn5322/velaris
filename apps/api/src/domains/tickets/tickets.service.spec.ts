@@ -44,6 +44,8 @@ type TicketRow = {
   updatedAt: Date;
   resolvedAt: Date | null;
   closedAt: Date | null;
+  /** The nested read findAll asks Prisma for (D-75 queue preview). */
+  primaryConversation?: { messages: { body: string }[] } | null;
 };
 
 type MembershipRow = {
@@ -243,6 +245,64 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
     const result = await service.findAll(tenantA.id);
     expect(result).toHaveLength(1);
     expect(result[0]!.tenantId).toBe(tenantA.id);
+  });
+
+  it('findAll previews the linked conversation for the queue (D-75)', async () => {
+    prisma._store.push(
+      ticketRow('t-linked', {
+        primaryConversation: {
+          messages: [
+            { body: 'Exporting  November\ninvoices returns a blank file.' },
+          ],
+        },
+      }),
+      ticketRow('t-unlinked'),
+      ticketRow('t-agent-first', { primaryConversation: { messages: [] } }),
+    );
+
+    const result = await service.findAll(tenantA.id);
+    const byId = new Map(result.map((row) => [row.id, row]));
+
+    expect(byId.get('t-linked')!.descriptionPreview).toBe(
+      'Exporting November invoices returns a blank file.',
+    );
+    expect(byId.get('t-unlinked')!.descriptionPreview).toBeNull();
+    expect(byId.get('t-agent-first')!.descriptionPreview).toBeNull();
+
+    // TH-05: only customer-visible CUSTOMER text, and only the first message,
+    // can become a preview; an internal note or a later reply never does.
+    expect(prisma.ticket.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: {
+          primaryConversation: {
+            select: {
+              messages: {
+                where: {
+                  authorType: 'CUSTOMER',
+                  visibility: 'CUSTOMER_VISIBLE',
+                },
+                orderBy: { createdAt: 'asc' },
+                take: 1,
+                select: { body: true },
+              },
+            },
+          },
+        },
+      }),
+    );
+  });
+
+  it('findAll cuts a long description preview to a triage-sized line', async () => {
+    prisma._store.push(
+      ticketRow('t-long', {
+        primaryConversation: { messages: [{ body: 'x'.repeat(300) }] },
+      }),
+    );
+
+    const [row] = await service.findAll(tenantA.id);
+
+    expect(row!.descriptionPreview).toHaveLength(140);
+    expect(row!.descriptionPreview!.endsWith('…')).toBe(true);
   });
 
   it('findOne hides a tenant B ticket from a tenant A scope (TH-01)', async () => {
