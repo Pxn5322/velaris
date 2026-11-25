@@ -152,6 +152,7 @@ export class TicketsController {
   @RequirePermission(PERMISSIONS.TICKET_READ)
   async findAll(
     @Query('tenantId') tenantId: string,
+    @Query('q') q: string | undefined,
     @Req() request: AuthedRequest,
   ) {
     await this.requireTenantScope(request, tenantId);
@@ -160,7 +161,9 @@ export class TicketsController {
     if (scope.kind === 'none') {
       return [];
     }
-    const rows = await this.ticketsService.findAll(tenantId);
+    // An optional phrase filters in the database, across the whole linked
+    // thread (D-77); tenant scope and per-customer scope still apply.
+    const rows = await this.ticketsService.findAll(tenantId, { query: q });
     return scope.kind === 'customer'
       ? rows.filter((row) => row.customerId === scope.customerId)
       : rows;

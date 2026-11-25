@@ -44,9 +44,12 @@ type TicketRow = {
   updatedAt: Date;
   resolvedAt: Date | null;
   closedAt: Date | null;
+  primaryConversationId?: string | null;
   /** The nested read findAll asks Prisma for (D-75 queue preview). */
   primaryConversation?: { messages: { body: string }[] } | null;
 };
+
+type MessageRow = { conversationId: string; body: string };
 
 type MembershipRow = {
   id: string;
@@ -67,6 +70,7 @@ type AssignmentRow = {
 function fakePrisma(tickets: TicketRow[], memberships: MembershipRow[] = []) {
   const store = [...tickets];
   const assignments: AssignmentRow[] = [];
+  const messages: MessageRow[] = [];
   let counter = 0;
   const client = {
     ticket: {
@@ -126,6 +130,22 @@ function fakePrisma(tickets: TicketRow[], memberships: MembershipRow[] = []) {
         return { ...removed };
       }),
     },
+    message: {
+      findMany: vi.fn(
+        async ({
+          where,
+        }: {
+          where?: { conversationId?: { in: string[] } };
+        } = {}) =>
+          messages
+            .filter(
+              (m) =>
+                !where?.conversationId ||
+                where.conversationId.in.includes(m.conversationId),
+            )
+            .map((m) => ({ ...m })),
+      ),
+    },
     tenantMembership: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
         const membership = memberships.find((m) => m.id === where.id);
@@ -167,8 +187,10 @@ function fakePrisma(tickets: TicketRow[], memberships: MembershipRow[] = []) {
         return data;
       }),
     },
+    $queryRaw: vi.fn(async () => [] as { id: string }[]),
     _store: store,
     _assignments: assignments,
+    _messages: messages,
   };
   return Object.assign(client, {
     $transaction: vi.fn(async (callback: (tx: typeof client) => unknown) =>
@@ -182,6 +204,7 @@ function ticketRow(id: string, overrides: Partial<TicketRow> = {}): TicketRow {
     id,
     tenantId: tenantA.id,
     customerId: 'customer-1',
+    primaryConversationId: null,
     title: 'Fixture ticket',
     status: 'OPEN',
     priority: 'MEDIUM',
@@ -303,6 +326,149 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
 
     expect(row!.descriptionPreview).toHaveLength(140);
     expect(row!.descriptionPreview!.endsWith('…')).toBe(true);
+  });
+
+  it('findAll searches every customer-visible message of the linked thread (D-77)', async () => {
+    prisma._store.push(
+      ticketRow('t-linked', {
+        primaryConversationId: 'conv-1',
+        primaryConversation: {
+          messages: [{ body: 'Exporting invoices returns a blank file.' }],
+        },
+      }),
+    );
+    // The phrase is in a later customer reply, not in the first message.
+    prisma._messages.push({
+      conversationId: 'conv-1',
+      body: 'It still fails after the retry on 2 December.',
+    });
+
+    const [row] = await service.findAll(tenantA.id, {
+      query: 'retry on 2 December',
+    });
+
+    // The preview still opens the thread, and the match shows why the row hit.
+    expect(row!.descriptionPreview).toBe(
+      'Exporting invoices returns a blank file.',
+    );
+    expect(row!.matchPreview).toBe(
+      'It still fails after the retry on 2 December.',
+    );
+    expect(prisma.ticket.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: tenantA.id,
+          OR: expect.arrayContaining([
+            { title: { contains: 'retry on 2 December', mode: 'insensitive' } },
+            {
+              primaryConversation: {
+                messages: {
+                  some: {
+                    authorType: 'CUSTOMER',
+                    visibility: 'CUSTOMER_VISIBLE',
+                    body: {
+                      contains: 'retry on 2 December',
+                      mode: 'insensitive',
+                    },
+                  },
+                },
+              },
+            },
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it('findAll search still finds a ticket by a fragment of its id (D-77)', async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'ticket-1' }]);
+    prisma._store.push(ticketRow('ticket-1'));
+
+    await service.findAll(tenantA.id, { query: 'ticket-1' });
+
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.ticket.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([{ id: { in: ['ticket-1'] } }]),
+        }),
+      }),
+    );
+  });
+
+  it('findAll keeps the description preview for a title-only match (D-77)', async () => {
+    prisma._store.push(
+      ticketRow('t-title', {
+        title: 'Refund not received',
+        primaryConversationId: 'conv-2',
+        primaryConversation: {
+          messages: [{ body: 'My refund has not arrived.' }],
+        },
+      }),
+    );
+
+    const [row] = await service.findAll(tenantA.id, { query: 'refund' });
+
+    expect(row!.descriptionPreview).toBe('My refund has not arrived.');
+    expect(row!.matchPreview).toBeNull();
+  });
+
+  it('findAll reads no thread and sets no match without a query (D-77)', async () => {
+    prisma._store.push(ticketRow('t-plain'));
+
+    const [row] = await service.findAll(tenantA.id);
+
+    expect(row!.matchPreview).toBeNull();
+    expect(prisma.message.findMany).not.toHaveBeenCalled();
+    expect(prisma.ticket.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: tenantA.id } }),
+    );
+  });
+
+  it('findAll search never reads internal notes or agent text (TH-05)', async () => {
+    prisma._store.push(
+      ticketRow('t-linked', {
+        primaryConversationId: 'conv-1',
+        primaryConversation: { messages: [{ body: 'Opening line.' }] },
+      }),
+    );
+
+    await service.findAll(tenantA.id, { query: 'churn risk' });
+
+    expect(prisma.message.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: tenantA.id,
+          authorType: 'CUSTOMER',
+          visibility: 'CUSTOMER_VISIBLE',
+          body: { contains: 'churn risk', mode: 'insensitive' },
+        }),
+      }),
+    );
+  });
+
+  it('findAll search reads only the linked threads of this tenant (TH-01)', async () => {
+    prisma._store.push(
+      ticketRow('a-1', {
+        primaryConversationId: 'conv-a',
+        primaryConversation: { messages: [{ body: 'Tenant A text.' }] },
+      }),
+      ticketRow('b-1', {
+        tenantId: tenantB.id,
+        primaryConversationId: 'conv-b',
+        primaryConversation: { messages: [{ body: 'Tenant B text.' }] },
+      }),
+    );
+
+    await service.findAll(tenantA.id, { query: 'text' });
+
+    expect(prisma.message.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          conversationId: { in: ['conv-a'] },
+        }),
+      }),
+    );
   });
 
   it('findOne hides a tenant B ticket from a tenant A scope (TH-01)', async () => {
