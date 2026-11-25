@@ -24,6 +24,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import { CreateTicketDto } from './dto/create-ticket.dto.js';
@@ -102,10 +103,20 @@ export class TicketsService {
    * queue can be triaged without opening a thread. The nested read selects one
    * customer-visible CUSTOMER message only: an internal note or a later reply
    * can never become the preview (TH-05).
+   *
+   * A search phrase (D-77) filters the list in the database: the ticket title,
+   * its id, or any customer-visible CUSTOMER message of the linked thread. A
+   * match outside the first message also becomes `matchPreview`, so the row
+   * shows the customer's own words instead of an unrelated opening line.
    */
-  async findAll(tenantId: string) {
+  async findAll(tenantId: string, options: { query?: string } = {}) {
+    const query = options.query?.trim() ?? '';
+    const where: Prisma.TicketWhereInput = {
+      tenantId,
+      ...(query ? { OR: await this.searchConditions(tenantId, query) } : {}),
+    };
     const rows = await this.prisma.ticket.findMany({
-      where: { tenantId },
+      where,
       orderBy: { updatedAt: 'desc' },
       include: {
         primaryConversation: {
@@ -120,10 +131,98 @@ export class TicketsService {
         },
       },
     });
+    const matchPreviews = query
+      ? await this.matchPreviews(tenantId, query, rows)
+      : new Map<string, string>();
     return rows.map(({ primaryConversation, ...ticket }) => ({
       ...ticket,
       descriptionPreview: previewOf(primaryConversation?.messages[0]?.body),
+      matchPreview: matchPreviews.get(ticket.id) ?? null,
     }));
+  }
+
+  /**
+   * Where a phrase can match: the ticket title, any customer-visible CUSTOMER
+   * message of the linked thread, or a fragment of the ticket id (D-77).
+   * Prisma cannot run `contains` on a UUID column, so the id search uses one
+   * parameterized statement, still scoped by tenant.
+   */
+  private async searchConditions(
+    tenantId: string,
+    query: string,
+  ): Promise<Prisma.TicketWhereInput[]> {
+    const conditions: Prisma.TicketWhereInput[] = [
+      { title: { contains: query, mode: 'insensitive' } },
+      {
+        primaryConversation: {
+          messages: {
+            some: {
+              authorType: 'CUSTOMER',
+              visibility: 'CUSTOMER_VISIBLE',
+              body: { contains: query, mode: 'insensitive' },
+            },
+          },
+        },
+      },
+    ];
+    const idMatches = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM tickets
+      WHERE tenant_id = ${tenantId}::uuid
+        AND position(${query.toLowerCase()} in id::text) > 0
+      LIMIT ${MAX_ID_MATCHES}`;
+    if (idMatches.length > 0) {
+      conditions.push({ id: { in: idMatches.map((row) => row.id) } });
+    }
+    return conditions;
+  }
+
+  /**
+   * First customer-visible CUSTOMER message that holds the phrase, per ticket.
+   * Only linked threads of this tenant are read, and internal notes and agent
+   * text never match (TH-05, TH-01).
+   */
+  private async matchPreviews(
+    tenantId: string,
+    query: string,
+    rows: { id: string; primaryConversationId: string | null }[],
+  ): Promise<Map<string, string>> {
+    const conversationIds = [
+      ...new Set(
+        rows
+          .map((row) => row.primaryConversationId)
+          .filter((id): id is string => typeof id === 'string'),
+      ),
+    ];
+    if (conversationIds.length === 0) return new Map();
+
+    const messages = await this.prisma.message.findMany({
+      where: {
+        tenantId,
+        conversationId: { in: conversationIds },
+        authorType: 'CUSTOMER',
+        visibility: 'CUSTOMER_VISIBLE',
+        body: { contains: query, mode: 'insensitive' },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { conversationId: true, body: true },
+    });
+
+    const byConversation = new Map<string, string>();
+    for (const message of messages) {
+      if (!byConversation.has(message.conversationId)) {
+        byConversation.set(message.conversationId, message.body);
+      }
+    }
+
+    const previews = new Map<string, string>();
+    for (const row of rows) {
+      const body = row.primaryConversationId
+        ? byConversation.get(row.primaryConversationId)
+        : undefined;
+      const preview = previewOf(body);
+      if (preview) previews.set(row.id, preview);
+    }
+    return previews;
   }
 
   async findOne(id: string, tenantId: string) {
@@ -358,6 +457,9 @@ function requireOneOf<T extends string>(
     );
   }
 }
+
+/** Cap on id-fragment matches, so a short fragment cannot return the tenant. */
+const MAX_ID_MATCHES = 50;
 
 /** Longest queue preview: one flattened line, cut once when too long. */
 const MAX_PREVIEW_LENGTH = 140;

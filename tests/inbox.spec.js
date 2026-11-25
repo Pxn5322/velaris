@@ -533,23 +533,40 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/tickets/assignees*", (route) =>
       route.fulfill(json(assignees)),
     );
-    await page.route(/\/tickets\?tenantId=/, (route) =>
-      route.fulfill(
-        json([
-          {
-            ...tickets[0],
-            primaryConversationId: "conv-linked",
-            descriptionPreview:
-              "Exporting November invoices returns a blank file.",
-          },
-          {
-            ...tickets[1],
-            primaryConversationId: "conv-other",
-            descriptionPreview: "The password reset email never arrives.",
-          },
-        ]),
-      ),
-    );
+    // The queue sends the phrase to the API, so this stub answers like the
+    // server: only the rows whose searchable text holds the phrase.
+    await page.route(/\/tickets\?tenantId=/, (route) => {
+      const needle = (
+        new URL(route.request().url()).searchParams.get("q") ?? ""
+      ).toLowerCase();
+      const rows = [
+        {
+          ...tickets[0],
+          primaryConversationId: "conv-linked",
+          descriptionPreview:
+            "Exporting November invoices returns a blank file.",
+        },
+        {
+          ...tickets[1],
+          primaryConversationId: "conv-other",
+          descriptionPreview: "The password reset email never arrives.",
+        },
+      ].map((row) => ({
+        ...row,
+        matchPreview:
+          needle && row.descriptionPreview.toLowerCase().includes(needle)
+            ? row.descriptionPreview
+            : null,
+      }));
+      const matches = rows.filter(
+        (row) =>
+          !needle ||
+          row.title.toLowerCase().includes(needle) ||
+          row.id.toLowerCase().includes(needle) ||
+          row.descriptionPreview.toLowerCase().includes(needle),
+      );
+      return route.fulfill(json(matches));
+    });
 
     await page.goto("/inbox");
 
@@ -574,6 +591,93 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await expect(rows).toHaveCount(1);
     await search.fill("");
     await expect(rows).toHaveCount(2);
+  });
+
+  test("finds a ticket by a phrase the customer wrote later in the thread", async ({
+    page,
+  }) => {
+    const description = "Exporting November invoices returns a blank file.";
+    const laterMessage =
+      "It still fails after the retry on the second of December.";
+    const searchRequests = [];
+
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/tickets/assignees*", (route) =>
+      route.fulfill(json(assignees)),
+    );
+    // The stub answers like the server's thread search (D-77): the phrase
+    // exists only in a later customer message, so only that row matches, and
+    // the matching message comes back as the row's match preview.
+    await page.route(/\/tickets\?tenantId=/, (route) => {
+      const url = new URL(route.request().url());
+      searchRequests.push(url.search);
+      const needle = (url.searchParams.get("q") ?? "").toLowerCase();
+      const rows = [
+        {
+          ...tickets[0],
+          primaryConversationId: "conv-linked",
+          descriptionPreview: description,
+          matchPreview:
+            needle && laterMessage.toLowerCase().includes(needle)
+              ? laterMessage
+              : null,
+        },
+        {
+          ...tickets[1],
+          primaryConversationId: "conv-other",
+          descriptionPreview: "The password reset email never arrives.",
+          matchPreview: null,
+        },
+      ];
+      const matches = rows.filter(
+        (row) =>
+          !needle ||
+          row.title.toLowerCase().includes(needle) ||
+          row.id.toLowerCase().includes(needle) ||
+          row.descriptionPreview.toLowerCase().includes(needle) ||
+          (row.matchPreview ?? "").toLowerCase().includes(needle),
+      );
+      return route.fulfill(json(matches));
+    });
+
+    await page.goto("/inbox");
+
+    const rows = page.getByTestId("inbox-ticket");
+    const search = page.getByTestId("inbox-search");
+    await expect(rows).toHaveCount(2);
+    // Triage starts on the description, which does not hold the phrase.
+    await expect(rows.first().getByTestId("inbox-ticket-preview")).toHaveText(
+      description,
+    );
+
+    await search.fill("second of December");
+
+    // The row survives the search, and the later customer message is the
+    // reason it matched, so that message replaces the preview.
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("Refund not received");
+    await expect(rows.first().getByTestId("inbox-ticket-preview")).toHaveText(
+      laterMessage,
+    );
+    await expect(rows.first().getByTestId("inbox-match")).toHaveText(
+      "second of December",
+    );
+    // The queue asks the API to search the thread, not only its local rows.
+    expect(
+      searchRequests.some((value) =>
+        /q=second(\+|%20)of(\+|%20)December/.test(value),
+      ),
+    ).toBe(true);
+
+    // Clearing the box restores the full queue and its descriptions.
+    await search.fill("");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first().getByTestId("inbox-ticket-preview")).toHaveText(
+      description,
+    );
   });
 
   test("filters the queue by status so resolved and closed tickets stay out of triage", async ({
@@ -646,23 +750,40 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route(/\/tickets\?tenantId=/, (route) =>
-      route.fulfill(
-        json([
-          {
-            ...tickets[0],
-            primaryConversationId: "conv-linked",
-            descriptionPreview:
-              "Exporting November invoices returns a blank file.",
-          },
-          {
-            ...tickets[1],
-            primaryConversationId: "conv-other",
-            descriptionPreview: "The password reset email never arrives.",
-          },
-        ]),
-      ),
-    );
+    // The queue sends the phrase to the API, so this stub filters like the
+    // server does and returns the matched message as the match preview.
+    await page.route(/\/tickets\?tenantId=/, (route) => {
+      const needle = (
+        new URL(route.request().url()).searchParams.get("q") ?? ""
+      ).toLowerCase();
+      const rows = [
+        {
+          ...tickets[0],
+          primaryConversationId: "conv-linked",
+          descriptionPreview:
+            "Exporting November invoices returns a blank file.",
+        },
+        {
+          ...tickets[1],
+          primaryConversationId: "conv-other",
+          descriptionPreview: "The password reset email never arrives.",
+        },
+      ].map((row) => ({
+        ...row,
+        matchPreview:
+          needle && row.descriptionPreview.toLowerCase().includes(needle)
+            ? row.descriptionPreview
+            : null,
+      }));
+      const matches = rows.filter(
+        (row) =>
+          !needle ||
+          row.title.toLowerCase().includes(needle) ||
+          row.id.toLowerCase().includes(needle) ||
+          row.descriptionPreview.toLowerCase().includes(needle),
+      );
+      return route.fulfill(json(matches));
+    });
 
     await page.goto("/inbox");
 

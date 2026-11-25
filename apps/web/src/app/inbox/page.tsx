@@ -68,6 +68,8 @@ interface Ticket {
   primaryConversationId?: string | null;
   /** Server-flattened first customer message of that conversation. */
   descriptionPreview?: string | null;
+  /** First customer message of that conversation that holds the search phrase. */
+  matchPreview?: string | null;
 }
 
 interface Message {
@@ -132,6 +134,9 @@ const ATTACHMENT_TYPES = [
 const MAX_ATTACHMENTS = 3;
 const MAX_ATTACHMENT_BYTES = 512 * 1024;
 const MAX_ATTACHMENT_TOTAL_BYTES = 1024 * 1024;
+
+/** Wait for typing to settle before the queue asks the API to search (D-77). */
+const SEARCH_DEBOUNCE_MS = 250;
 
 function formatBytes(bytes: number): string {
   return bytes >= 1024 * 1024
@@ -242,6 +247,10 @@ export default function InboxPage() {
   const [conflict, setConflict] = useState<string | null>(null);
   const [scope, setScope] = useState<TenantEntry | null>(null);
   const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const lastSearch = useRef<string | null>(null);
+  const searchSequence = useRef(0);
   const [priority, setPriority] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ACTIVE");
   const [rowsPerPage, setRowsPerPage] = useState(3);
@@ -283,6 +292,9 @@ export default function InboxPage() {
         ),
       ]);
       setTickets(rows);
+      // The first list is the unfiltered queue, so the search effect has
+      // nothing to fetch until the phrase changes.
+      lastSearch.current = "";
       if (assigneeRows) {
         setAssignees(
           assigneeRows.filter(
@@ -327,6 +339,37 @@ export default function InboxPage() {
     }, 0);
     return () => clearTimeout(timer);
   }, [load]);
+
+  // The queue searches on the server (D-77): a phrase can match any
+  // customer-visible customer message of the linked thread, not only the
+  // description preview. A sequence number drops a late response, so an
+  // older phrase never overwrites a newer one.
+  useEffect(() => {
+    if (phase !== "ready" || !scope) return;
+    const needle = query.trim();
+    if (lastSearch.current === needle) return;
+    const timer = setTimeout(async () => {
+      const sequence = ++searchSequence.current;
+      lastSearch.current = needle;
+      setSearchError(null);
+      setSearching(true);
+      try {
+        const params = new URLSearchParams({ tenantId: scope.tenantId });
+        if (needle) params.set("q", needle);
+        const rows = await apiFetch<Ticket[]>(`/tickets?${params.toString()}`);
+        if (sequence === searchSequence.current) setTickets(rows);
+      } catch (error) {
+        if (sequence === searchSequence.current) {
+          setSearchError(
+            error instanceof Error ? error.message : "Search failed.",
+          );
+        }
+      } finally {
+        if (sequence === searchSequence.current) setSearching(false);
+      }
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [query, phase, scope]);
 
   const loadProfile = useCallback(
     async (ticket: Ticket) => {
@@ -632,15 +675,9 @@ export default function InboxPage() {
       return false;
     }
     if (priority !== "ALL" && ticket.priority !== priority) return false;
-    const needle = searchNeedle.toLowerCase();
-    if (!needle) return true;
-    // The customer's own words are searchable too: an agent can find a ticket
-    // by the phrase the customer used, not only by its subject or id.
-    return (
-      ticket.title.toLowerCase().includes(needle) ||
-      ticket.id.toLowerCase().includes(needle) ||
-      (ticket.descriptionPreview ?? "").toLowerCase().includes(needle)
-    );
+    // The phrase is applied by the API across the whole thread (D-77); a
+    // local text filter would hide a row that matched a later message.
+    return true;
   });
 
   const pageCount = Math.max(1, Math.ceil(visibleTickets.length / rowsPerPage));
@@ -809,7 +846,7 @@ export default function InboxPage() {
                       setQuery(event.target.value);
                       setPage(1);
                     }}
-                    placeholder="Search ID, subject or description..."
+                    placeholder="Search ID, subject or conversation..."
                     aria-label="Search tickets"
                     data-testid="inbox-search"
                     className="w-full rounded-xl border px-2.5 py-1.5 pl-8 text-[11px] text-heading focus:outline-none focus:border-blue-600"
@@ -819,6 +856,16 @@ export default function InboxPage() {
                     }}
                   />
                 </div>
+
+                {(searching || searchError) && (
+                  <p
+                    className="text-[10px] text-muted-custom"
+                    role="status"
+                    data-testid="inbox-search-state"
+                  >
+                    {searchError ?? "Searching the full thread…"}
+                  </p>
+                )}
 
                 <div className="grid grid-cols-2 gap-1.5 text-[10px]">
                   <select
@@ -924,7 +971,10 @@ export default function InboxPage() {
                 </div>
               </div>
 
-              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+              <div
+                className="space-y-2 max-h-[320px] overflow-y-auto pr-1"
+                aria-busy={searching || undefined}
+              >
                 {visibleTickets.length === 0 ? (
                   <p
                     className="p-4 text-center text-muted-custom font-mono text-xs font-bold"
@@ -933,54 +983,60 @@ export default function InboxPage() {
                     No matching tickets
                   </p>
                 ) : (
-                  pageTickets.map((ticket) => (
-                    <button
-                      key={ticket.id}
-                      type="button"
-                      data-testid="inbox-ticket"
-                      onClick={() => void openTimeline(ticket)}
-                      className={`w-full text-left p-3 rounded-xl border transition-all ${
-                        selected?.id === ticket.id
-                          ? "bg-[var(--pill-bg)] border-[var(--accent-cyan)]"
-                          : "border-[var(--card-border)] hover:bg-[var(--pill-bg)]"
-                      }`}
-                    >
-                      <span className="flex items-center justify-between gap-2 text-[10px] font-mono mb-1">
-                        <span
-                          className="font-bold"
-                          style={{ color: "var(--accent-cyan)" }}
-                        >
-                          #{ticket.id.slice(0, 8)}
+                  pageTickets.map((ticket) => {
+                    // A match in a later message replaces the preview, so the
+                    // row shows the customer's words that matched.
+                    const preview =
+                      ticket.matchPreview ?? ticket.descriptionPreview;
+                    return (
+                      <button
+                        key={ticket.id}
+                        type="button"
+                        data-testid="inbox-ticket"
+                        onClick={() => void openTimeline(ticket)}
+                        className={`w-full text-left p-3 rounded-xl border transition-all ${
+                          selected?.id === ticket.id
+                            ? "bg-[var(--pill-bg)] border-[var(--accent-cyan)]"
+                            : "border-[var(--card-border)] hover:bg-[var(--pill-bg)]"
+                        }`}
+                      >
+                        <span className="flex items-center justify-between gap-2 text-[10px] font-mono mb-1">
+                          <span
+                            className="font-bold"
+                            style={{ color: "var(--accent-cyan)" }}
+                          >
+                            #{ticket.id.slice(0, 8)}
+                          </span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded border font-bold ${
+                              PRIORITY_BADGE[ticket.priority] ??
+                              "border-[var(--card-border)] bg-[var(--pill-bg)] text-muted-custom"
+                            }`}
+                          >
+                            {PRIORITY_LABEL[ticket.priority] ?? ticket.priority}
+                          </span>
                         </span>
-                        <span
-                          className={`px-1.5 py-0.5 rounded border font-bold ${
-                            PRIORITY_BADGE[ticket.priority] ??
-                            "border-[var(--card-border)] bg-[var(--pill-bg)] text-muted-custom"
-                          }`}
-                        >
-                          {PRIORITY_LABEL[ticket.priority] ?? ticket.priority}
-                        </span>
-                      </span>
-                      <span className="block text-xs font-semibold text-heading truncate">
-                        <Highlight text={ticket.title} needle={searchNeedle} />
-                      </span>
-                      {ticket.descriptionPreview && (
-                        <span
-                          className="mt-1 block text-[10px] leading-snug text-muted-custom line-clamp-2"
-                          data-testid="inbox-ticket-preview"
-                        >
+                        <span className="block text-xs font-semibold text-heading truncate">
                           <Highlight
-                            text={ticket.descriptionPreview}
+                            text={ticket.title}
                             needle={searchNeedle}
                           />
                         </span>
-                      )}
-                      <span className="block text-[10px] text-muted-custom mt-1 font-bold">
-                        {ticket.customerId.slice(0, 8)} •{" "}
-                        {timeAgo(ticket.updatedAt)}
-                      </span>
-                    </button>
-                  ))
+                        {preview && (
+                          <span
+                            className="mt-1 block text-[10px] leading-snug text-muted-custom line-clamp-2"
+                            data-testid="inbox-ticket-preview"
+                          >
+                            <Highlight text={preview} needle={searchNeedle} />
+                          </span>
+                        )}
+                        <span className="block text-[10px] text-muted-custom mt-1 font-bold">
+                          {ticket.customerId.slice(0, 8)} •{" "}
+                          {timeAgo(ticket.updatedAt)}
+                        </span>
+                      </button>
+                    );
+                  })
                 )}
               </div>
 
