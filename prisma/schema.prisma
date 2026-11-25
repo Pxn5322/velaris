@@ -345,6 +345,9 @@ enum SlaState {
 
 /// E-customer: end customer profile within one tenant (DATABASE.md 6).
 /// Soft delete via deleted_at; metadata_json must not store secrets.
+/// Migration 0019 adds pg_trgm GIN indexes on display_name and email for the
+/// inbox search (D-80). Prisma cannot model GIN or trigram indexes, so they
+/// live in that migration: keep them there instead of regenerating them away.
 model Customer {
   id           String         @id @default(uuid()) @db.Uuid
   tenantId     String         @map("tenant_id") @db.Uuid
@@ -392,6 +395,10 @@ model Conversation {
 /// E-message: customer-visible message or internal note (DATABASE.md 6).
 /// visibility distinguishes the two. No updatedAt: messages are immutable
 /// records; there is no update path in Prisma for this model.
+/// Migration 0019 adds a pg_trgm GIN index on body, partial on
+/// author_type = 'CUSTOMER' AND visibility = 'CUSTOMER_VISIBLE', for the inbox
+/// search (D-80). Prisma cannot model GIN or trigram indexes, so it lives in
+/// that migration: keep it there instead of regenerating it away.
 model Message {
   id             String            @id @default(uuid()) @db.Uuid
   tenantId       String            @map("tenant_id") @db.Uuid
@@ -417,7 +424,9 @@ model Message {
 /// E-ticket: operational support work item (DATABASE.md 6).
 /// version implements optimistic concurrency (AC-F05-2): an update carrying
 /// a stale version is rejected with a conflict. resolved_at/closed_at are
-/// nullable lifecycle timestamps.
+/// nullable lifecycle timestamps. Migration 0019 adds a pg_trgm GIN index on
+/// title for the inbox search (D-80); Prisma cannot model GIN or trigram
+/// indexes, so it lives in that migration.
 model Ticket {
   id                    String         @id @default(uuid()) @db.Uuid
   tenantId              String         @map("tenant_id") @db.Uuid
