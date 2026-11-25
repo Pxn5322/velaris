@@ -396,6 +396,29 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
     );
   });
 
+  it('findAll search matches the customer name and email (D-78)', async () => {
+    prisma._store.push(ticketRow('t-person'));
+
+    await service.findAll(tenantA.id, { query: 'priya' });
+
+    expect(prisma.ticket.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            {
+              customer: {
+                OR: [
+                  { displayName: { contains: 'priya', mode: 'insensitive' } },
+                  { email: { contains: 'priya', mode: 'insensitive' } },
+                ],
+              },
+            },
+          ]),
+        }),
+      }),
+    );
+  });
+
   it('findAll keeps the description preview for a title-only match (D-77)', async () => {
     prisma._store.push(
       ticketRow('t-title', {

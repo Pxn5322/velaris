@@ -143,9 +143,10 @@ export class TicketsService {
 
   /**
    * Where a phrase can match: the ticket title, any customer-visible CUSTOMER
-   * message of the linked thread, or a fragment of the ticket id (D-77).
-   * Prisma cannot run `contains` on a UUID column, so the id search uses one
-   * parameterized statement, still scoped by tenant.
+   * message of the linked thread, a fragment of the ticket id (D-77), or the
+   * customer's name and email (D-78). Prisma cannot run `contains` on a UUID
+   * column, so the id search uses one parameterized statement, still scoped by
+   * tenant.
    */
   private async searchConditions(
     tenantId: string,
@@ -162,6 +163,14 @@ export class TicketsService {
               body: { contains: query, mode: 'insensitive' },
             },
           },
+        },
+      },
+      {
+        customer: {
+          OR: [
+            { displayName: { contains: query, mode: 'insensitive' } },
+            { email: { contains: query, mode: 'insensitive' } },
+          ],
         },
       },
     ];
