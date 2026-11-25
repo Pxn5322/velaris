@@ -1,1 +1,7 @@
-{}
+{
+  "@nestjs/mau": "moderate",
+  "external-editor": "low",
+  "inquirer": "low",
+  "tmp": "high",
+  "undici": "high"
+}
