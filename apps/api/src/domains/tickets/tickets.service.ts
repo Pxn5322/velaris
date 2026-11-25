@@ -129,13 +129,18 @@ export class TicketsService {
             },
           },
         },
+        customer: { select: { displayName: true, email: true } },
       },
     });
     const matchPreviews = query
       ? await this.matchPreviews(tenantId, query, rows)
       : new Map<string, string>();
-    return rows.map(({ primaryConversation, ...ticket }) => ({
+    return rows.map(({ primaryConversation, customer, ...ticket }) => ({
       ...ticket,
+      // The queue names the person instead of an id slice, so a customer
+      // match is visible (D-79). The nested object stays out of the payload.
+      customerName: customer?.displayName ?? null,
+      customerEmail: customer?.email ?? null,
       descriptionPreview: previewOf(primaryConversation?.messages[0]?.body),
       matchPreview: matchPreviews.get(ticket.id) ?? null,
     }));
