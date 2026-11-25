@@ -96,12 +96,14 @@ describe('AuthorizationService', () => {
     });
 
     it('limits R-customer to its own records and a reply (T6.05)', () => {
-      // Reading its own tickets and replying in its own conversation are the
-      // whole customer surface. Ticket write, internal notes and governance
-      // stay denied, which is what AC-F05-3 and TH-05 pin.
+      // Reading its own tickets, opening one for itself and replying in its
+      // own conversation are the whole customer surface. Ticket write,
+      // internal notes and governance stay denied, which is what AC-F05-3
+      // and TH-05 pin; ticket.request only creates a row the server scopes.
       expect(service.permissionsFor('R-customer')).toEqual([
         PERMISSIONS.TICKET_READ,
         PERMISSIONS.MESSAGE_CREATE,
+        PERMISSIONS.TICKET_REQUEST,
       ]);
       expect(service.permissionsFor('R-customer')).not.toContain(
         PERMISSIONS.TICKET_WRITE,

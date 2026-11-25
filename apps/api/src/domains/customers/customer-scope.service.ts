@@ -61,4 +61,40 @@ export class CustomerScopeService {
     });
     return row ? { kind: 'customer', customerId: row.id } : { kind: 'none' };
   }
+
+  /**
+   * Customer row for a self-service writer, created on first use.
+   *
+   * A signed-in R-customer can open a ticket before any agent has recorded a
+   * customer row for the address. The row is always created inside the
+   * tenant the caller already passed the membership check for, and the email
+   * comes from the verified token, never from the request body.
+   */
+  async resolveOrCreateCustomer(
+    tenantId: string,
+    email: string,
+    displayName?: string,
+  ): Promise<string> {
+    const normalized = email.trim();
+    const existing = await this.prisma.customer.findFirst({
+      where: {
+        tenantId,
+        email: { equals: normalized, mode: 'insensitive' },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      return existing.id;
+    }
+    const created = await this.prisma.customer.create({
+      data: {
+        tenantId,
+        email: normalized,
+        displayName: displayName?.trim() || normalized,
+      },
+      select: { id: true },
+    });
+    return created.id;
+  }
 }

@@ -10,6 +10,8 @@ export class CreateTicketDto {
   title!: string;
   customerId!: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  /** Optional labels; the customer portal stores its category here. */
+  tags?: string[];
   /** Injected by the controller from the tenantId query scope. */
   tenantId!: string;
 }

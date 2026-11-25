@@ -80,7 +80,13 @@ const AGENT: readonly PermissionCode[] = [
  * holds note.internal.read or note.internal.write, and the controller denies
  * an INTERNAL note from a customer author.
  */
-const CUSTOMER: readonly PermissionCode[] = [P.TICKET_READ, P.MESSAGE_CREATE];
+const CUSTOMER: readonly PermissionCode[] = [
+  P.TICKET_READ,
+  P.MESSAGE_CREATE,
+  // A customer opens its own ticket; the server derives the customer row and
+  // the tenant, so this code never reaches another customer's data.
+  P.TICKET_REQUEST,
+];
 
 export const ROLE_PERMISSIONS: Record<
   CanonicalRole,

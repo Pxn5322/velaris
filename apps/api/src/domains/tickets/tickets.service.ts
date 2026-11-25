@@ -60,13 +60,15 @@ export class TicketsService {
     requireText(createTicketDto.tenantId, 'tenantId');
     const priority = createTicketDto.priority ?? 'MEDIUM';
     requireOneOf(priority, TICKET_PRIORITIES, 'priority');
+    const tags = normalizeTags(createTicketDto.tags);
 
     return this.prisma.ticket.create({
       data: {
         tenantId: createTicketDto.tenantId,
         customerId: createTicketDto.customerId,
-        title: createTicketDto.title,
+        title: createTicketDto.title.trim(),
         priority,
+        tags,
       },
     });
   }
@@ -290,6 +292,7 @@ type CreateTenantScopedCreate = CreateTicketDto & {
   customerId: string;
   tenantId: string;
   priority?: TicketPriority;
+  tags?: string[];
 };
 
 function requireText(value: string | undefined, field: string): void {
@@ -308,4 +311,34 @@ function requireOneOf<T extends string>(
       field + ' must be one of ' + allowed.join(', '),
     );
   }
+}
+
+/** Ticket labels: at most five short, trimmed, non-empty strings. */
+const MAX_TAGS = 5;
+const MAX_TAG_LENGTH = 40;
+
+function normalizeTags(value: unknown): string[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new BadRequestException('tags must be an array of strings');
+  }
+  if (value.length > MAX_TAGS) {
+    throw new BadRequestException(
+      'tags must hold at most ' + MAX_TAGS + ' values',
+    );
+  }
+  return value.map((tag) => {
+    if (typeof tag !== 'string' || tag.trim().length === 0) {
+      throw new BadRequestException('tags must hold non-empty strings');
+    }
+    const trimmed = tag.trim();
+    if (trimmed.length > MAX_TAG_LENGTH) {
+      throw new BadRequestException(
+        'each tag must be at most ' + MAX_TAG_LENGTH + ' characters',
+      );
+    }
+    return trimmed;
+  });
 }

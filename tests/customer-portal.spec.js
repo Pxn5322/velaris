@@ -342,4 +342,126 @@ test.describe("customer portal (J-03)", () => {
     await page.goto("/portal/conversations");
     await expect(page.getByTestId("portal-error")).toBeVisible();
   });
+
+  test("the support page names the real tenant and lists its own tickets", async ({
+    page,
+  }) => {
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route(/\/tickets\?tenantId=/, (route) =>
+      route.fulfill(
+        json([
+          {
+            id: "ticket-1111",
+            customerId: "customer-1",
+            title: "Printer on floor 3 is offline",
+            status: "OPEN",
+            priority: "MEDIUM",
+            tags: ["Hardware"],
+            createdAt: "2026-11-20T08:00:00Z",
+          },
+        ]),
+      ),
+    );
+
+    await page.goto("/portal");
+
+    await expect(page.getByTestId("portal-tenant-heading")).toHaveText(
+      "Welcome to Acme",
+    );
+    await expect(page.getByTestId("portal-ticket-title")).toHaveText(
+      "Printer on floor 3 is offline",
+    );
+    await expect(page.getByTestId("portal-ticket-row")).toHaveCount(1);
+    // The two demo rows of the old mock are gone.
+    await expect(page.getByText("Unable to configure SAML 2.0")).toHaveCount(0);
+    await expectNoSeriousA11yViolations(page, "customer support page");
+  });
+
+  test("a submitted ticket is persisted by the API and survives a reload", async ({
+    page,
+  }) => {
+    const stored = [];
+    const posted = [];
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route(/\/tickets\/self\?tenantId=/, async (route) => {
+      const body = route.request().postDataJSON();
+      posted.push({ url: route.request().url(), body });
+      const row = {
+        id: "ticket-2222",
+        customerId: "customer-1",
+        title: body.title,
+        status: "OPEN",
+        priority: body.priority ?? "MEDIUM",
+        tags: body.tags ?? [],
+        createdAt: "2026-11-20T09:00:00Z",
+      };
+      stored.push(row);
+      await route.fulfill(json(row, 201));
+    });
+    await page.route(/\/tickets\?tenantId=/, (route) =>
+      route.fulfill(json(stored)),
+    );
+
+    await page.goto("/portal");
+    await expect(page.getByTestId("portal-tickets-empty")).toBeVisible();
+
+    await page.getByRole("button", { name: "Submit New Ticket" }).click();
+    await page
+      .getByTestId("portal-ticket-title-input")
+      .fill("Cannot export my invoices");
+    await page.getByTestId("portal-ticket-submit").click();
+
+    await expect(page.getByTestId("portal-ticket-title")).toHaveText(
+      "Cannot export my invoices",
+    );
+    expect(posted).toHaveLength(1);
+    // The server derives the tenant and the customer, so the body carries
+    // neither: a client cannot choose whose ticket it writes.
+    expect(posted[0].url).toContain("tenantId=tenant-a");
+    expect(posted[0].body).not.toHaveProperty("customerId");
+    expect(posted[0].body).not.toHaveProperty("tenantId");
+
+    await page.reload();
+    await expect(page.getByTestId("portal-ticket-title")).toHaveText(
+      "Cannot export my invoices",
+    );
+    await expect(page.getByTestId("portal-ticket-row")).toHaveCount(1);
+  });
+
+  test("a rejected submission keeps the form open and adds no row", async ({
+    page,
+  }) => {
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route(/\/tickets\/self\?tenantId=/, (route) =>
+      route.fulfill(json({ message: "Forbidden" }, 403)),
+    );
+    await page.route(/\/tickets\?tenantId=/, (route) =>
+      route.fulfill(json([])),
+    );
+
+    await page.goto("/portal");
+    await page.getByRole("button", { name: "Submit New Ticket" }).click();
+    await page.getByTestId("portal-ticket-title-input").fill("Denied request");
+    await page.getByTestId("portal-ticket-submit").click();
+
+    await expect(page.getByTestId("portal-ticket-error")).toBeVisible();
+    await expect(page.getByTestId("portal-ticket-error")).toContainText(
+      "cannot open a support request",
+    );
+    await expect(page.getByTestId("portal-ticket-title-input")).toHaveValue(
+      "Denied request",
+    );
+    await page.getByTestId("portal-ticket-cancel").click();
+    await expect(page.getByTestId("portal-tickets-empty")).toBeVisible();
+    await expect(page.getByTestId("portal-ticket-row")).toHaveCount(0);
+  });
 });
