@@ -326,6 +326,12 @@ test.describe("customer portal (J-03)", () => {
 
     await page.goto("/portal/conversations");
     await expect(page.getByTestId("portal-empty")).toBeVisible();
+    // Not a dead end: the empty state leads back to the composer that starts
+    // a real conversation.
+    await expect(page.getByTestId("portal-start-conversation")).toHaveAttribute(
+      "href",
+      "/portal",
+    );
   });
 
   test("the conversations list shows the error state on API failure", async ({
@@ -426,12 +432,93 @@ test.describe("customer portal (J-03)", () => {
     expect(posted[0].url).toContain("tenantId=tenant-a");
     expect(posted[0].body).not.toHaveProperty("customerId");
     expect(posted[0].body).not.toHaveProperty("tenantId");
+    // No description was typed, so no conversation was started and no
+    // conversationId is sent.
+    expect(posted[0].body).not.toHaveProperty("conversationId");
 
     await page.reload();
     await expect(page.getByTestId("portal-ticket-title")).toHaveText(
       "Cannot export my invoices",
     );
     await expect(page.getByTestId("portal-ticket-row")).toHaveCount(1);
+  });
+
+  test("a described ticket starts a real conversation and links it", async ({
+    page,
+  }) => {
+    const conversationBodies = [];
+    const ticketBodies = [];
+    let stored = [];
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route(/\/conversations\/self\?tenantId=/, async (route) => {
+      conversationBodies.push(route.request().postDataJSON());
+      await route.fulfill(
+        json(
+          {
+            id: "conv-new",
+            customerId: "customer-1",
+            channel: "web",
+            status: "OPEN",
+            version: 0,
+            createdAt: "2026-11-20T09:00:00Z",
+          },
+          201,
+        ),
+      );
+    });
+    await page.route(/\/tickets\/self\?tenantId=/, async (route) => {
+      const body = route.request().postDataJSON();
+      ticketBodies.push(body);
+      const row = {
+        id: "ticket-3333",
+        customerId: "customer-1",
+        title: body.title,
+        status: "OPEN",
+        priority: body.priority ?? "MEDIUM",
+        tags: body.tags ?? [],
+        primaryConversationId: body.conversationId ?? null,
+        createdAt: "2026-11-20T09:00:00Z",
+      };
+      stored = [row];
+      await route.fulfill(json(row, 201));
+    });
+    await page.route(/\/tickets\?tenantId=/, (route) =>
+      route.fulfill(json(stored)),
+    );
+
+    await page.goto("/portal");
+    await page.getByRole("button", { name: "Submit New Ticket" }).click();
+    await page
+      .getByTestId("portal-ticket-title-input")
+      .fill("Invoice export fails");
+    await page
+      .getByTestId("portal-ticket-description")
+      .fill("Exporting November invoices returns a blank file.");
+    await page.getByTestId("portal-ticket-submit").click();
+
+    await expect(page.getByTestId("portal-ticket-title")).toContainText(
+      "Invoice export fails",
+    );
+    expect(conversationBodies).toHaveLength(1);
+    expect(conversationBodies[0]).toMatchObject({
+      channel: "web",
+      body: "Exporting November invoices returns a blank file.",
+    });
+    expect(ticketBodies).toHaveLength(1);
+    // The ticket carries the description by pointing at the thread that
+    // stored it, not by inventing a column the schema does not have.
+    expect(ticketBodies[0].conversationId).toBe("conv-new");
+    await expect(page.getByTestId("portal-ticket-conversation")).toHaveAttribute(
+      "href",
+      "/portal/conversations",
+    );
+    await expect(page.getByTestId("portal-conversations-link")).toHaveAttribute(
+      "href",
+      "/portal/conversations",
+    );
   });
 
   test("a rejected submission keeps the form open and adds no row", async ({

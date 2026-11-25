@@ -83,6 +83,8 @@ type FakeCustomer = {
 function fakeTicketPrisma(tickets: FakeTicket[]) {
   const store = [...tickets];
   const assignments: FakeTicket[] = [];
+  const conversations: { id: string; tenantId: string; customerId: string }[] =
+    [];
   const customers: FakeCustomer[] = [
     {
       id: 'customer-1',
@@ -190,9 +192,14 @@ function fakeTicketPrisma(tickets: FakeTicket[]) {
         return row;
       },
     },
+    conversation: {
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        conversations.find((c) => c.id === where.id) ?? null,
+    },
     _store: store,
     _assignments: assignments,
     _customers: customers,
+    _conversations: conversations,
   };
   return Object.assign(client, {
     $transaction: async (callback: (tx: typeof client) => unknown) =>
@@ -615,9 +622,6 @@ describe('Tickets routes (integration)', () => {
       .set('Authorization', 'Bearer valid-token')
       .send({
         title: 'Printer on floor 3 is offline',
-        // A client cannot choose whose ticket it writes, or which tenant.
-        customerId: 'customer-2',
-        tenantId: 'tenant-b',
         tags: ['Hardware'],
       });
 
@@ -647,6 +651,69 @@ describe('Tickets routes (integration)', () => {
       title: 'Printer on floor 3 is offline',
       customerId: 'customer-1',
     });
+  });
+
+  it('refuses a body tenantId that contradicts the query scope', async () => {
+    role = 'R-customer';
+
+    const res = await request(app.getHttpServer())
+      .post('/tickets/self?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ title: 'Wrong tenant', tenantId: 'tenant-b' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('Body tenantId must match');
+    expect(prismaFake._store).toHaveLength(0);
+  });
+
+  it('refuses a body customerId that is not the caller record', async () => {
+    role = 'R-customer';
+
+    const res = await request(app.getHttpServer())
+      .post('/tickets/self?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ title: 'Wrong customer', customerId: 'customer-2' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('Body customerId must match');
+    expect(prismaFake._store).toHaveLength(0);
+  });
+
+  it('accepts a body customerId that matches the caller record', async () => {
+    role = 'R-customer';
+
+    const res = await request(app.getHttpServer())
+      .post('/tickets/self?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ title: 'Own customer id', customerId: 'customer-1' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.customerId).toBe('customer-1');
+  });
+
+  it('links a conversation the caller owns and refuses a foreign one', async () => {
+    role = 'R-customer';
+    prismaFake._conversations.push(
+      { id: 'conv-own', tenantId: 'tenant-a', customerId: 'customer-1' },
+      { id: 'conv-foreign', tenantId: 'tenant-a', customerId: 'customer-2' },
+    );
+
+    const mine = await request(app.getHttpServer())
+      .post('/tickets/self?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ title: 'With description', conversationId: 'conv-own' });
+    expect(mine.status).toBe(201);
+    expect(mine.body.primaryConversationId).toBe('conv-own');
+
+    const foreign = await request(app.getHttpServer())
+      .post('/tickets/self?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        title: 'With foreign conversation',
+        conversationId: 'conv-foreign',
+      });
+    expect(foreign.status).toBe(400);
+    expect(foreign.body.message).toContain('conversationId must reference');
   });
 
   it('creates the customer row on the first self-service ticket', async () => {

@@ -62,6 +62,26 @@ export class TicketsService {
     requireOneOf(priority, TICKET_PRIORITIES, 'priority');
     const tags = normalizeTags(createTicketDto.tags);
 
+    // A linked conversation carries the customer's description, so it must be
+    // a conversation of the same customer in the same tenant; anything else
+    // is a client contradiction, not a lookup that may silently pass.
+    if (createTicketDto.primaryConversationId !== undefined) {
+      requireText(createTicketDto.primaryConversationId, 'conversationId');
+      const conversation = await this.prisma.conversation.findUnique({
+        where: { id: createTicketDto.primaryConversationId },
+        select: { tenantId: true, customerId: true },
+      });
+      if (
+        !conversation ||
+        conversation.tenantId !== createTicketDto.tenantId ||
+        conversation.customerId !== createTicketDto.customerId
+      ) {
+        throw new BadRequestException(
+          'conversationId must reference your own conversation in this tenant',
+        );
+      }
+    }
+
     return this.prisma.ticket.create({
       data: {
         tenantId: createTicketDto.tenantId,
@@ -69,6 +89,9 @@ export class TicketsService {
         title: createTicketDto.title.trim(),
         priority,
         tags,
+        ...(createTicketDto.primaryConversationId
+          ? { primaryConversationId: createTicketDto.primaryConversationId }
+          : {}),
       },
     });
   }
@@ -293,6 +316,7 @@ type CreateTenantScopedCreate = CreateTicketDto & {
   tenantId: string;
   priority?: TicketPriority;
   tags?: string[];
+  primaryConversationId?: string;
 };
 
 function requireText(value: string | undefined, field: string): void {

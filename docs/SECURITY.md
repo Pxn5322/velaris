@@ -52,6 +52,7 @@ Canonical roles are defined in `docs/PRD.md` section 2. This table is a baseline
 | Manage tenant users/roles | deny | platform scope only | own tenant with `user.create`, `user.disable`, `role.manage` | deny by default | deny | API scopes only |
 | Read/update tickets | deny | only through explicit support/governance permission | own tenant with relevant ticket permission | assigned/permitted tenant tickets | own customer-visible tickets only | explicit API scope only |
 | Open a ticket for its own customer record | deny | deny (platform scope uses the tenant ticket routes) | deny (uses `ticket.write` on the tenant ticket routes) | deny (uses `ticket.write` on the tenant ticket routes) | own row only with `ticket.request` | deny |
+| Start a conversation for its own customer record | deny | deny (platform scope uses the tenant conversation routes) | deny (uses `ticket.write` on the tenant conversation routes) | deny (uses `ticket.write` on the tenant conversation routes) | own row only with `conversation.request` | deny |
 | Read/write internal notes | deny | explicit audit/support permission only | own tenant if granted | permitted tickets only | deny | explicit integration scope only |
 | Manage knowledge | deny | platform metadata only unless explicitly granted | own tenant with knowledge permission | read only if granted | no direct source access | explicit API scope only |
 | Configure/publish agents | deny | platform governance only unless explicit grant | own tenant with `ai.agent.*` permissions | deny by default | deny | explicit API scope only |

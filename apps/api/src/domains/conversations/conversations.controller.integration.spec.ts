@@ -102,6 +102,21 @@ function fakePrisma(conversations: FakeRow[], messages: FakeRow[]) {
         where.id === 'customer-1'
           ? { id: 'customer-1', tenantId: 'tenant-a' }
           : null,
+      create: async ({
+        data,
+      }: {
+        data: { tenantId: string; email: string; displayName: string };
+      }) => {
+        const row = {
+          id: 'customer-new-' + (customerRows.length + 1),
+          tenantId: data.tenantId,
+          email: data.email,
+          displayName: data.displayName,
+          deletedAt: null,
+        };
+        customerRows.push(row);
+        return { id: row.id };
+      },
       findFirst: async ({
         where,
       }: {
@@ -610,5 +625,77 @@ describe('Conversations routes (integration)', () => {
       .set('Authorization', 'Bearer valid-token')
       .send({ status: 'RESOLVED', expectedVersion: 0 });
     expect(stale.status).toBe(409);
+  });
+
+  it('lets a customer start a conversation for its own record', async () => {
+    role = 'R-customer';
+
+    const res = await request(app.getHttpServer())
+      .post('/conversations/self?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ channel: 'web' });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      tenantId: 'tenant-a',
+      customerId: 'customer-1',
+      channel: 'web',
+      status: 'OPEN',
+    });
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'conversation.created',
+        tenantId: 'tenant-a',
+        actorId: 'sub-123',
+      }),
+    );
+  });
+
+  it('stores the first customer message with the new conversation', async () => {
+    role = 'R-customer';
+
+    const res = await request(app.getHttpServer())
+      .post('/conversations/self?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        channel: 'web',
+        body: 'My invoice export returns a blank file.',
+      });
+
+    expect(res.status).toBe(201);
+    expect(typeof res.body.firstMessageId).toBe('string');
+    const stored = prismaFake._msgStore.filter(
+      (row) => row.id === res.body.firstMessageId,
+    );
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      conversationId: res.body.id,
+      body: 'My invoice export returns a blank file.',
+      authorType: 'CUSTOMER',
+      visibility: 'CUSTOMER_VISIBLE',
+    });
+  });
+
+  it('refuses the self-service conversation route to a non-customer role', async () => {
+    role = 'R-agent';
+
+    const res = await request(app.getHttpServer())
+      .post('/conversations/self?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ channel: 'web' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('refuses a body customerId that is not the caller record', async () => {
+    role = 'R-customer';
+
+    const res = await request(app.getHttpServer())
+      .post('/conversations/self?tenantId=tenant-a')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ channel: 'web', customerId: 'customer-2' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('Body customerId must match');
   });
 });

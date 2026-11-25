@@ -264,9 +264,16 @@ export default function PortalConversationsPage() {
       )}
 
       {phase === "empty" && (
-        <p className="text-slate-400" data-testid="portal-empty">
-          You have no conversations yet. Start one from the support page.
-        </p>
+        <div className="text-slate-400" data-testid="portal-empty">
+          <p>You have no conversations yet.</p>
+          <Link
+            href="/portal"
+            className="mt-2 inline-block underline"
+            data-testid="portal-start-conversation"
+          >
+            Open the support page to start one
+          </Link>
+        </div>
       )}
 
       {phase === "ready" && (
