@@ -10,11 +10,16 @@
  *
  * The page never invents data: a failed load shows an error state, and a
  * failed submit keeps the form open with a message instead of adding a row.
- * Ticket rows carry no description column, so the form collects a subject and
- * a category only; free-form customer text belongs to conversations.
+ *
+ * A ticket row has no description column, so free-form text becomes a real
+ * conversation: `POST /conversations/self` opens the thread with the
+ * customer's description as its first message, and the ticket links it as
+ * `primaryConversationId`. `/portal/conversations` is therefore reachable
+ * and populated instead of a dead end.
  */
 
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { LifeBuoy, Search, PlusCircle, FileText, Send, X } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { useRole } from "@/context/RoleContext";
@@ -27,6 +32,8 @@ interface CustomerTicket {
   priority: string;
   tags?: string[];
   createdAt: string;
+  /** Conversation holding the customer's description, when one was started. */
+  primaryConversationId?: string | null;
 }
 
 interface TenantEntry {
@@ -54,6 +61,7 @@ export function CustomerPortalView() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newCategory, setNewCategory] = useState("General");
+  const [newDescription, setNewDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
@@ -139,6 +147,21 @@ export function CustomerPortalView() {
     setSubmitting(true);
     setSubmitError(null);
     try {
+      const description = newDescription.trim();
+      // The description is a real conversation, not a ticket column: the
+      // server stores it as the thread's first customer message and the
+      // ticket points at that thread.
+      let conversationId: string | undefined;
+      if (description.length > 0) {
+        const conversation = await apiFetch<{ id: string }>(
+          `/conversations/self?tenantId=${encodeURIComponent(tenantId)}`,
+          {
+            method: "POST",
+            body: JSON.stringify({ channel: "web", body: description }),
+          },
+        );
+        conversationId = conversation.id;
+      }
       await apiFetch<CustomerTicket>(
         `/tickets/self?tenantId=${encodeURIComponent(tenantId)}`,
         {
@@ -147,11 +170,13 @@ export function CustomerPortalView() {
             title,
             priority: "MEDIUM",
             tags: [newCategory],
+            ...(conversationId ? { conversationId } : {}),
           }),
         },
       );
       setNewTitle("");
       setNewCategory("General");
+      setNewDescription("");
       setIsModalOpen(false);
       // Reload instead of pushing a local row: the list is server state.
       await load();
@@ -215,12 +240,26 @@ export function CustomerPortalView() {
               Search our AI knowledge base or submit a support request directly.
             </p>
           </div>
-          <button
-            onClick={openComposer}
-            className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg transition"
-          >
-            <PlusCircle className="w-4 h-4" /> Submit New Ticket
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/portal/conversations"
+              data-testid="portal-conversations-link"
+              className="px-3 py-2 border text-xs font-bold rounded-xl transition"
+              style={{
+                borderColor: "var(--card-border)",
+                color: "var(--text-main)",
+                background: isLight ? "#FFFFFF" : "rgba(30,41,59,0.5)",
+              }}
+            >
+              My conversations
+            </Link>
+            <button
+              onClick={openComposer}
+              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg transition"
+            >
+              <PlusCircle className="w-4 h-4" /> Submit New Ticket
+            </button>
+          </div>
         </div>
 
         {/* AI Deflection Widget */}
@@ -385,6 +424,16 @@ export function CustomerPortalView() {
                         data-testid="portal-ticket-title"
                       >
                         {t.title}
+                        {t.primaryConversationId && (
+                          <Link
+                            href="/portal/conversations"
+                            className="ml-2 text-[10px] font-bold underline"
+                            style={{ color: "var(--accent-cyan)" }}
+                            data-testid="portal-ticket-conversation"
+                          >
+                            Conversation
+                          </Link>
+                        )}
                       </td>
                       <td className="p-3">
                         <span
@@ -499,6 +548,32 @@ export function CustomerPortalView() {
                   <option value="API Integration">API Integration</option>
                   <option value="General">General Inquiries</option>
                 </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="portal-ticket-description"
+                  className="block text-xs font-mono uppercase mb-1 font-bold"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Description (optional)
+                </label>
+                <textarea
+                  id="portal-ticket-description"
+                  data-testid="portal-ticket-description"
+                  rows={3}
+                  maxLength={4000}
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="What happened? This opens a conversation with our team."
+                  className={`w-full border rounded-lg p-2.5 text-xs text-heading focus:outline-none ${isLight ? "bg-white border-slate-300" : "bg-slate-900 border-slate-700"}`}
+                />
+                <p
+                  className="text-[10px] mt-1"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Your description starts a conversation you can follow at My
+                  conversations.
+                </p>
               </div>
               {submitError && (
                 <p

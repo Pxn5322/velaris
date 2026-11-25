@@ -58,7 +58,10 @@ import {
   type AiReason,
   type AiRuntimeResult,
 } from '../ai/ai-runtime.service.js';
-import { CreateConversationDto } from './dto/create-conversation.dto.js';
+import {
+  CreateConversationDto,
+  CreateOwnConversationDto,
+} from './dto/create-conversation.dto.js';
 import { SendMessageDto } from './dto/send-message.dto.js';
 import { UpdateConversationDto } from './dto/update-conversation.dto.js';
 import { ConversationsService } from './conversations.service.js';
@@ -118,6 +121,69 @@ export class ConversationsController {
       metadata: { channel: conversation.channel },
     });
     return conversation;
+  }
+
+  /**
+   * Self-service conversation start (T2.04 follow-up). Same boundary as
+   * `POST /tickets/self`: only an R-customer, only for the customer row its
+   * verified email resolves to, and a contradicting body customerId is a 400
+   * instead of being ignored. The optional first message lets the portal
+   * carry the customer's description into a real thread.
+   */
+  @Post('self')
+  @RequirePermission(PERMISSIONS.CONVERSATION_REQUEST)
+  async createOwn(
+    @Query('tenantId') tenantId: string,
+    @Req() request: AuthedRequest,
+    @Body() body: CreateOwnConversationDto,
+  ) {
+    await this.requireTenantScope(request, tenantId);
+    if (request.role !== 'R-customer') {
+      throw new ForbiddenException(
+        'Only a customer can start a self-service conversation',
+      );
+    }
+    const email = request.user?.email;
+    if (!email) {
+      throw new ForbiddenException(
+        'A verified email is required to start a conversation',
+      );
+    }
+    const customerId = await this.scope.resolveOrCreateCustomer(
+      tenantId,
+      email,
+      email,
+    );
+    if (body.customerId !== undefined && body.customerId !== customerId) {
+      throw new BadRequestException(
+        "Body customerId must match the caller's customer record",
+      );
+    }
+    const conversation = await this.conversations.createConversation(
+      tenantId,
+      customerId,
+      typeof body.channel === 'string' && body.channel.trim().length > 0
+        ? body.channel.trim()
+        : 'web',
+    );
+    const firstMessage =
+      typeof body.body === 'string' && body.body.trim().length > 0
+        ? await this.conversations.sendMessage(tenantId, conversation.id, {
+            body: body.body,
+            authorType: 'CUSTOMER',
+          })
+        : null;
+    await this.audit.record({
+      action: 'conversation.created',
+      resourceType: 'conversation',
+      resourceId: conversation.id,
+      tenantId,
+      actorId: request.user?.subject,
+      metadata: { channel: conversation.channel, via: 'customer_portal' },
+    });
+    return firstMessage
+      ? { ...conversation, firstMessageId: firstMessage.id }
+      : conversation;
   }
 
   @Get()

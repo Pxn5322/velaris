@@ -104,6 +104,7 @@ describe('AuthorizationService', () => {
         PERMISSIONS.TICKET_READ,
         PERMISSIONS.MESSAGE_CREATE,
         PERMISSIONS.TICKET_REQUEST,
+        PERMISSIONS.CONVERSATION_REQUEST,
       ]);
       expect(service.permissionsFor('R-customer')).not.toContain(
         PERMISSIONS.TICKET_WRITE,

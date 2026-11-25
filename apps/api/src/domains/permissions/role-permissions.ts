@@ -86,6 +86,9 @@ const CUSTOMER: readonly PermissionCode[] = [
   // A customer opens its own ticket; the server derives the customer row and
   // the tenant, so this code never reaches another customer's data.
   P.TICKET_REQUEST,
+  // A customer starts its own conversation from the portal; the server
+  // derives the customer row, so this never opens another customer's thread.
+  P.CONVERSATION_REQUEST,
 ];
 
 export const ROLE_PERMISSIONS: Record<

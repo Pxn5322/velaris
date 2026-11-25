@@ -105,6 +105,13 @@ export class TicketsController {
         'Only a customer can open a self-service ticket',
       );
     }
+    // Same contract as POST /tickets: a body tenantId may confirm the query
+    // scope but never contradict it. Refused before any lookup or write.
+    if (body.tenantId !== undefined && body.tenantId !== tenantId) {
+      throw new BadRequestException(
+        'Body tenantId must match the tenantId query parameter',
+      );
+    }
     const email = request.user?.email;
     if (!email) {
       // Deny by default: no verified address means no customer row to own it.
@@ -117,12 +124,18 @@ export class TicketsController {
       email,
       email,
     );
+    if (body.customerId !== undefined && body.customerId !== customerId) {
+      throw new BadRequestException(
+        "Body customerId must match the caller's customer record",
+      );
+    }
     const created = await this.ticketsService.create({
       title: body.title,
       priority: body.priority,
       tags: body.tags,
       customerId,
       tenantId,
+      primaryConversationId: body.conversationId,
     });
     await this.audit.record({
       action: 'ticket.created',

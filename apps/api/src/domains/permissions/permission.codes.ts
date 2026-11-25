@@ -24,6 +24,12 @@ export const PERMISSIONS = {
    */
   TICKET_REQUEST: 'ticket.request',
   /**
+   * Start a conversation for the caller's own customer record (T2.04
+   * follow-up). Like ticket.request it only creates a row the server scopes:
+   * the customer and tenant come from the verified identity, never the body.
+   */
+  CONVERSATION_REQUEST: 'conversation.request',
+  /**
    * Post a message into a conversation the caller may see (API-13, T6.05).
    * Agents hold it through their ticket permissions; R-customer holds it for
    * its own customer-visible conversation only, and the ownership check in

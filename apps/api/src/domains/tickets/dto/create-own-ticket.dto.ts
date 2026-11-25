@@ -12,4 +12,16 @@ export class CreateOwnTicketDto {
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   /** Free-form labels; the portal sends its category as the first tag. */
   tags?: string[];
+  /**
+   * Optional echo of the scope the caller believes it writes. A value that
+   * contradicts the resolved tenant or the caller's customer row is a 400,
+   * never silently ignored.
+   */
+  tenantId?: string;
+  customerId?: string;
+  /**
+   * Optional conversation holding the customer's description. It must belong
+   * to the caller's own customer row in the same tenant.
+   */
+  conversationId?: string;
 }
