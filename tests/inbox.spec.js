@@ -396,6 +396,65 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     );
   });
 
+  test("shows the linked conversation's first message as the ticket description", async ({
+    page,
+  }) => {
+    const linkedTimeline = {
+      id: "conv-linked",
+      customerId: "customer-1",
+      channel: "web",
+      status: "OPEN",
+      version: 0,
+      createdAt: "2026-11-20T09:00:00Z",
+      messages: [
+        {
+          id: "msg-desc",
+          body: "Exporting November invoices returns a blank file.",
+          authorType: "CUSTOMER",
+          visibility: "CUSTOMER_VISIBLE",
+          createdAt: "2026-11-20T09:00:00Z",
+        },
+      ],
+    };
+    const requests = [];
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route(/\/tickets\?tenantId=/, (route) =>
+      route.fulfill(
+        json([
+          { ...tickets[0], primaryConversationId: "conv-linked" },
+          tickets[1],
+        ]),
+      ),
+    );
+    await page.route("**/tickets/assignees*", (route) =>
+      route.fulfill(json(assignees)),
+    );
+    // The customer has an older conversation too; the link must win.
+    await page.route("**/conversations?*", (route) => {
+      requests.push(route.request().url());
+      return route.fulfill(json(conversations));
+    });
+    await page.route("**/conversations/conv-linked?*", (route) => {
+      requests.push(route.request().url());
+      return route.fulfill(json(linkedTimeline));
+    });
+
+    await page.goto("/inbox");
+    await page.getByTestId("inbox-ticket").first().click();
+
+    await expect(page.getByTestId("inbox-ticket-description")).toContainText(
+      "Exporting November invoices returns a blank file.",
+    );
+    await expect(page.getByTestId("inbox-timeline")).toContainText(
+      "Exporting November invoices returns a blank file.",
+    );
+    expect(requests.some((url) => url.includes("conv-linked"))).toBe(true);
+    expect(requests.some((url) => url.includes("conv-1"))).toBe(false);
+  });
+
   test("offers the composer when a ticket has no conversation yet", async ({
     page,
   }) => {

@@ -64,6 +64,8 @@ interface Ticket {
   version: number;
   assigneeMembershipId: string | null;
   updatedAt: string;
+  /** Conversation holding the customer's description, when one was started. */
+  primaryConversationId?: string | null;
 }
 
 interface Message {
@@ -319,19 +321,26 @@ export default function InboxPage() {
       }
       const tenantQuery = `tenantId=${encodeURIComponent(scope.tenantId)}`;
       try {
-        const conversations = await apiFetch<Conversation[]>(
-          `/conversations?${tenantQuery}`,
-        );
-        const own = conversations.find(
-          (conversation) => conversation.customerId === ticket.customerId,
-        );
-        if (!own) {
+        // The ticket names the thread that carries the customer's description
+        // (D-75). Read that one first; a customer may have older threads, so a
+        // match by customerId alone can show the wrong conversation.
+        let ownId = ticket.primaryConversationId ?? null;
+        if (!ownId) {
+          const conversations = await apiFetch<Conversation[]>(
+            `/conversations?${tenantQuery}`,
+          );
+          ownId =
+            conversations.find(
+              (conversation) => conversation.customerId === ticket.customerId,
+            )?.id ?? null;
+        }
+        if (!ownId) {
           setTimeline("empty");
           return;
         }
-        setConversationId(own.id);
+        setConversationId(ownId);
         const detail = await apiFetch<Conversation & { messages: Message[] }>(
-          `/conversations/${own.id}?${tenantQuery}`,
+          `/conversations/${ownId}?${tenantQuery}`,
         );
         setMessages(detail.messages);
         setTimeline("ready");
@@ -598,6 +607,16 @@ export default function InboxPage() {
       : leftOpen || rightOpen
         ? "lg:col-span-9"
         : "lg:col-span-12";
+
+  // The linked thread's first customer message is the description the customer
+  // typed in the portal (D-75). Other tickets keep the timeline alone.
+  const descriptionMessage = selected?.primaryConversationId
+    ? (messages.find(
+        (message) =>
+          message.authorType === "CUSTOMER" &&
+          message.visibility !== "INTERNAL",
+      ) ?? null)
+    : null;
 
   return (
     <section className="flex-1 flex flex-col gap-4" data-testid="inbox">
@@ -1051,6 +1070,20 @@ export default function InboxPage() {
                       tickets.
                     </p>
                   </div>
+
+                  {descriptionMessage && (
+                    <div
+                      className="rounded-xl border border-[var(--card-border)] bg-[var(--pill-bg)] p-3"
+                      data-testid="inbox-ticket-description"
+                    >
+                      <h3 className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted-custom mb-1">
+                        Customer description
+                      </h3>
+                      <p className="text-sm text-heading whitespace-pre-wrap">
+                        {descriptionMessage.body}
+                      </p>
+                    </div>
+                  )}
 
                   <div>
                     <h3 className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted-custom mb-2">
