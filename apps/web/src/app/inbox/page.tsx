@@ -175,6 +175,35 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+/**
+ * Marks each case-insensitive match of `needle` inside `text`. The queue
+ * filter and this marker read the same needle, so a row never shows a
+ * highlight for text it was not matched on. The original spelling is kept.
+ */
+function Highlight({ text, needle }: { text: string; needle: string }) {
+  if (!needle) return <>{text}</>;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = text.split(new RegExp(`(${escaped})`, "gi"));
+  return (
+    <>
+      {parts.map((part, index) =>
+        part.toLowerCase() === needle.toLowerCase() ? (
+          <mark
+            key={index}
+            data-testid="inbox-match"
+            className="bg-transparent font-bold"
+            style={{ color: "var(--accent-cyan)" }}
+          >
+            {part}
+          </mark>
+        ) : (
+          <span key={index}>{part}</span>
+        ),
+      )}
+    </>
+  );
+}
+
 type Phase = "loading" | "denied" | "error" | "ready";
 type Tab = "all" | "mine";
 type TimelineState = "idle" | "loading" | "empty" | "error" | "ready";
@@ -185,6 +214,19 @@ const STATUS_ACTIONS = [
   "PENDING_CUSTOMER",
   "RESOLVED",
   "CLOSED",
+] as const;
+
+/** Finished statuses leave the triage queue; the queue defaults to active work. */
+const INACTIVE_STATUSES = new Set(["RESOLVED", "CLOSED"]);
+
+const STATUS_FILTERS = [
+  { value: "ACTIVE", label: "Active work" },
+  { value: "ALL", label: "All Status" },
+  { value: "OPEN", label: "Open" },
+  { value: "IN_PROGRESS", label: "In progress" },
+  { value: "PENDING_CUSTOMER", label: "Pending customer" },
+  { value: "RESOLVED", label: "Resolved" },
+  { value: "CLOSED", label: "Closed" },
 ] as const;
 
 export default function InboxPage() {
@@ -201,6 +243,7 @@ export default function InboxPage() {
   const [scope, setScope] = useState<TenantEntry | null>(null);
   const [query, setQuery] = useState("");
   const [priority, setPriority] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState("ACTIVE");
   const [rowsPerPage, setRowsPerPage] = useState(3);
   const [page, setPage] = useState(1);
   const [leftOpen, setLeftOpen] = useState(true);
@@ -571,6 +614,8 @@ export default function InboxPage() {
     }
   };
 
+  const searchNeedle = query.trim();
+
   const visibleTickets = tickets.filter((ticket) => {
     if (
       tab === "mine" &&
@@ -579,8 +624,15 @@ export default function InboxPage() {
     ) {
       return false;
     }
+    // Active work is the default so resolved and closed tickets do not crowd
+    // triage; an explicit status keeps every ticket reachable.
+    if (statusFilter === "ACTIVE") {
+      if (INACTIVE_STATUSES.has(ticket.status)) return false;
+    } else if (statusFilter !== "ALL" && ticket.status !== statusFilter) {
+      return false;
+    }
     if (priority !== "ALL" && ticket.priority !== priority) return false;
-    const needle = query.trim().toLowerCase();
+    const needle = searchNeedle.toLowerCase();
     if (!needle) return true;
     // The customer's own words are searchable too: an agent can find a ticket
     // by the phrase the customer used, not only by its subject or id.
@@ -770,6 +822,27 @@ export default function InboxPage() {
 
                 <div className="grid grid-cols-2 gap-1.5 text-[10px]">
                   <select
+                    value={statusFilter}
+                    onChange={(event) => {
+                      setStatusFilter(event.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Filter by status"
+                    data-testid="inbox-status"
+                    className="col-span-2 rounded-lg border px-1.5 py-1 text-heading focus:outline-none focus:border-blue-600"
+                    style={{
+                      background: "var(--input-bg)",
+                      borderColor: "var(--input-border)",
+                    }}
+                  >
+                    {STATUS_FILTERS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
                     value={priority}
                     onChange={(event) => {
                       setPriority(event.target.value);
@@ -889,14 +962,17 @@ export default function InboxPage() {
                         </span>
                       </span>
                       <span className="block text-xs font-semibold text-heading truncate">
-                        {ticket.title}
+                        <Highlight text={ticket.title} needle={searchNeedle} />
                       </span>
                       {ticket.descriptionPreview && (
                         <span
                           className="mt-1 block text-[10px] leading-snug text-muted-custom line-clamp-2"
                           data-testid="inbox-ticket-preview"
                         >
-                          {ticket.descriptionPreview}
+                          <Highlight
+                            text={ticket.descriptionPreview}
+                            needle={searchNeedle}
+                          />
                         </span>
                       )}
                       <span className="block text-[10px] text-muted-custom mt-1 font-bold">
