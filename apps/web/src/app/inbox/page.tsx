@@ -70,6 +70,9 @@ interface Ticket {
   descriptionPreview?: string | null;
   /** First customer message of that conversation that holds the search phrase. */
   matchPreview?: string | null;
+  /** Customer label for the queue row (D-79). */
+  customerName?: string | null;
+  customerEmail?: string | null;
 }
 
 interface Message {
@@ -1030,10 +1033,29 @@ export default function InboxPage() {
                             <Highlight text={preview} needle={searchNeedle} />
                           </span>
                         )}
-                        <span className="block text-[10px] text-muted-custom mt-1 font-bold">
-                          {ticket.customerId.slice(0, 8)} •{" "}
-                          {timeAgo(ticket.updatedAt)}
+                        <span className="mt-1 block text-[10px] font-bold text-muted-custom truncate">
+                          <span data-testid="inbox-ticket-customer">
+                            <Highlight
+                              text={
+                                ticket.customerName ??
+                                ticket.customerId.slice(0, 8)
+                              }
+                              needle={searchNeedle}
+                            />
+                          </span>{" "}
+                          • {timeAgo(ticket.updatedAt)}
                         </span>
+                        {ticket.customerEmail && (
+                          <span
+                            className="block text-[10px] text-muted-custom truncate"
+                            data-testid="inbox-ticket-customer-email"
+                          >
+                            <Highlight
+                              text={ticket.customerEmail}
+                              needle={searchNeedle}
+                            />
+                          </span>
+                        )}
                       </button>
                     );
                   })

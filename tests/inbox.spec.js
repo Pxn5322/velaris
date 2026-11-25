@@ -703,14 +703,19 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
       const url = new URL(route.request().url());
       searchRequests.push(url.search);
       const needle = (url.searchParams.get("q") ?? "").toLowerCase();
-      const matches = tickets.filter((ticket) => {
+      // Each row carries the person, the same as GET /tickets (D-79).
+      const rows = tickets.map((ticket) => ({
+        ...ticket,
+        customerName: people[ticket.customerId].name,
+        customerEmail: people[ticket.customerId].email,
+      }));
+      const matches = rows.filter((row) => {
         if (!needle) return true;
-        const person = people[ticket.customerId];
         return (
-          ticket.title.toLowerCase().includes(needle) ||
-          ticket.id.toLowerCase().includes(needle) ||
-          person.name.toLowerCase().includes(needle) ||
-          person.email.toLowerCase().includes(needle)
+          row.title.toLowerCase().includes(needle) ||
+          row.id.toLowerCase().includes(needle) ||
+          row.customerName.toLowerCase().includes(needle) ||
+          row.customerEmail.toLowerCase().includes(needle)
         );
       });
       return route.fulfill(json(matches));
@@ -722,20 +727,54 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     const search = page.getByTestId("inbox-search");
     await expect(rows).toHaveCount(2);
 
-    // Neither subject holds the person, so only the customer matches.
+    // Neither subject holds the person, so only the customer matches, and the
+    // row names the person instead of an opaque id slice.
+    await expect(rows.first().getByTestId("inbox-ticket-customer")).toHaveText(
+      "Jordan Ellis",
+    );
+    await expect(
+      rows.nth(1).getByTestId("inbox-ticket-customer-email"),
+    ).toHaveText("priya@example.test");
+
     await search.fill("Priya");
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText("Other customer ticket");
+    await expect(rows.first().getByTestId("inbox-ticket-customer")).toHaveText(
+      "Priya Raman",
+    );
+    // The name match is visible, so the agent sees why the row matched.
+    await expect(
+      rows
+        .first()
+        .getByTestId("inbox-ticket-customer")
+        .getByTestId("inbox-match"),
+    ).toHaveText("Priya");
 
-    // A fragment of the email address finds the same ticket.
+    // A fragment of the email address finds the same ticket, and the email
+    // highlight proves the match.
     await search.fill("northstar.test");
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText("Refund not received");
+    await expect(
+      rows.first().getByTestId("inbox-ticket-customer-email"),
+    ).toHaveText("jordan.ellis@northstar.test");
+    await expect(
+      rows
+        .first()
+        .getByTestId("inbox-ticket-customer-email")
+        .getByTestId("inbox-match"),
+    ).toHaveText("northstar.test");
 
-    // A fragment of the family name finds it too.
+    // A fragment of the family name finds it too, highlighted in the name.
     await search.fill("ellis");
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText("Refund not received");
+    await expect(
+      rows
+        .first()
+        .getByTestId("inbox-ticket-customer")
+        .getByTestId("inbox-match"),
+    ).toHaveText("Ellis");
     // The phrase reaches the API as `q` once typing settles.
     await expect
       .poll(() => searchRequests.some((value) => value.includes("q=ellis")))

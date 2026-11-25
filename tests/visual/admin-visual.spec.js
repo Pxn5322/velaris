@@ -183,6 +183,22 @@ const auditTraces = [
   },
 ];
 
+// Customer labels the queue row shows (D-79).
+const customerLabels = {
+  "customer-1": {
+    customerName: "Jordan Ellis",
+    customerEmail: "jordan.ellis@northstar.test",
+  },
+  "customer-2": {
+    customerName: "Priya Raman",
+    customerEmail: "priya@example.test",
+  },
+  "customer-3": {
+    customerName: "Mateo Silva",
+    customerEmail: "mateo.silva@example.test",
+  },
+};
+
 const tickets = [
   [
     "ticket-1",
@@ -211,6 +227,7 @@ const tickets = [
 ].map(([id, customerId, title, status, priority, index]) => ({
   id,
   customerId,
+  ...customerLabels[customerId],
   title,
   status,
   priority,

@@ -47,6 +47,8 @@ type TicketRow = {
   primaryConversationId?: string | null;
   /** The nested read findAll asks Prisma for (D-75 queue preview). */
   primaryConversation?: { messages: { body: string }[] } | null;
+  /** The customer label the queue row shows (D-79). */
+  customer?: { displayName: string; email: string | null };
 };
 
 type MessageRow = { conversationId: string; body: string };
@@ -205,6 +207,10 @@ function ticketRow(id: string, overrides: Partial<TicketRow> = {}): TicketRow {
     tenantId: tenantA.id,
     customerId: 'customer-1',
     primaryConversationId: null,
+    customer: {
+      displayName: 'Jordan Ellis',
+      email: 'jordan.ellis@northstar.test',
+    },
     title: 'Fixture ticket',
     status: 'OPEN',
     priority: 'MEDIUM',
@@ -310,9 +316,28 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
               },
             },
           },
+          customer: { select: { displayName: true, email: true } },
         },
       }),
     );
+  });
+
+  it('findAll gives the queue each row customer name and email (D-79)', async () => {
+    prisma._store.push(
+      ticketRow('t-person', {
+        customer: {
+          displayName: 'Priya Raman',
+          email: 'priya@example.test',
+        },
+      }),
+    );
+
+    const [row] = await service.findAll(tenantA.id);
+
+    expect(row!.customerName).toBe('Priya Raman');
+    expect(row!.customerEmail).toBe('priya@example.test');
+    // The nested customer object never reaches the queue payload.
+    expect(row).not.toHaveProperty('customer');
   });
 
   it('findAll cuts a long description preview to a triage-sized line', async () => {
