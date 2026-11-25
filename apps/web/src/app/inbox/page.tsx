@@ -582,9 +582,12 @@ export default function InboxPage() {
     if (priority !== "ALL" && ticket.priority !== priority) return false;
     const needle = query.trim().toLowerCase();
     if (!needle) return true;
+    // The customer's own words are searchable too: an agent can find a ticket
+    // by the phrase the customer used, not only by its subject or id.
     return (
       ticket.title.toLowerCase().includes(needle) ||
-      ticket.id.toLowerCase().includes(needle)
+      ticket.id.toLowerCase().includes(needle) ||
+      (ticket.descriptionPreview ?? "").toLowerCase().includes(needle)
     );
   });
 
@@ -754,7 +757,7 @@ export default function InboxPage() {
                       setQuery(event.target.value);
                       setPage(1);
                     }}
-                    placeholder="Search ID or subject..."
+                    placeholder="Search ID, subject or description..."
                     aria-label="Search tickets"
                     data-testid="inbox-search"
                     className="w-full rounded-xl border px-2.5 py-1.5 pl-8 text-[11px] text-heading focus:outline-none focus:border-blue-600"
