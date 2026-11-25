@@ -680,6 +680,72 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     );
   });
 
+  test("finds a ticket by the customer's name or email", async ({ page }) => {
+    // The queue receives tickets, not customer rows, so the stub holds the
+    // tenant's customer records and answers like the server's search (D-78).
+    const people = {
+      "customer-1": {
+        name: "Jordan Ellis",
+        email: "jordan.ellis@northstar.test",
+      },
+      "customer-2": { name: "Priya Raman", email: "priya@example.test" },
+    };
+    const searchRequests = [];
+
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route("**/tickets/assignees*", (route) =>
+      route.fulfill(json(assignees)),
+    );
+    await page.route(/\/tickets\?tenantId=/, (route) => {
+      const url = new URL(route.request().url());
+      searchRequests.push(url.search);
+      const needle = (url.searchParams.get("q") ?? "").toLowerCase();
+      const matches = tickets.filter((ticket) => {
+        if (!needle) return true;
+        const person = people[ticket.customerId];
+        return (
+          ticket.title.toLowerCase().includes(needle) ||
+          ticket.id.toLowerCase().includes(needle) ||
+          person.name.toLowerCase().includes(needle) ||
+          person.email.toLowerCase().includes(needle)
+        );
+      });
+      return route.fulfill(json(matches));
+    });
+
+    await page.goto("/inbox");
+
+    const rows = page.getByTestId("inbox-ticket");
+    const search = page.getByTestId("inbox-search");
+    await expect(rows).toHaveCount(2);
+
+    // Neither subject holds the person, so only the customer matches.
+    await search.fill("Priya");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("Other customer ticket");
+
+    // A fragment of the email address finds the same ticket.
+    await search.fill("northstar.test");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("Refund not received");
+
+    // A fragment of the family name finds it too.
+    await search.fill("ellis");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("Refund not received");
+    // The phrase reaches the API as `q` once typing settles.
+    await expect
+      .poll(() => searchRequests.some((value) => value.includes("q=ellis")))
+      .toBe(true);
+
+    // Clearing the box restores the queue.
+    await search.fill("");
+    await expect(rows).toHaveCount(2);
+  });
+
   test("filters the queue by status so resolved and closed tickets stay out of triage", async ({
     page,
   }) => {
