@@ -561,9 +561,9 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await search.fill("blank file");
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText("Refund not received");
-    await expect(rows.first().getByTestId("inbox-ticket-preview")).toContainText(
-      "blank file",
-    );
+    await expect(
+      rows.first().getByTestId("inbox-ticket-preview"),
+    ).toContainText("blank file");
 
     await search.fill("password reset");
     await expect(rows).toHaveCount(1);
@@ -573,6 +573,129 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await search.fill("Refund");
     await expect(rows).toHaveCount(1);
     await search.fill("");
+    await expect(rows).toHaveCount(2);
+  });
+
+  test("filters the queue by status so resolved and closed tickets stay out of triage", async ({
+    page,
+  }) => {
+    const triageTickets = [
+      { ...tickets[0], status: "OPEN" },
+      { ...tickets[1], status: "IN_PROGRESS" },
+      {
+        ...tickets[1],
+        id: "ticket-3",
+        title: "Refund settled last week",
+        status: "RESOLVED",
+        version: 4,
+      },
+      {
+        ...tickets[1],
+        id: "ticket-4",
+        title: "Closed billing question",
+        status: "CLOSED",
+        version: 5,
+      },
+    ];
+
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route(/\/tickets\?tenantId=/, (route) =>
+      route.fulfill(json(triageTickets)),
+    );
+
+    await page.goto("/inbox");
+
+    const rows = page.getByTestId("inbox-ticket");
+    const status = page.getByTestId("inbox-status");
+    // One page holds the whole fixture, so each count is the filter's result.
+    await page.getByTestId("inbox-rows").selectOption("5");
+
+    // Active work is the default: open and in-progress rows stay, so a
+    // resolved or closed ticket cannot crowd triage.
+    await expect(status).toHaveValue("ACTIVE");
+    await expect(rows).toHaveCount(2);
+    await expect(page.getByTestId("inbox-count")).toHaveText("2");
+    await expect(rows.nth(1)).toContainText("Other customer ticket");
+
+    // Each status stays reachable, so a resolved ticket can be reopened.
+    await status.selectOption("RESOLVED");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("Refund settled last week");
+    await expect(page.getByTestId("inbox-count")).toHaveText("1");
+
+    await status.selectOption("CLOSED");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("Closed billing question");
+
+    // All Status restores the full list.
+    await status.selectOption("ALL");
+    await expect(rows).toHaveCount(4);
+    await expect(page.getByTestId("inbox-count")).toHaveText("4");
+
+    // The status and priority filters compose.
+    await page.getByTestId("inbox-priority").selectOption("HIGH");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("Refund not received");
+  });
+
+  test("highlights the matched text in a search result", async ({ page }) => {
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    await page.route(/\/tickets\?tenantId=/, (route) =>
+      route.fulfill(
+        json([
+          {
+            ...tickets[0],
+            primaryConversationId: "conv-linked",
+            descriptionPreview:
+              "Exporting November invoices returns a blank file.",
+          },
+          {
+            ...tickets[1],
+            primaryConversationId: "conv-other",
+            descriptionPreview: "The password reset email never arrives.",
+          },
+        ]),
+      ),
+    );
+
+    await page.goto("/inbox");
+
+    const rows = page.getByTestId("inbox-ticket");
+    const search = page.getByTestId("inbox-search");
+    const marks = page.getByTestId("inbox-match");
+
+    // A description match highlights the customer's words in the preview.
+    await search.fill("blank file");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first().getByTestId("inbox-match")).toHaveCount(1);
+    await expect(rows.first().getByTestId("inbox-match")).toHaveText(
+      "blank file",
+    );
+    await expect(
+      rows.first().getByTestId("inbox-ticket-preview"),
+    ).toContainText("Exporting November invoices returns a blank file.");
+
+    // Matching ignores case, and the highlight keeps the original spelling.
+    await search.fill("BLANK FILE");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first().getByTestId("inbox-match")).toHaveText(
+      "blank file",
+    );
+
+    // A subject match highlights the title instead.
+    await search.fill("refund");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first().getByTestId("inbox-match")).toHaveText("Refund");
+
+    // Clearing the box removes every highlight and restores the queue.
+    await search.fill("");
+    await expect(marks).toHaveCount(0);
     await expect(rows).toHaveCount(2);
   });
 
