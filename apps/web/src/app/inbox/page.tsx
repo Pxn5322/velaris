@@ -66,6 +66,8 @@ interface Ticket {
   updatedAt: string;
   /** Conversation holding the customer's description, when one was started. */
   primaryConversationId?: string | null;
+  /** Server-flattened first customer message of that conversation. */
+  descriptionPreview?: string | null;
 }
 
 interface Message {
@@ -886,6 +888,14 @@ export default function InboxPage() {
                       <span className="block text-xs font-semibold text-heading truncate">
                         {ticket.title}
                       </span>
+                      {ticket.descriptionPreview && (
+                        <span
+                          className="mt-1 block text-[10px] leading-snug text-muted-custom line-clamp-2"
+                          data-testid="inbox-ticket-preview"
+                        >
+                          {ticket.descriptionPreview}
+                        </span>
+                      )}
                       <span className="block text-[10px] text-muted-custom mt-1 font-bold">
                         {ticket.customerId.slice(0, 8)} •{" "}
                         {timeAgo(ticket.updatedAt)}
