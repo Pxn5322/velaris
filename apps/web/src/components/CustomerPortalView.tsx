@@ -36,6 +36,14 @@ interface CustomerTicket {
   primaryConversationId?: string | null;
 }
 
+/** One bounded page of the ticket list plus the total that matched (D-81). */
+interface CustomerTicketPage {
+  items: CustomerTicket[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 interface TenantEntry {
   tenantId: string;
   name?: string;
@@ -83,10 +91,12 @@ export function CustomerPortalView() {
       }
       setTenantId(tenant.tenantId);
       setTenantName(tenant.name ?? null);
-      const rows = await apiFetch<CustomerTicket[]>(
+      // The list route answers one bounded page with its total (D-81). The
+      // portal shows the first page; it needs no pager of its own.
+      const page = await apiFetch<CustomerTicketPage>(
         `/tickets?tenantId=${encodeURIComponent(tenant.tenantId)}`,
       );
-      setTickets(rows);
+      setTickets(page.items);
       setPhase("ready");
     } catch (error) {
       setFailure(

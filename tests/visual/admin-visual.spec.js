@@ -326,7 +326,12 @@ async function prepare(page, response = sessionResponse) {
   await page.route("**/audit/traces*", (route) =>
     route.fulfill(json({ items: auditTraces, limit: 25, hasMore: false })),
   );
-  await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
+  // The list route answers one page plus the total (D-81).
+  await page.route("**/tickets*", (route) =>
+    route.fulfill(
+      json({ items: tickets, total: tickets.length, page: 1, pageSize: 25 }),
+    ),
+  );
   await page.route("**/tickets/assignees*", (route) =>
     route.fulfill(
       json(

@@ -75,6 +75,14 @@ interface Ticket {
   customerEmail?: string | null;
 }
 
+/** One bounded page of the queue plus the total that matched (D-81). */
+interface TicketPage {
+  items: Ticket[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 interface Message {
   id: string;
   body: string;
@@ -224,8 +232,11 @@ const STATUS_ACTIONS = [
   "CLOSED",
 ] as const;
 
-/** Finished statuses leave the triage queue; the queue defaults to active work. */
-const INACTIVE_STATUSES = new Set(["RESOLVED", "CLOSED"]);
+/**
+ * Statuses the queue shows for "Active work" (D-76). Finished statuses leave
+ * the triage list, and the API applies the same list to the page it returns.
+ */
+const ACTIVE_STATUSES = ["OPEN", "IN_PROGRESS", "PENDING_CUSTOMER"] as const;
 
 const STATUS_FILTERS = [
   { value: "ACTIVE", label: "Active work" },
@@ -243,6 +254,7 @@ export default function InboxPage() {
   const [denial, setDenial] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [total, setTotal] = useState(0);
   const [tab, setTab] = useState<Tab>("all");
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [timeline, setTimeline] = useState<TimelineState>("idle");
@@ -252,8 +264,10 @@ export default function InboxPage() {
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const lastSearch = useRef<string | null>(null);
   const searchSequence = useRef(0);
+  // Set once a queue read has answered, so a later failure stays a search
+  // message while a first failure takes over the page (AC-F06-1).
+  const queueLoaded = useRef(false);
   const [priority, setPriority] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ACTIVE");
   const [rowsPerPage, setRowsPerPage] = useState(3);
@@ -288,16 +302,10 @@ export default function InboxPage() {
       }
       setScope(tenants[0]);
       const tenantQuery = `tenantId=${encodeURIComponent(tenants[0].tenantId)}`;
-      const [rows, assigneeRows] = await Promise.all([
-        apiFetch<Ticket[]>(`/tickets?${tenantQuery}`),
-        apiFetch<Assignee[]>(`/tickets/assignees?${tenantQuery}`).catch(
-          () => null,
-        ),
-      ]);
-      setTickets(rows);
-      // The first list is the unfiltered queue, so the search effect has
-      // nothing to fetch until the phrase changes.
-      lastSearch.current = "";
+      // The queue effect below reads the first page once the phase is ready.
+      const assigneeRows = await apiFetch<Assignee[]>(
+        `/tickets/assignees?${tenantQuery}`,
+      ).catch(() => null);
       if (assigneeRows) {
         setAssignees(
           assigneeRows.filter(
@@ -343,36 +351,65 @@ export default function InboxPage() {
     return () => clearTimeout(timer);
   }, [load]);
 
-  // The queue searches on the server (D-77): a phrase can match any
-  // customer-visible customer message of the linked thread, not only the
-  // description preview. A sequence number drops a late response, so an
-  // older phrase never overwrites a newer one.
+  // The queue reads one page from the API (D-81). The phrase, the status
+  // filter, the priority, the scope tab, the page and the page size all travel
+  // as query parameters, so the API filters and slices in the database and
+  // returns the total. The browser never holds the whole tenant table, and a
+  // search phrase still matches any customer-visible customer message of the
+  // linked thread (D-77). A sequence number drops a late response, so an older
+  // request never overwrites a newer one.
   useEffect(() => {
     if (phase !== "ready" || !scope) return;
     const needle = query.trim();
-    if (lastSearch.current === needle) return;
     const timer = setTimeout(async () => {
       const sequence = ++searchSequence.current;
-      lastSearch.current = needle;
       setSearchError(null);
       setSearching(true);
       try {
-        const params = new URLSearchParams({ tenantId: scope.tenantId });
+        const params = new URLSearchParams({
+          tenantId: scope.tenantId,
+          page: String(page),
+          pageSize: String(rowsPerPage),
+        });
         if (needle) params.set("q", needle);
-        const rows = await apiFetch<Ticket[]>(`/tickets?${params.toString()}`);
-        if (sequence === searchSequence.current) setTickets(rows);
+        if (statusFilter === "ACTIVE") {
+          params.set("status", ACTIVE_STATUSES.join(","));
+        } else if (statusFilter !== "ALL") {
+          params.set("status", statusFilter);
+        }
+        if (priority !== "ALL") params.set("priority", priority);
+        if (tab === "mine") params.set("assignee", scope.membershipId);
+        const result = await apiFetch<TicketPage>(
+          `/tickets?${params.toString()}`,
+        );
+        if (sequence === searchSequence.current) {
+          queueLoaded.current = true;
+          setTickets(result.items);
+          setTotal(result.total);
+          // A filter can leave fewer pages than the one requested; move back
+          // to the last page that exists instead of showing an empty window.
+          const lastPage = Math.max(1, Math.ceil(result.total / rowsPerPage));
+          if (page > lastPage) setPage(lastPage);
+        }
       } catch (error) {
         if (sequence === searchSequence.current) {
-          setSearchError(
-            error instanceof Error ? error.message : "Search failed.",
-          );
+          const message =
+            error instanceof Error ? error.message : "Inbox is unavailable.";
+          // Nothing is on screen yet, so the whole workspace fails with the
+          // retry control instead of an empty queue.
+          if (!queueLoaded.current) {
+            setFailure(message);
+            setPhase("error");
+          } else {
+            setSearchError(message);
+          }
         }
       } finally {
         if (sequence === searchSequence.current) setSearching(false);
       }
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [query, phase, scope]);
+  }, [query, phase, scope, page, rowsPerPage, statusFilter, priority, tab]);
 
   const loadProfile = useCallback(
     async (ticket: Ticket) => {
@@ -465,10 +502,10 @@ export default function InboxPage() {
           // J-04 recovery: show the current state after the refusal.
           setConflict(`${error.message} — the current state is shown below.`);
           await load();
-          const fresh = await apiFetch<Ticket[]>(
-            `/tickets?tenantId=${encodeURIComponent(scope.tenantId)}`,
-          ).catch(() => []);
-          setSelected(fresh.find((row) => row.id === ticket.id) ?? null);
+          const fresh = await apiFetch<TicketPage>(
+            `/tickets?tenantId=${encodeURIComponent(scope.tenantId)}&pageSize=100`,
+          ).catch(() => null);
+          setSelected(fresh?.items.find((row) => row.id === ticket.id) ?? null);
         } else {
           setConflict(
             error instanceof Error ? error.message : "Update failed.",
@@ -507,10 +544,11 @@ export default function InboxPage() {
         if (error instanceof ApiError && error.status === 409) {
           setConflict(`${error.message} — the current state is shown below.`);
           await load();
-          const fresh = await apiFetch<Ticket[]>(
-            `/tickets?tenantId=${encodeURIComponent(scope.tenantId)}`,
-          ).catch(() => []);
-          const current = fresh.find((row) => row.id === ticket.id) ?? null;
+          const fresh = await apiFetch<TicketPage>(
+            `/tickets?tenantId=${encodeURIComponent(scope.tenantId)}&pageSize=100`,
+          ).catch(() => null);
+          const current =
+            fresh?.items.find((row) => row.id === ticket.id) ?? null;
           setSelected(current);
           setAssigneeChoice(current?.assigneeMembershipId ?? "");
         } else {
@@ -662,36 +700,14 @@ export default function InboxPage() {
 
   const searchNeedle = query.trim();
 
-  const visibleTickets = tickets.filter((ticket) => {
-    if (
-      tab === "mine" &&
-      scope &&
-      ticket.assigneeMembershipId !== scope.membershipId
-    ) {
-      return false;
-    }
-    // Active work is the default so resolved and closed tickets do not crowd
-    // triage; an explicit status keeps every ticket reachable.
-    if (statusFilter === "ACTIVE") {
-      if (INACTIVE_STATUSES.has(ticket.status)) return false;
-    } else if (statusFilter !== "ALL" && ticket.status !== statusFilter) {
-      return false;
-    }
-    if (priority !== "ALL" && ticket.priority !== priority) return false;
-    // The phrase is applied by the API across the whole thread (D-77); a
-    // local text filter would hide a row that matched a later message.
-    return true;
-  });
-
-  const pageCount = Math.max(1, Math.ceil(visibleTickets.length / rowsPerPage));
+  // The API already applied every filter and returned one page (D-81), so the
+  // queue renders that page as it arrives. Filtering or slicing here would
+  // count rows the server never sent.
+  const pageCount = Math.max(1, Math.ceil(total / rowsPerPage));
   const currentPage = Math.min(page, pageCount);
-  const startIndex = (currentPage - 1) * rowsPerPage;
-  const pageTickets = visibleTickets.slice(
-    startIndex,
-    startIndex + rowsPerPage,
-  );
-  const shownFrom = visibleTickets.length === 0 ? 0 : startIndex + 1;
-  const shownTo = Math.min(startIndex + rowsPerPage, visibleTickets.length);
+  const pageTickets = tickets;
+  const shownFrom = total === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1;
+  const shownTo = Math.min(currentPage * rowsPerPage, total);
   const selectedAssignee = selected
     ? (assignees.find(
         (person) => person.membershipId === selected.assigneeMembershipId,
@@ -832,7 +848,7 @@ export default function InboxPage() {
                   }}
                   data-testid="inbox-count"
                 >
-                  {visibleTickets.length}
+                  {total}
                 </span>
               </div>
 
@@ -978,7 +994,7 @@ export default function InboxPage() {
                 className="space-y-2 max-h-[320px] overflow-y-auto pr-1"
                 aria-busy={searching || undefined}
               >
-                {visibleTickets.length === 0 ? (
+                {!searching && tickets.length === 0 ? (
                   <p
                     className="p-4 text-center text-muted-custom font-mono text-xs font-bold"
                     data-testid="inbox-empty"
@@ -1063,8 +1079,8 @@ export default function InboxPage() {
               </div>
 
               <div className="pt-2 border-t border-[var(--card-border)] flex items-center justify-between font-mono text-[10px] text-muted-custom font-bold">
-                <span>
-                  {shownFrom}-{shownTo} of {visibleTickets.length}
+                <span data-testid="inbox-range">
+                  {shownFrom}-{shownTo} of {total}
                 </span>
                 <div className="flex items-center gap-1">
                   <button

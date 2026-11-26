@@ -43,6 +43,17 @@ type TicketPriority = (typeof TICKET_PRIORITIES)[number];
 /** Roles that can receive support tickets. Custom roles inherit one of these. */
 const ASSIGNABLE_ROLE_CODES = ['R-agent', 'R-tenant-admin'] as const;
 
+/** Queue options: the filters the inbox sends plus the page window (D-81). */
+export interface TicketQueueOptions {
+  query?: string;
+  statuses?: readonly string[];
+  priority?: string;
+  assigneeMembershipId?: string;
+  customerId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 export interface TicketAssignee {
   membershipId: string;
   userId: string;
@@ -98,52 +109,103 @@ export class TicketsService {
   }
 
   /**
-   * Tenant-scoped list, newest change first. Every row carries a short
-   * `descriptionPreview` from its linked conversation (D-75), so the inbox
-   * queue can be triaged without opening a thread. The nested read selects one
-   * customer-visible CUSTOMER message only: an internal note or a later reply
-   * can never become the preview (TH-05).
+   * One bounded page of the tenant queue, newest change first (D-81). The
+   * caller sends the page number and size, and gets back that slice plus the
+   * total that matched, so the queue never reads every row to draw one page.
    *
-   * A search phrase (D-77) filters the list in the database: the ticket title,
-   * its id, or any customer-visible CUSTOMER message of the linked thread. A
-   * match outside the first message also becomes `matchPreview`, so the row
-   * shows the customer's own words instead of an unrelated opening line.
+   * Every row carries a short `descriptionPreview` from its linked
+   * conversation (D-75), so the inbox queue can be triaged without opening a
+   * thread. The nested read selects one customer-visible CUSTOMER message only:
+   * an internal note or a later reply can never become the preview (TH-05).
+   *
+   * A search phrase (D-77) filters in the database: the ticket title, its id,
+   * or any customer-visible CUSTOMER message of the linked thread. A match
+   * outside the first message also becomes `matchPreview`, so the row shows the
+   * customer's own words instead of an unrelated opening line.
+   *
+   * The queue filters are part of the same where clause, so a page holds only
+   * rows the agent asked for and `total` counts those rows, not the whole
+   * tenant table.
    */
-  async findAll(tenantId: string, options: { query?: string } = {}) {
+  async findPage(tenantId: string, options: TicketQueueOptions = {}) {
     const query = options.query?.trim() ?? '';
+    const page = requirePositiveInteger(options.page ?? DEFAULT_PAGE, 'page');
+    const pageSize = requirePositiveInteger(
+      options.pageSize ?? DEFAULT_PAGE_SIZE,
+      'pageSize',
+    );
+    if (pageSize > MAX_PAGE_SIZE) {
+      throw new BadRequestException(
+        'pageSize must be at most ' + MAX_PAGE_SIZE,
+      );
+    }
+    if (options.priority !== undefined) {
+      requireOneOf(options.priority, TICKET_PRIORITIES, 'priority');
+    }
+    const statuses = [...(options.statuses ?? [])];
+    for (const status of statuses) {
+      if (!isTicketStatus(status)) {
+        throw new BadRequestException(
+          'status must be one of ' + TICKET_STATUSES.join(', '),
+        );
+      }
+    }
     const where: Prisma.TicketWhereInput = {
       tenantId,
+      // T2.04: a customer reads only their own rows, so the scope belongs in
+      // the query. A filter after the read would return short pages.
+      ...(options.customerId ? { customerId: options.customerId } : {}),
+      ...(statuses.length > 0
+        ? { status: { in: statuses as TicketStatus[] } }
+        : {}),
+      ...(options.priority ? { priority: options.priority } : {}),
+      ...(options.assigneeMembershipId
+        ? { assigneeMembershipId: options.assigneeMembershipId }
+        : {}),
       ...(query ? { OR: await this.searchConditions(tenantId, query) } : {}),
     };
-    const rows = await this.prisma.ticket.findMany({
-      where,
-      orderBy: { updatedAt: 'desc' },
-      include: {
-        primaryConversation: {
-          select: {
-            messages: {
-              where: { authorType: 'CUSTOMER', visibility: 'CUSTOMER_VISIBLE' },
-              orderBy: { createdAt: 'asc' },
-              take: 1,
-              select: { body: true },
+    const [rows, total] = await Promise.all([
+      this.prisma.ticket.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          primaryConversation: {
+            select: {
+              messages: {
+                where: {
+                  authorType: 'CUSTOMER',
+                  visibility: 'CUSTOMER_VISIBLE',
+                },
+                orderBy: { createdAt: 'asc' },
+                take: 1,
+                select: { body: true },
+              },
             },
           },
+          customer: { select: { displayName: true, email: true } },
         },
-        customer: { select: { displayName: true, email: true } },
-      },
-    });
+      }),
+      this.prisma.ticket.count({ where }),
+    ]);
     const matchPreviews = query
       ? await this.matchPreviews(tenantId, query, rows)
       : new Map<string, string>();
-    return rows.map(({ primaryConversation, customer, ...ticket }) => ({
-      ...ticket,
-      // The queue names the person instead of an id slice, so a customer
-      // match is visible (D-79). The nested object stays out of the payload.
-      customerName: customer?.displayName ?? null,
-      customerEmail: customer?.email ?? null,
-      descriptionPreview: previewOf(primaryConversation?.messages[0]?.body),
-      matchPreview: matchPreviews.get(ticket.id) ?? null,
-    }));
+    return {
+      items: rows.map(({ primaryConversation, customer, ...ticket }) => ({
+        ...ticket,
+        // The queue names the person instead of an id slice, so a customer
+        // match is visible (D-79). The nested object stays out of the payload.
+        customerName: customer?.displayName ?? null,
+        customerEmail: customer?.email ?? null,
+        descriptionPreview: previewOf(primaryConversation?.messages[0]?.body),
+        matchPreview: matchPreviews.get(ticket.id) ?? null,
+      })),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   /**
@@ -454,6 +516,13 @@ type CreateTenantScopedCreate = CreateTicketDto & {
   primaryConversationId?: string;
 };
 
+function requirePositiveInteger(value: number, field: string): number {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new BadRequestException(field + ' must be a positive integer');
+  }
+  return value;
+}
+
 function requireText(value: string | undefined, field: string): void {
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new BadRequestException(field + ' is required');
@@ -471,6 +540,21 @@ function requireOneOf<T extends string>(
     );
   }
 }
+
+/** Page and size defaults for the queue (D-81). */
+const DEFAULT_PAGE = 1;
+const DEFAULT_PAGE_SIZE = 25;
+/** Largest page a caller may ask for, so one request stays bounded. */
+export const MAX_PAGE_SIZE = 100;
+
+/** TicketStatus values, in lifecycle order (prisma/schema.prisma). */
+const TICKET_STATUSES = [
+  'OPEN',
+  'IN_PROGRESS',
+  'PENDING_CUSTOMER',
+  'RESOLVED',
+  'CLOSED',
+] as const;
 
 /** Cap on id-fragment matches, so a short fragment cannot return the tenant. */
 const MAX_ID_MATCHES = 50;
