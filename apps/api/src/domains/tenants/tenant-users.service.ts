@@ -64,6 +64,9 @@ export const TEXT_MATCH_LIMIT = 2000;
  */
 const MIN_TRIGRAM_LENGTH = 3;
 
+/** A phrase with whitespace cannot appear in an email address. */
+const WHITESPACE_PATTERN = /\s/;
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -253,35 +256,54 @@ export class TenantUsersService {
    * filters memberships on `userId` and `tenantId`, which their own indexes
    * serve.
    *
-   * Returns null when either side matches more rows than TEXT_MATCH_LIMIT: a
-   * phrase that broad is not a bounded identifier set, and truncating it would
-   * drop real matches, so the caller keeps the joined-text filter.
+   * Each account leg names one column, so each leg reads one trigram index.
+   * An `OR` over both columns makes the planner build a bitmap over both, and a
+   * phrase whose trigrams are common in the other column then pays for matches
+   * it rechecks away. A phrase that contains whitespace skips the email leg,
+   * because an email address has none.
+   *
+   * Returns null when either leg or the merged set is larger than
+   * TEXT_MATCH_LIMIT: a phrase that broad is not a bounded identifier set, and
+   * truncating it would drop real matches, so the caller keeps the joined-text
+   * filter.
    */
   private async textMatches(
     needle: string,
   ): Promise<{ userIds: string[]; tenantIds: string[] } | null> {
-    const [users, tenants] = await Promise.all([
+    const emailLookup = WHITESPACE_PATTERN.test(needle)
+      ? null
+      : this.prisma.user.findMany({
+          where: {
+            emailNormalized: { contains: needle, mode: 'insensitive' },
+          },
+          select: { id: true },
+          take: TEXT_MATCH_LIMIT + 1,
+        });
+    const [names, emails, tenants] = await Promise.all([
       this.prisma.user.findMany({
-        where: {
-          OR: [
-            { emailNormalized: { contains: needle, mode: 'insensitive' } },
-            { displayName: { contains: needle, mode: 'insensitive' } },
-          ],
-        },
+        where: { displayName: { contains: needle, mode: 'insensitive' } },
         select: { id: true },
         take: TEXT_MATCH_LIMIT + 1,
       }),
+      emailLookup ?? Promise.resolve<{ id: string }[]>([]),
       this.prisma.tenant.findMany({
         where: { name: { contains: needle, mode: 'insensitive' } },
         select: { id: true },
         take: TEXT_MATCH_LIMIT + 1,
       }),
     ]);
-    if (users.length > TEXT_MATCH_LIMIT || tenants.length > TEXT_MATCH_LIMIT) {
+    if (
+      names.length > TEXT_MATCH_LIMIT ||
+      emails.length > TEXT_MATCH_LIMIT ||
+      tenants.length > TEXT_MATCH_LIMIT
+    ) {
       return null;
     }
+    const userIds = new Set(emails.map((row) => row.id));
+    for (const row of names) userIds.add(row.id);
+    if (userIds.size > TEXT_MATCH_LIMIT) return null;
     return {
-      userIds: users.map((row) => row.id),
+      userIds: [...userIds],
       tenantIds: tenants.map((row) => row.id),
     };
   }
