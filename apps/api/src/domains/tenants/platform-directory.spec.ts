@@ -18,6 +18,7 @@ import type { GovernanceService } from './governance.service.js';
 import type { TenantRolesService } from './tenant-roles.service.js';
 import {
   TEXT_MATCH_LIMIT,
+  TOTAL_CACHE_TTL_MS,
   TenantUsersService,
   type PlatformDirectoryQuery,
 } from './tenant-users.service.js';
@@ -70,6 +71,17 @@ function fakePrisma(
     ];
   });
   const count = vi.fn(async () => total);
+  const findUnique = vi.fn(async () => ({
+    id: MEMBERSHIP_ID,
+    tenantId: TENANT_ID,
+    status: 'ACTIVE',
+    roles: [],
+  }));
+  const update = vi.fn(async () => ({
+    id: MEMBERSHIP_ID,
+    tenantId: TENANT_ID,
+    status: 'SUSPENDED',
+  }));
   const userFindMany = vi.fn(
     async (args: { where?: Record<string, unknown> }) => {
       const where = args.where ?? {};
@@ -84,7 +96,7 @@ function fakePrisma(
     userFindMany,
     tenantFindMany,
     prisma: {
-      tenantMembership: { findMany, count },
+      tenantMembership: { findMany, count, findUnique, update },
       user: { findMany: userFindMany },
       tenant: { findMany: tenantFindMany },
     } as unknown as PrismaService,
@@ -191,6 +203,62 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
       'member-b',
       'member-a',
     ]);
+  });
+
+  it('reuses the total for the same filter until the entry expires', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = fakePrisma();
+      const service = serviceWith(fake.prisma);
+
+      await service.listPage({ page: 1, pageSize: 10 });
+      await service.listPage({ page: 2, pageSize: 10 });
+      expect(fake.count).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(TOTAL_CACHE_TTL_MS + 1);
+      await service.listPage({ page: 3, pageSize: 10 });
+      expect(fake.count).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads a new total when the filter changes', async () => {
+    const fake = fakePrisma();
+    const service = serviceWith(fake.prisma);
+
+    await service.listPage({ status: 'ACTIVE' });
+    await service.listPage({ status: 'SUSPENDED' });
+
+    expect(fake.count).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not cache the total of a text search', async () => {
+    const fake = fakePrisma();
+    const service = serviceWith(fake.prisma);
+
+    await service.listPage({ q: 'globex' });
+    await service.listPage({ q: 'globex', page: 2 });
+
+    // A search changes with each phrase and its identifiers, so it always
+    // counts its own matches.
+    expect(fake.count).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops the cached total after a membership change', async () => {
+    const fake = fakePrisma();
+    const service = serviceWith(fake.prisma);
+
+    await service.listPage({ page: 1 });
+    await service.listPage({ page: 2 });
+    expect(fake.count).toHaveBeenCalledTimes(1);
+
+    await service.setMembershipStatus(TENANT_ID, MEMBERSHIP_ID, {
+      status: 'SUSPENDED',
+    });
+    await service.listPage({ page: 3 });
+
+    expect(fake.count).toHaveBeenCalledTimes(2);
   });
 
   it('answers an empty page without reading any row', async () => {
