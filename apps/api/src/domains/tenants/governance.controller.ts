@@ -23,10 +23,12 @@ import {
   Patch,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { optionalNumber } from '../../common/paging.js';
 import { RequirePermission } from '../../common/security/require-permission.decorator.js';
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -49,6 +51,7 @@ import { GovernanceService } from './governance.service.js';
 import { TenantRolesService } from './tenant-roles.service.js';
 import {
   TenantUsersService,
+  type TenantMemberPage,
   type TenantMemberView,
 } from './tenant-users.service.js';
 
@@ -113,11 +116,34 @@ export class GovernanceController {
    * Platform-wide user directory. Unlike :tenantId/users this is not scoped
    * to one tenant, so it needs the platform governance permission. The
    * platform administrator uses it to see every user in every workspace.
+   *
+   * The route reads one page (D-87): `page` default 1, `pageSize` default 25
+   * capped at 100, and optional `q`, `role` and `status` filters that run
+   * inside the query.
    */
   @Get('users')
   @RequirePermission(PERMISSIONS.TENANT_MANAGE_PLATFORM)
-  async listAllUsers(): Promise<TenantMemberView[]> {
-    return this.users.listAll();
+  async listAllUsers(
+    @Query('page') page: string | undefined,
+    @Query('pageSize') pageSize: string | undefined,
+    @Query('q') q: string | undefined,
+    @Query('role') role: string | undefined,
+    @Query('status') status: string | undefined,
+  ): Promise<TenantMemberPage> {
+    const window = {
+      page: optionalNumber(page, 'page'),
+      pageSize: optionalNumber(pageSize, 'pageSize'),
+    };
+    const search = q?.trim() ?? '';
+    const roleCode = role?.trim() ?? '';
+    const membershipStatus = status?.trim() ?? '';
+    return this.users.listPage({
+      ...(window.page !== undefined ? { page: window.page } : {}),
+      ...(window.pageSize !== undefined ? { pageSize: window.pageSize } : {}),
+      ...(search ? { q: search } : {}),
+      ...(roleCode ? { role: roleCode } : {}),
+      ...(membershipStatus ? { status: membershipStatus } : {}),
+    });
   }
 
   /** System and custom roles available to one tenant. */

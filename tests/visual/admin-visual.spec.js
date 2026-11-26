@@ -309,15 +309,20 @@ async function prepare(page, response = sessionResponse) {
   await page.route("**/tenants/*/users*", (route) =>
     route.fulfill(json(members)),
   );
+  const platformDirectory = members.map((member) => ({
+    ...member,
+    tenantId: "tenant-a",
+    tenantName: "Acme",
+  }));
+  // The platform directory answers one page plus the total (D-87).
   await page.route("**/tenants/users*", (route) =>
     route.fulfill(
-      json(
-        members.map((member) => ({
-          ...member,
-          tenantId: "tenant-a",
-          tenantName: "Acme",
-        })),
-      ),
+      json({
+        items: platformDirectory,
+        total: platformDirectory.length,
+        page: 1,
+        pageSize: 10,
+      }),
     ),
   );
   await page.route("**/audit/events*", (route) =>
