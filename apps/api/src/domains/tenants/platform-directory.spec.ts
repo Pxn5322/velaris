@@ -30,15 +30,23 @@ type QueryArgs = {
   orderBy?: Record<string, string>[];
   skip?: number;
   take?: number;
-  select?: Record<string, boolean>;
 };
 
-/** Records each query and answers one membership row plus the text matches. */
+/**
+ * Records each query and answers one membership row. The account lookup runs
+ * one query per column, so the fake answers by the column in `where`.
+ */
 function fakePrisma(
-  options: { total?: number; users?: string[]; tenants?: string[] } = {},
+  options: {
+    total?: number;
+    emails?: string[];
+    names?: string[];
+    tenants?: string[];
+  } = {},
 ) {
   const total = options.total ?? 42;
-  const userIds = options.users ?? ['user-1'];
+  const emails = options.emails ?? ['user-1'];
+  const names = options.names ?? ['user-1'];
   const tenantIds = options.tenants ?? [TENANT_ID];
   const findMany = vi.fn(async (args: QueryArgs) => {
     expect(args).toBeDefined();
@@ -60,7 +68,13 @@ function fakePrisma(
     ];
   });
   const count = vi.fn(async () => total);
-  const userFindMany = vi.fn(async () => userIds.map((id) => ({ id })));
+  const userFindMany = vi.fn(
+    async (args: { where?: Record<string, unknown> }) => {
+      const where = args.where ?? {};
+      const ids = 'emailNormalized' in where ? emails : names;
+      return ids.map((id) => ({ id }));
+    },
+  );
   const tenantFindMany = vi.fn(async () => tenantIds.map((id) => ({ id })));
   return {
     findMany,
@@ -81,6 +95,16 @@ function serviceWith(prisma: PrismaService) {
 
 function queryOf(findMany: ReturnType<typeof vi.fn>): QueryArgs {
   return findMany.mock.calls[0]?.[0] as QueryArgs;
+}
+
+/** The account lookup that names one column, or undefined when it did not run. */
+function lookupFor(
+  userFindMany: ReturnType<typeof vi.fn>,
+  column: 'emailNormalized' | 'displayName',
+): QueryArgs | undefined {
+  return userFindMany.mock.calls
+    .map((call) => call[0] as QueryArgs)
+    .find((args) => column in (args.where ?? {}));
 }
 
 describe('TenantUsersService.listPage (platform directory, D-87)', () => {
@@ -130,20 +154,23 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
     expect(fake.count).toHaveBeenCalledWith({ where: query.where });
   });
 
-  it('resolves the text filter to matching accounts and tenants first', async () => {
-    const fake = fakePrisma({ users: ['user-1'], tenants: [TENANT_ID] });
+  it('resolves the text filter one column at a time', async () => {
+    const fake = fakePrisma({ emails: ['user-1'], names: ['user-1'] });
     const service = serviceWith(fake.prisma);
 
     await service.listPage({ q: ' globex ' });
 
-    // Both lookups run the case-insensitive match the trigram indexes serve.
-    expect(fake.userFindMany).toHaveBeenCalledWith({
+    // Each account leg names one column, so each leg reads one trigram index
+    // instead of a bitmap over both.
+    expect(lookupFor(fake.userFindMany, 'emailNormalized')).toEqual({
       where: {
-        OR: [
-          { emailNormalized: { contains: 'globex', mode: 'insensitive' } },
-          { displayName: { contains: 'globex', mode: 'insensitive' } },
-        ],
+        emailNormalized: { contains: 'globex', mode: 'insensitive' },
       },
+      select: { id: true },
+      take: TEXT_MATCH_LIMIT + 1,
+    });
+    expect(lookupFor(fake.userFindMany, 'displayName')).toEqual({
+      where: { displayName: { contains: 'globex', mode: 'insensitive' } },
       select: { id: true },
       take: TEXT_MATCH_LIMIT + 1,
     });
@@ -159,8 +186,40 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
     });
   });
 
+  it('skips the email leg when the phrase contains a space', async () => {
+    const fake = fakePrisma({ names: ['user-1'], emails: ['never-read'] });
+    const service = serviceWith(fake.prisma);
+
+    await service.listPage({ q: 'Person 09999' });
+
+    // An email address has no whitespace, so the email leg cannot match and
+    // its common trigrams would only build a large bitmap.
+    expect(lookupFor(fake.userFindMany, 'emailNormalized')).toBeUndefined();
+    expect(lookupFor(fake.userFindMany, 'displayName')?.where).toEqual({
+      displayName: { contains: 'Person 09999', mode: 'insensitive' },
+    });
+    expect(queryOf(fake.findMany).where).toEqual({
+      OR: [{ userId: { in: ['user-1'] } }, { tenantId: { in: [TENANT_ID] } }],
+    });
+  });
+
+  it('merges the two account legs without repeating an account', async () => {
+    const fake = fakePrisma({
+      emails: ['user-1', 'user-2'],
+      names: ['user-2', 'user-3'],
+      tenants: [],
+    });
+    const service = serviceWith(fake.prisma);
+
+    await service.listPage({ q: 'acme' });
+
+    expect(queryOf(fake.findMany).where).toEqual({
+      OR: [{ userId: { in: ['user-1', 'user-2', 'user-3'] } }],
+    });
+  });
+
   it('answers an empty page when the text filter matches nothing', async () => {
-    const fake = fakePrisma({ users: [], tenants: [] });
+    const fake = fakePrisma({ emails: [], names: [], tenants: [] });
     const service = serviceWith(fake.prisma);
 
     const page = await service.listPage({ q: 'nothing-matches' });
@@ -188,9 +247,9 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
     });
   });
 
-  it('keeps the relation filter when a phrase matches too many rows', async () => {
+  it('keeps the relation filter when a phrase matches too many accounts', async () => {
     const fake = fakePrisma({
-      users: Array.from(
+      emails: Array.from(
         { length: TEXT_MATCH_LIMIT + 1 },
         (_, index) => `user-${index}`,
       ),
