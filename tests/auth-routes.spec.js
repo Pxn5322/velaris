@@ -17,6 +17,11 @@ const SESSION = {
   email: "user@acme.test",
 };
 
+/** Answers GET /conversations the way the server does (D-82). */
+function conversationPage(rows) {
+  return { items: rows, total: rows.length, page: 1, pageSize: 25 };
+}
+
 function json(body, status = 200) {
   return {
     status,
@@ -82,19 +87,23 @@ test.describe("session and role route gates", () => {
     await page.route("**/tickets*", (route) =>
       route.fulfill(json({ items: [], total: 0, page: 1, pageSize: 25 })),
     );
-    await page.route("**/conversations*", (route) => route.fulfill(json([])));
+    await page.route("**/conversations*", (route) =>
+      route.fulfill(json(conversationPage([]))),
+    );
 
     await page.goto("/inbox");
-    await expect(page.getByRole("link", { name: "Support Inbox" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Support Inbox" }),
+    ).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Agent Workspace" }),
     ).toHaveCount(0);
     await expect(page.getByRole("link", { name: "AI Studio" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Analytics" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Audit" })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Customer Portal" })).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByRole("link", { name: "Customer Portal" }),
+    ).toHaveCount(0);
 
     await page.goto("/admin");
     await expect(page).toHaveURL(/\?signin=1/, { timeout: 10_000 });
@@ -104,7 +113,9 @@ test.describe("session and role route gates", () => {
     page,
   }) => {
     await seed(page, "R-customer", "customer@acme.test");
-    await page.route("**/conversations*", (route) => route.fulfill(json([])));
+    await page.route("**/conversations*", (route) =>
+      route.fulfill(json(conversationPage([]))),
+    );
 
     await page.goto("/portal");
     await expect(

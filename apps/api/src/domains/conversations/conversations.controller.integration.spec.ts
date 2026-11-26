@@ -143,8 +143,38 @@ function fakePrisma(conversations: FakeRow[], messages: FakeRow[]) {
     conversation: {
       findUnique: async ({ where }: { where: { id: string } }) =>
         convStore.find((c) => c.id === where.id) ?? null,
-      findMany: async ({ where }: { where: { tenantId: string } }) =>
-        convStore.filter((c) => c.tenantId === where.tenantId),
+      findMany: async ({
+        where,
+        skip,
+        take,
+      }: {
+        where: { tenantId: string; customerId?: string };
+        skip?: number;
+        take?: number;
+      }) => {
+        const rows = convStore
+          .filter(
+            (c) =>
+              c.tenantId === where.tenantId &&
+              (!where.customerId || c.customerId === where.customerId),
+          )
+          .sort(
+            (a, b) =>
+              (b.updatedAt as Date).getTime() - (a.updatedAt as Date).getTime(),
+          );
+        const from = skip ?? 0;
+        return rows.slice(from, take === undefined ? undefined : from + take);
+      },
+      count: async ({
+        where,
+      }: {
+        where: { tenantId: string; customerId?: string };
+      }) =>
+        convStore.filter(
+          (c) =>
+            c.tenantId === where.tenantId &&
+            (!where.customerId || c.customerId === where.customerId),
+        ).length,
       create: async ({ data }: { data: FakeRow }) => {
         const row: FakeRow = {
           id:
@@ -368,13 +398,31 @@ describe('Conversations routes (integration)', () => {
       .get('/conversations?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token');
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(2);
-    expect(res.body.map((c: { id: string }) => c.id)).toEqual(
+    expect(res.body.total).toBe(2);
+    expect(res.body.items.map((c: { id: string }) => c.id)).toEqual(
       expect.arrayContaining([
         'cccccccc-0000-4000-8000-000000000001',
         'cccccccc-0000-4000-8000-000000000002',
       ]),
     );
+  });
+
+  it('answers one bounded page with the total that matched (D-82)', async () => {
+    role = 'R-agent';
+    const res = await request(app.getHttpServer())
+      .get('/conversations?tenantId=tenant-a&page=2&pageSize=1')
+      .set('Authorization', 'Bearer valid-token');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ total: 2, page: 2, pageSize: 1 });
+    expect(res.body.items).toHaveLength(1);
+  });
+
+  it('refuses a page size above the cap (D-82)', async () => {
+    role = 'R-agent';
+    const res = await request(app.getHttpServer())
+      .get('/conversations?tenantId=tenant-a&pageSize=101')
+      .set('Authorization', 'Bearer valid-token');
+    expect(res.status).toBe(400);
   });
 
   it('R-customer list returns only their own customer conversations', async () => {
@@ -383,8 +431,11 @@ describe('Conversations routes (integration)', () => {
       .get('/conversations?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token');
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0]).toMatchObject({
+    // The customer scope is part of the query, so the total counts only their
+    // rows and not the tenant table (D-82).
+    expect(res.body.total).toBe(1);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0]).toMatchObject({
       id: 'cccccccc-0000-4000-8000-000000000001',
       customerId: 'customer-1',
     });
@@ -407,7 +458,7 @@ describe('Conversations routes (integration)', () => {
       .get('/conversations?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token');
     expect(list.status).toBe(200);
-    expect(list.body).toHaveLength(0);
+    expect(list.body).toMatchObject({ items: [], total: 0 });
     const one = await request(app.getHttpServer())
       .get(
         '/conversations/cccccccc-0000-4000-8000-000000000001?tenantId=tenant-a',

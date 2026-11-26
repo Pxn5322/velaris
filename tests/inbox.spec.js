@@ -139,6 +139,11 @@ function json(body, status = 200) {
   };
 }
 
+/** Answers GET /conversations the way the server does (D-82). */
+function conversationPage(rows) {
+  return { items: rows, total: rows.length, page: 1, pageSize: 25 };
+}
+
 function jsonTicketPage(rows) {
   return json({
     items: rows,
@@ -256,7 +261,9 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await expect(page.getByTestId("inbox-error")).toBeVisible();
 
     // Retry after the API recovers.
-    await page.route("**/tickets*", (route) => route.fulfill(jsonTicketPage(tickets)));
+    await page.route("**/tickets*", (route) =>
+      route.fulfill(jsonTicketPage(tickets)),
+    );
     await page.getByRole("button", { name: "Retry" }).click();
     await expect(page.getByTestId("inbox-ticket")).toHaveCount(2);
   });
@@ -281,7 +288,9 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     );
     // The scope tab is a query parameter, so the stub filters like the server
     // and the page holds only the caller membership rows (D-81).
-    await page.route("**/tickets*", (route) => serveTicketQueue(route, tickets));
+    await page.route("**/tickets*", (route) =>
+      serveTicketQueue(route, tickets),
+    );
 
     await page.goto("/inbox");
     await expect(page.getByTestId("inbox-ticket")).toHaveCount(2);
@@ -304,12 +313,14 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/tickets*", (route) => route.fulfill(jsonTicketPage(tickets)));
+    await page.route("**/tickets*", (route) =>
+      route.fulfill(jsonTicketPage(tickets)),
+    );
     await page.route("**/tickets/assignees*", (route) =>
       route.fulfill(json(assignees)),
     );
     await page.route("**/conversations?*", (route) =>
-      route.fulfill(json(conversations)),
+      route.fulfill(json(conversationPage(conversations))),
     );
     await page.route("**/conversations/conv-1*", (route) =>
       route.fulfill(json(timeline)),
@@ -414,9 +425,11 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/tickets*", (route) => route.fulfill(jsonTicketPage(tickets)));
+    await page.route("**/tickets*", (route) =>
+      route.fulfill(jsonTicketPage(tickets)),
+    );
     await page.route("**/conversations?*", (route) =>
-      route.fulfill(json(conversations)),
+      route.fulfill(json(conversationPage(conversations))),
     );
     await page.route("**/conversations/conv-1**", (route) => {
       if (route.request().method() === "POST") {
@@ -511,7 +524,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     // The customer has an older conversation too; the link must win.
     await page.route("**/conversations?*", (route) => {
       requests.push(route.request().url());
-      return route.fulfill(json(conversations));
+      return route.fulfill(json(conversationPage(conversations)));
     });
     await page.route("**/conversations/conv-linked?*", (route) => {
       requests.push(route.request().url());
@@ -559,6 +572,9 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     );
     await page.route("**/conversations**", (route) => {
       conversationRequests.push(route.request().url());
+      if (/\/conversations\?/.test(route.request().url())) {
+        return route.fulfill(json(conversationPage([])));
+      }
       return route.fulfill(
         json({
           ...conversations[0],
@@ -1012,7 +1028,9 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/tickets*", (route) => route.fulfill(jsonTicketPage(tickets)));
+    await page.route("**/tickets*", (route) =>
+      route.fulfill(jsonTicketPage(tickets)),
+    );
     await page.route("**/conversations?*", (route) => {
       if (route.request().method() === "POST") {
         createdConversation = route.request().postDataJSON();
@@ -1028,7 +1046,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
           ),
         );
       }
-      return route.fulfill(json([]));
+      return route.fulfill(json(conversationPage([])));
     });
     await page.route("**/conversations/conv-new**", (route) => {
       posted = route.request().postDataJSON();
@@ -1065,9 +1083,11 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/tickets*", (route) => route.fulfill(jsonTicketPage(tickets)));
+    await page.route("**/tickets*", (route) =>
+      route.fulfill(jsonTicketPage(tickets)),
+    );
     await page.route("**/conversations?*", (route) =>
-      route.fulfill(json(conversations)),
+      route.fulfill(json(conversationPage(conversations))),
     );
     await page.route("**/conversations/conv-1*", (route) =>
       route.fulfill(json(timeline)),
@@ -1091,9 +1111,11 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/tickets*", (route) => route.fulfill(jsonTicketPage(tickets)));
+    await page.route("**/tickets*", (route) =>
+      route.fulfill(jsonTicketPage(tickets)),
+    );
     await page.route("**/conversations?*", (route) =>
-      route.fulfill(json(conversations)),
+      route.fulfill(json(conversationPage(conversations))),
     );
     await page.route("**/conversations/conv-1*", (route) =>
       route.fulfill(json(timeline)),

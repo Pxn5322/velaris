@@ -79,6 +79,11 @@ function json(body, status = 200) {
   };
 }
 
+/** Answers GET /conversations the way the server does (D-82). */
+function conversationPage(rows) {
+  return { items: rows, total: rows.length, page: 1, pageSize: 25 };
+}
+
 async function seedSession(page) {
   await page.addInitScript(
     ([key, value]) => window.localStorage.setItem(key, value),
@@ -149,7 +154,7 @@ test.describe("customer portal (J-03)", () => {
       route.fulfill(json(sessionResponse)),
     );
     await page.route("**/conversations?*", (route) =>
-      route.fulfill(json(conversations)),
+      route.fulfill(json(conversationPage(conversations))),
     );
     await page.route("**/conversations/conv-1*", (route) =>
       route.fulfill(json(timeline)),
@@ -184,7 +189,7 @@ test.describe("customer portal (J-03)", () => {
       route.fulfill(json(sessionResponse)),
     );
     await page.route("**/conversations?*", (route) =>
-      route.fulfill(json(conversations)),
+      route.fulfill(json(conversationPage(conversations))),
     );
     await page.route("**/conversations/conv-1/messages*", (route) =>
       route.fulfill(
@@ -242,7 +247,7 @@ test.describe("customer portal (J-03)", () => {
       route.fulfill(json(sessionResponse)),
     );
     await page.route("**/conversations?*", (route) =>
-      route.fulfill(json(conversations)),
+      route.fulfill(json(conversationPage(conversations))),
     );
     await page.route("**/conversations/conv-1/messages*", (route) =>
       route.fulfill(
@@ -295,7 +300,7 @@ test.describe("customer portal (J-03)", () => {
       route.fulfill(json(sessionResponse)),
     );
     await page.route("**/conversations?*", (route) =>
-      route.fulfill(json(conversations)),
+      route.fulfill(json(conversationPage(conversations))),
     );
     await page.route("**/conversations/conv-1/messages*", (route) =>
       route.fulfill(json({ message: "Forbidden" }, 403)),
@@ -322,7 +327,9 @@ test.describe("customer portal (J-03)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/conversations?*", (route) => route.fulfill(json([])));
+    await page.route("**/conversations?*", (route) =>
+      route.fulfill(json(conversationPage([]))),
+    );
 
     await page.goto("/portal/conversations");
     await expect(page.getByTestId("portal-empty")).toBeVisible();
@@ -331,6 +338,73 @@ test.describe("customer portal (J-03)", () => {
     await expect(page.getByTestId("portal-start-conversation")).toHaveAttribute(
       "href",
       "/portal",
+    );
+  });
+
+  test("the conversation list pages past the first 25 (D-82)", async ({
+    page,
+  }) => {
+    const requests = [];
+    const many = Array.from({ length: 30 }, (_, index) => ({
+      id: `conv-${String(index + 1).padStart(4, "0")}`,
+      customerId: "customer-1",
+      channel: "email",
+      status: "OPEN",
+      version: 0,
+      createdAt: "2026-11-20T08:00:00Z",
+    }));
+
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    // The stub answers like the server: one bounded page plus the total (D-82).
+    await page.route("**/conversations?*", (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      requests.push(params);
+      const requested = Number(params.get("page") ?? "1");
+      const size = Number(params.get("pageSize") ?? "25");
+      const start = (requested - 1) * size;
+      return route.fulfill(
+        json({
+          items: many.slice(start, start + size),
+          total: many.length,
+          page: requested,
+          pageSize: size,
+        }),
+      );
+    });
+
+    await page.goto("/portal/conversations");
+
+    const items = page.getByTestId("portal-conversation");
+    // The first read holds one page and names the total, so the rest is
+    // reachable instead of silently missing.
+    await expect(items).toHaveCount(25);
+    await expect(page.getByTestId("portal-conversation-range")).toHaveText(
+      "1-25 of 30",
+    );
+    await expect(page.getByTestId("portal-conversation-prev")).toBeDisabled();
+
+    await page.getByTestId("portal-conversation-next").click();
+    await expect(items).toHaveCount(5);
+    await expect(page.getByTestId("portal-conversation-range")).toHaveText(
+      "26-30 of 30",
+    );
+    await expect(page.getByTestId("portal-conversation-next")).toBeDisabled();
+
+    // The later page came from the API; the browser did not slice a cache.
+    await expect
+      .poll(() => requests.some((params) => params.get("page") === "2"))
+      .toBe(true);
+    expect(requests.every((params) => params.get("pageSize") === "25")).toBe(
+      true,
+    );
+
+    await page.getByTestId("portal-conversation-prev").click();
+    await expect(items).toHaveCount(25);
+    await expect(page.getByTestId("portal-conversation-range")).toHaveText(
+      "1-25 of 30",
     );
   });
 
@@ -596,10 +670,9 @@ test.describe("customer portal (J-03)", () => {
     // The ticket carries the description by pointing at the thread that
     // stored it, not by inventing a column the schema does not have.
     expect(ticketBodies[0].conversationId).toBe("conv-new");
-    await expect(page.getByTestId("portal-ticket-conversation")).toHaveAttribute(
-      "href",
-      "/portal/conversations",
-    );
+    await expect(
+      page.getByTestId("portal-ticket-conversation"),
+    ).toHaveAttribute("href", "/portal/conversations");
     await expect(page.getByTestId("portal-conversations-link")).toHaveAttribute(
       "href",
       "/portal/conversations",
