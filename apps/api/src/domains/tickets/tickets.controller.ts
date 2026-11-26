@@ -26,6 +26,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { optionalNumber } from '../../common/paging.js';
 import { RequirePermission } from '../../common/security/require-permission.decorator.js';
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
 import type { AuthenticatedIdentity } from '../auth/auth.interface.js';
@@ -312,18 +313,4 @@ export class TicketsController {
       request.user?.email,
     );
   }
-}
-
-/**
- * Read one numeric query parameter. An empty or missing value stays undefined
- * so the service applies its default; anything else must be an integer, which
- * the service refuses with 400 when it is not.
- */
-function optionalNumber(value: string | undefined, field: string) {
-  if (value === undefined || value.trim() === '') return undefined;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    throw new BadRequestException(field + ' must be a positive integer');
-  }
-  return parsed;
 }
