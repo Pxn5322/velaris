@@ -56,8 +56,6 @@ describe('D-86 list read indexes', () => {
     expect(modelBlock('AuditEvent')).toContain(
       '@@index([tenantId, action, createdAt(sort: Desc)])',
     );
-    expect(modelBlock('Customer')).toContain(
-      '@@index([tenantId, createdAt])',
-    );
+    expect(modelBlock('Customer')).toContain('@@index([tenantId, createdAt])');
   });
 });
