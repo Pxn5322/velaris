@@ -22,6 +22,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { optionalNumber } from '../../common/paging.js';
 import { RequirePermission } from '../../common/security/require-permission.decorator.js';
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
 import type { AuthenticatedIdentity } from '../auth/auth.interface.js';
@@ -66,18 +67,30 @@ export class CustomersController {
   @RequirePermission(PERMISSIONS.TICKET_READ)
   async findAll(
     @Query('tenantId') tenantId: string,
+    @Query('page') page: string | undefined,
+    @Query('pageSize') pageSize: string | undefined,
     @Req() request: AuthedRequest,
   ) {
     await this.requireTenantScope(request, tenantId);
+    const paging = {
+      page: optionalNumber(page, 'page'),
+      pageSize: optionalNumber(pageSize, 'pageSize'),
+    };
     // Per-customer scope (T2.04): an R-customer sees only their own row.
     const scope = await this.resolveScope(request, tenantId);
     if (scope.kind === 'none') {
-      return [];
+      return {
+        items: [],
+        total: 0,
+        page: paging.page ?? 1,
+        pageSize: paging.pageSize ?? 25,
+      };
     }
-    const rows = await this.customersService.findAll(tenantId);
-    return scope.kind === 'customer'
-      ? rows.filter((row) => row.id === scope.customerId)
-      : rows;
+    return this.customersService.findPage(tenantId, {
+      ...(scope.kind === 'customer' ? { customerId: scope.customerId } : {}),
+      ...(paging.page !== undefined ? { page: paging.page } : {}),
+      ...(paging.pageSize !== undefined ? { pageSize: paging.pageSize } : {}),
+    });
   }
 
   @Get(':customerId')
