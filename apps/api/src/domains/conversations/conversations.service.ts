@@ -25,6 +25,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { pageOffset, resolvePageWindow } from '../../common/paging.js';
 import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 
@@ -131,16 +132,7 @@ export class ConversationsService {
    */
   async listPage(tenantId: string, options: ConversationPageOptions = {}) {
     requireText(tenantId, 'tenantId');
-    const page = requirePositiveInteger(options.page ?? DEFAULT_PAGE, 'page');
-    const pageSize = requirePositiveInteger(
-      options.pageSize ?? DEFAULT_PAGE_SIZE,
-      'pageSize',
-    );
-    if (pageSize > MAX_PAGE_SIZE) {
-      throw new BadRequestException(
-        'pageSize must be at most ' + MAX_PAGE_SIZE,
-      );
-    }
+    const window = resolvePageWindow(options);
     const where: Prisma.ConversationWhereInput = {
       tenantId,
       ...(options.customerId ? { customerId: options.customerId } : {}),
@@ -149,12 +141,12 @@ export class ConversationsService {
       this.prisma.conversation.findMany({
         where,
         orderBy: { updatedAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip: pageOffset(window),
+        take: window.pageSize,
       }),
       this.prisma.conversation.count({ where }),
     ]);
-    return { items, total, page, pageSize };
+    return { items, total, ...window };
   }
 
   async findOne(id: string, tenantId: string) {
@@ -409,16 +401,3 @@ function requireText(value: string | undefined, field: string): void {
     throw new BadRequestException(field + ' is required');
   }
 }
-
-function requirePositiveInteger(value: number, field: string): number {
-  if (!Number.isInteger(value) || value < 1) {
-    throw new BadRequestException(field + ' must be a positive integer');
-  }
-  return value;
-}
-
-/** Page and size defaults for the conversation list (D-82). */
-const DEFAULT_PAGE = 1;
-const DEFAULT_PAGE_SIZE = 25;
-/** Largest page a caller may ask for, so one request stays bounded. */
-export const MAX_PAGE_SIZE = 100;

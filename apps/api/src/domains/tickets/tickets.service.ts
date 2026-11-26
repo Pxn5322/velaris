@@ -25,6 +25,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { resolvePageWindow } from '../../common/paging.js';
 import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import { CreateTicketDto } from './dto/create-ticket.dto.js';
@@ -129,16 +130,7 @@ export class TicketsService {
    */
   async findPage(tenantId: string, options: TicketQueueOptions = {}) {
     const query = options.query?.trim() ?? '';
-    const page = requirePositiveInteger(options.page ?? DEFAULT_PAGE, 'page');
-    const pageSize = requirePositiveInteger(
-      options.pageSize ?? DEFAULT_PAGE_SIZE,
-      'pageSize',
-    );
-    if (pageSize > MAX_PAGE_SIZE) {
-      throw new BadRequestException(
-        'pageSize must be at most ' + MAX_PAGE_SIZE,
-      );
-    }
+    const { page, pageSize } = resolvePageWindow(options);
     if (options.priority !== undefined) {
       requireOneOf(options.priority, TICKET_PRIORITIES, 'priority');
     }
@@ -516,13 +508,6 @@ type CreateTenantScopedCreate = CreateTicketDto & {
   primaryConversationId?: string;
 };
 
-function requirePositiveInteger(value: number, field: string): number {
-  if (!Number.isInteger(value) || value < 1) {
-    throw new BadRequestException(field + ' must be a positive integer');
-  }
-  return value;
-}
-
 function requireText(value: string | undefined, field: string): void {
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new BadRequestException(field + ' is required');
@@ -540,12 +525,6 @@ function requireOneOf<T extends string>(
     );
   }
 }
-
-/** Page and size defaults for the queue (D-81). */
-const DEFAULT_PAGE = 1;
-const DEFAULT_PAGE_SIZE = 25;
-/** Largest page a caller may ask for, so one request stays bounded. */
-export const MAX_PAGE_SIZE = 100;
 
 /** TicketStatus values, in lifecycle order (prisma/schema.prisma). */
 const TICKET_STATUSES = [

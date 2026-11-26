@@ -38,6 +38,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { Logger } from '@nestjs/common';
+import { optionalNumber } from '../../common/paging.js';
 import { RequirePermission } from '../../common/security/require-permission.decorator.js';
 import { PermissionsGuard } from '../../common/security/permissions.guard.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -191,12 +192,17 @@ export class ConversationsController {
    *
    * The caller asks for `page` rows of `pageSize`; the answer carries the slice
    * and the total that matched. Tenant scope and per-customer scope are part of
-   * the query, so a customer page holds only that customer's rows.
+   * the query, so a customer page holds only that customer's rows. An agent may
+   * narrow the page to one customer with `customerId`, so a lookup for a
+   * customer's thread reads the first row instead of guessing (D-83); an
+   * `R-customer` cannot widen its own scope with that parameter.
    */
   @Get()
   @RequirePermission(PERMISSIONS.TICKET_READ)
   async findAll(
     @Query('tenantId') tenantId: string,
+    @Query('customerId', new ParseUUIDPipe({ optional: true }))
+    customerFilter: string | undefined,
     @Query('page') page: string | undefined,
     @Query('pageSize') pageSize: string | undefined,
     @Req() request: AuthedRequest,
@@ -216,8 +222,12 @@ export class ConversationsController {
         pageSize: paging.pageSize ?? 25,
       };
     }
+    // The customer scope wins over the query parameter, so the parameter can
+    // only narrow an agent's page and never widen a customer's scope.
+    const customerId =
+      scope.kind === 'customer' ? scope.customerId : customerFilter;
     return this.conversations.listPage(tenantId, {
-      ...(scope.kind === 'customer' ? { customerId: scope.customerId } : {}),
+      ...(customerId ? { customerId } : {}),
       ...(paging.page !== undefined ? { page: paging.page } : {}),
       ...(paging.pageSize !== undefined ? { pageSize: paging.pageSize } : {}),
     });
@@ -465,18 +475,4 @@ export class ConversationsController {
       request.user?.email,
     );
   }
-}
-
-/**
- * Read one numeric query parameter. An empty or missing value stays undefined
- * so the service applies its default; anything else must be an integer, which
- * the service refuses with 400 when it is not.
- */
-function optionalNumber(value: string | undefined, field: string) {
-  if (value === undefined || value.trim() === '') return undefined;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    throw new BadRequestException(field + ' must be a positive integer');
-  }
-  return parsed;
 }

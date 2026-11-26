@@ -293,7 +293,8 @@ describe('Conversations routes (integration)', () => {
       [
         conversationRow('cccccccc-0000-4000-8000-000000000001'),
         conversationRow('cccccccc-0000-4000-8000-000000000002', {
-          customerId: 'customer-2',
+          // A real customer id is a UUID; the route refuses anything else.
+          customerId: 'bbbbbbbb-0000-4000-8000-000000000002',
         }),
         conversationRow('cccccccc-0000-4000-8000-000000000003', {
           tenantId: 'tenant-b',
@@ -415,6 +416,50 @@ describe('Conversations routes (integration)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ total: 2, page: 2, pageSize: 1 });
     expect(res.body.items).toHaveLength(1);
+  });
+
+  it('narrows the page to one customer with customerId (D-83)', async () => {
+    role = 'R-agent';
+    const res = await request(app.getHttpServer())
+      .get('/conversations?tenantId=tenant-a&customerId=customer-2')
+      .set('Authorization', 'Bearer valid-token');
+    expect(res.status).toBe(400);
+
+    // A real UUID resolves to that customer's rows only.
+    const scoped = await request(app.getHttpServer())
+      .get(
+        '/conversations?tenantId=tenant-a&customerId=bbbbbbbb-0000-4000-8000-000000000002',
+      )
+      .set('Authorization', 'Bearer valid-token');
+    expect(scoped.status).toBe(200);
+    expect(scoped.body.total).toBe(1);
+    expect(scoped.body.items).toHaveLength(1);
+    expect(scoped.body.items[0]).toMatchObject({
+      id: 'cccccccc-0000-4000-8000-000000000002',
+      customerId: 'bbbbbbbb-0000-4000-8000-000000000002',
+    });
+  });
+
+  it('lets the customer scope win over a supplied customerId (D-83)', async () => {
+    role = 'R-customer';
+    const res = await request(app.getHttpServer())
+      .get(
+        '/conversations?tenantId=tenant-a&customerId=bbbbbbbb-0000-4000-8000-000000000002',
+      )
+      .set('Authorization', 'Bearer valid-token');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(
+      res.body.items.map((c: { customerId: string }) => c.customerId),
+    ).toEqual(['customer-1']);
+  });
+
+  it('refuses a customerId that is not a UUID (D-83)', async () => {
+    role = 'R-agent';
+    const res = await request(app.getHttpServer())
+      .get('/conversations?tenantId=tenant-a&customerId=customer-1')
+      .set('Authorization', 'Bearer valid-token');
+    expect(res.status).toBe(400);
   });
 
   it('refuses a page size above the cap (D-82)', async () => {

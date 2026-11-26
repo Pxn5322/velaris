@@ -1024,6 +1024,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
   }) => {
     let createdConversation = null;
     let posted = null;
+    const listUrls = [];
     await seedSession(page);
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
@@ -1046,6 +1047,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
           ),
         );
       }
+      listUrls.push(route.request().url());
       return route.fulfill(json(conversationPage([])));
     });
     await page.route("**/conversations/conv-new**", (route) => {
@@ -1064,6 +1066,11 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.goto("/inbox");
     await page.getByTestId("inbox-ticket").first().click();
     await expect(page.getByTestId("inbox-timeline-empty")).toBeVisible();
+    // The fallback asks the API for this customer's thread directly (D-83),
+    // instead of guessing inside one wide page of conversations.
+    const listUrl = new URL(listUrls[0]);
+    expect(listUrl.searchParams.get("customerId")).toBe("customer-1");
+    expect(listUrl.searchParams.get("pageSize")).toBe("1");
     await expect(page.getByTestId("inbox-reply")).toBeVisible();
     await page.getByTestId("inbox-reply").fill("Starting from this ticket.");
     await page.getByTestId("inbox-send").click();

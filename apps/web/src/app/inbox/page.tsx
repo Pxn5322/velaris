@@ -454,15 +454,13 @@ export default function InboxPage() {
         // match by customerId alone can show the wrong conversation.
         let ownId = ticket.primaryConversationId ?? null;
         if (!ownId) {
-          // The list route answers one bounded page with its total (D-82), so
-          // ask for the widest page the API allows instead of every row.
+          // The list route answers one bounded page with its total (D-82) and
+          // filters by customer (D-83), so the first row is this customer's
+          // most recently changed thread. No guess inside a page.
           const page = await apiFetch<{ items: Conversation[] }>(
-            `/conversations?${tenantQuery}&pageSize=100`,
+            `/conversations?${tenantQuery}&customerId=${encodeURIComponent(ticket.customerId)}&pageSize=1`,
           );
-          ownId =
-            page.items.find(
-              (conversation) => conversation.customerId === ticket.customerId,
-            )?.id ?? null;
+          ownId = page.items[0]?.id ?? null;
         }
         if (!ownId) {
           setTimeline("empty");
