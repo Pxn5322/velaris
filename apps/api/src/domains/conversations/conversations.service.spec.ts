@@ -281,6 +281,12 @@ describe('ConversationsService (T2.03)', () => {
     const second = await service.listPage(TENANT_A, { page: 2, pageSize: 2 });
     expect(second.items.map((row) => row.id)).toEqual(['conv-a']);
     expect(second.total).toBe(3);
+
+    // The same shared offset drives this route (D-83): page 3 of 5 skips 10.
+    await service.listPage(TENANT_A, { page: 3, pageSize: 5 });
+    expect(prisma.conversation.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ skip: 10, take: 5 }),
+    );
   });
 
   it('listPage refuses a page size above the cap and a non-positive page (D-82)', async () => {

@@ -319,6 +319,12 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
       expect.objectContaining({ skip: 2, take: 2 }),
     );
     expect(prisma.ticket.count).toHaveBeenCalledTimes(2);
+
+    // The shared offset is page arithmetic, not a guess: page 3 of 5 skips 10.
+    await service.findPage(tenantA.id, { page: 3, pageSize: 5 });
+    expect(prisma.ticket.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ skip: 10, take: 5 }),
+    );
   });
 
   it('findPage refuses a page size above the cap and a non-positive page (D-81)', async () => {
