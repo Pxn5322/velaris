@@ -67,6 +67,16 @@ const MIN_TRIGRAM_LENGTH = 3;
 /** A phrase with whitespace cannot appear in an email address. */
 const WHITESPACE_PATTERN = /\s/;
 
+/**
+ * How long a total stays usable for the same filter shape (D-87). A membership
+ * write in this process clears the totals, so the delay only affects a write
+ * made by another process or instance.
+ */
+export const TOTAL_CACHE_TTL_MS = 15_000;
+
+/** Largest number of filter totals kept, so the memory stays bounded. */
+const TOTAL_CACHE_LIMIT = 64;
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -119,6 +129,12 @@ export interface RemoveMemberResult {
 @Injectable()
 export class TenantUsersService {
   // Explicit token: resolves without emitDecoratorMetadata (see PRISMA_SERVICE).
+  /** Totals read for one filter shape, until the entry expires (D-87). */
+  private readonly totals = new Map<
+    string,
+    { total: number; expiresAt: number }
+  >();
+
   constructor(
     @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService,
     private readonly admin: SupabaseAdminService,
@@ -220,6 +236,12 @@ export class TenantUsersService {
         ];
       }
     }
+    // A search carries its own identifiers and changes with each phrase, so
+    // only a status and role shape reuses a total.
+    const cacheKey = needle ? null : `${status}|${role}`;
+    const cached = cacheKey ? this.totals.get(cacheKey) : undefined;
+    const now = Date.now();
+    const cachedTotal = cached && cached.expiresAt > now ? cached.total : null;
     // The identifier page walks the index only, so a deep offset does not join
     // or read roles for every skipped row (D-87; measured 2026-11-26).
     const [page, total] = await Promise.all([
@@ -230,8 +252,14 @@ export class TenantUsersService {
         skip: pageOffset(window),
         take: window.pageSize,
       }),
-      this.prisma.tenantMembership.count({ where }),
+      cachedTotal !== null
+        ? Promise.resolve(cachedTotal)
+        : this.prisma.tenantMembership.count({ where }),
     ]);
+    if (cacheKey && cachedTotal === null) {
+      this.totals.set(cacheKey, { total, expiresAt: now + TOTAL_CACHE_TTL_MS });
+      this.evictTotals(now);
+    }
     if (page.length === 0) {
       return { items: [], total, ...window };
     }
@@ -265,6 +293,18 @@ export class TenantUsersService {
       total,
       ...window,
     };
+  }
+
+  /** Drop expired totals and keep the map bounded. */
+  private evictTotals(now: number): void {
+    for (const [key, entry] of this.totals) {
+      if (entry.expiresAt <= now) this.totals.delete(key);
+    }
+    while (this.totals.size > TOTAL_CACHE_LIMIT) {
+      const oldest = this.totals.keys().next().value;
+      if (oldest === undefined) break;
+      this.totals.delete(oldest);
+    }
   }
 
   /**
@@ -375,6 +415,7 @@ export class TenantUsersService {
       return row;
     });
 
+    this.totals.clear();
     return {
       membershipId: membership.id,
       userId: identity.userId,
@@ -434,6 +475,7 @@ export class TenantUsersService {
       where: { id: membershipId },
       data: { status: input.status },
     });
+    this.totals.clear();
     return {
       membershipId,
       tenantId,
@@ -480,6 +522,7 @@ export class TenantUsersService {
       await tx.tenantMembership.delete({ where: { id: membershipId } });
     });
 
+    this.totals.clear();
     return {
       membershipId,
       tenantId,
