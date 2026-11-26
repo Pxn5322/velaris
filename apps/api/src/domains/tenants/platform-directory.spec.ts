@@ -3,8 +3,9 @@
  *
  * `GET /tenants/users` read every membership on the platform and sorted the
  * result by tenant name, while the browser paged the rows. These cases pin the
- * replacement contract: one page window, the filters inside the query, and the
- * `(createdAt, id)` order that the committed indexes serve.
+ * replacement contract: one page window, the filters inside the query, the
+ * newest membership first, and a text filter that resolves its matches through
+ * the trigram indexes instead of scanning every membership.
  */
 
 import { BadRequestException } from '@nestjs/common';
@@ -16,6 +17,7 @@ import { GovernanceController } from './governance.controller.js';
 import type { GovernanceService } from './governance.service.js';
 import type { TenantRolesService } from './tenant-roles.service.js';
 import {
+  TEXT_MATCH_LIMIT,
   TenantUsersService,
   type PlatformDirectoryQuery,
 } from './tenant-users.service.js';
@@ -28,10 +30,16 @@ type QueryArgs = {
   orderBy?: Record<string, string>[];
   skip?: number;
   take?: number;
+  select?: Record<string, boolean>;
 };
 
-/** Records the query and answers one membership row. */
-function fakePrisma(total = 42) {
+/** Records each query and answers one membership row plus the text matches. */
+function fakePrisma(
+  options: { total?: number; users?: string[]; tenants?: string[] } = {},
+) {
+  const total = options.total ?? 42;
+  const userIds = options.users ?? ['user-1'];
+  const tenantIds = options.tenants ?? [TENANT_ID];
   const findMany = vi.fn(async (args: QueryArgs) => {
     expect(args).toBeDefined();
     return [
@@ -52,11 +60,17 @@ function fakePrisma(total = 42) {
     ];
   });
   const count = vi.fn(async () => total);
+  const userFindMany = vi.fn(async () => userIds.map((id) => ({ id })));
+  const tenantFindMany = vi.fn(async () => tenantIds.map((id) => ({ id })));
   return {
     findMany,
     count,
+    userFindMany,
+    tenantFindMany,
     prisma: {
       tenantMembership: { findMany, count },
+      user: { findMany: userFindMany },
+      tenant: { findMany: tenantFindMany },
     } as unknown as PrismaService,
   };
 }
@@ -70,18 +84,19 @@ function queryOf(findMany: ReturnType<typeof vi.fn>): QueryArgs {
 }
 
 describe('TenantUsersService.listPage (platform directory, D-87)', () => {
-  it('reads one page of every membership in a stable order', async () => {
+  it('reads one page of every membership, newest first', async () => {
     const fake = fakePrisma();
     const service = serviceWith(fake.prisma);
 
     const page = await service.listPage({ page: 3, pageSize: 10 });
 
     const query = queryOf(fake.findMany);
-    expect(query.orderBy).toEqual([{ createdAt: 'asc' }, { id: 'asc' }]);
+    expect(query.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
     expect(query.skip).toBe(20);
     expect(query.take).toBe(10);
     expect(query.where).toEqual({});
     expect(fake.count).toHaveBeenCalledWith({ where: {} });
+    expect(fake.userFindMany).not.toHaveBeenCalled();
     expect(page).toMatchObject({ total: 42, page: 3, pageSize: 10 });
     expect(page.items).toEqual([
       {
@@ -98,12 +113,11 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
     ]);
   });
 
-  it('puts the search, role and status filters inside the query', async () => {
+  it('puts the status and role filters inside the query', async () => {
     const fake = fakePrisma();
     const service = serviceWith(fake.prisma);
 
     await service.listPage({
-      q: 'globex',
       role: 'R-agent',
       status: 'SUSPENDED',
     } satisfies PlatformDirectoryQuery);
@@ -112,18 +126,73 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
     expect(query.where).toEqual({
       status: 'SUSPENDED',
       roles: { some: { role: { code: 'R-agent' } } },
+    });
+    expect(fake.count).toHaveBeenCalledWith({ where: query.where });
+  });
+
+  it('resolves the text filter to matching accounts and tenants first', async () => {
+    const fake = fakePrisma({ users: ['user-1'], tenants: [TENANT_ID] });
+    const service = serviceWith(fake.prisma);
+
+    await service.listPage({ q: ' globex ' });
+
+    // Both lookups run the case-insensitive match the trigram indexes serve.
+    expect(fake.userFindMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { emailNormalized: { contains: 'globex', mode: 'insensitive' } },
+          { displayName: { contains: 'globex', mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+      take: TEXT_MATCH_LIMIT + 1,
+    });
+    expect(fake.tenantFindMany).toHaveBeenCalledWith({
+      where: { name: { contains: 'globex', mode: 'insensitive' } },
+      select: { id: true },
+      take: TEXT_MATCH_LIMIT + 1,
+    });
+    // The membership read filters on the resolved identifiers, so it can use
+    // the membership indexes instead of matching joined text per row.
+    expect(queryOf(fake.findMany).where).toEqual({
+      OR: [{ userId: { in: ['user-1'] } }, { tenantId: { in: [TENANT_ID] } }],
+    });
+  });
+
+  it('answers an empty page when the text filter matches nothing', async () => {
+    const fake = fakePrisma({ users: [], tenants: [] });
+    const service = serviceWith(fake.prisma);
+
+    const page = await service.listPage({ q: 'nothing-matches' });
+
+    expect(page).toEqual({ items: [], total: 0, page: 1, pageSize: 25 });
+    expect(fake.findMany).not.toHaveBeenCalled();
+    expect(fake.count).not.toHaveBeenCalled();
+  });
+
+  it('keeps the relation filter when a phrase matches too many rows', async () => {
+    const fake = fakePrisma({
+      users: Array.from(
+        { length: TEXT_MATCH_LIMIT + 1 },
+        (_, index) => `user-${index}`,
+      ),
+    });
+    const service = serviceWith(fake.prisma);
+
+    await service.listPage({ q: 'a' });
+
+    // A phrase this broad cannot be turned into a bounded id set, so the
+    // query keeps the joined-text filter rather than losing matches.
+    expect(queryOf(fake.findMany).where).toEqual({
       OR: [
         {
           user: {
-            emailNormalized: { contains: 'globex', mode: 'insensitive' },
+            emailNormalized: { contains: 'a', mode: 'insensitive' },
           },
         },
-        { user: { displayName: { contains: 'globex', mode: 'insensitive' } } },
-        { tenant: { name: { contains: 'globex', mode: 'insensitive' } } },
+        { user: { displayName: { contains: 'a', mode: 'insensitive' } } },
+        { tenant: { name: { contains: 'a', mode: 'insensitive' } } },
       ],
-    });
-    expect(fake.count).toHaveBeenCalledWith({
-      where: query.where,
     });
   });
 
