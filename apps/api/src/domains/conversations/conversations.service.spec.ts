@@ -112,8 +112,38 @@ function fakePrisma(
         async ({ where }: { where: { id: string } }) =>
           convStore.find((c) => c.id === where.id) ?? null,
       ),
-      findMany: vi.fn(async ({ where }: { where: { tenantId: string } }) =>
-        convStore.filter((c) => c.tenantId === where.tenantId),
+      findMany: vi.fn(
+        async ({
+          where,
+          skip,
+          take,
+        }: {
+          where: { tenantId: string; customerId?: string };
+          skip?: number;
+          take?: number;
+        }) => {
+          const rows = convStore
+            .filter(
+              (c) =>
+                c.tenantId === where.tenantId &&
+                (!where.customerId || c.customerId === where.customerId),
+            )
+            .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+          const from = skip ?? 0;
+          return rows.slice(from, take === undefined ? undefined : from + take);
+        },
+      ),
+      count: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { tenantId: string; customerId?: string };
+        }) =>
+          convStore.filter(
+            (c) =>
+              c.tenantId === where.tenantId &&
+              (!where.customerId || c.customerId === where.customerId),
+          ).length,
       ),
       create: vi.fn(async ({ data }: { data: Partial<ConversationRow> }) => {
         const row: ConversationRow = {
@@ -229,14 +259,60 @@ describe('ConversationsService (T2.03)', () => {
     expect(foreign.conversation.create).not.toHaveBeenCalled();
   });
 
-  it('lists conversations of the given tenant only (AC-F04-1)', async () => {
+  it('listPage returns one page and the total that matched (D-82)', async () => {
+    prisma._convStore.push(
+      conversationRow('conv-a', {
+        updatedAt: new Date('2026-11-20T08:00:00Z'),
+      }),
+      conversationRow('conv-b', {
+        updatedAt: new Date('2026-11-21T08:00:00Z'),
+      }),
+      conversationRow('conv-c', {
+        updatedAt: new Date('2026-11-22T08:00:00Z'),
+      }),
+    );
+
+    const first = await service.listPage(TENANT_A, { page: 1, pageSize: 2 });
+    expect(first.items.map((row) => row.id)).toEqual(['conv-c', 'conv-b']);
+    expect(first.total).toBe(3);
+    expect(first.page).toBe(1);
+    expect(first.pageSize).toBe(2);
+
+    const second = await service.listPage(TENANT_A, { page: 2, pageSize: 2 });
+    expect(second.items.map((row) => row.id)).toEqual(['conv-a']);
+    expect(second.total).toBe(3);
+  });
+
+  it('listPage refuses a page size above the cap and a non-positive page (D-82)', async () => {
+    await expect(
+      service.listPage(TENANT_A, { pageSize: 101 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.listPage(TENANT_A, { page: 0 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.conversation.findMany).not.toHaveBeenCalled();
+  });
+
+  it('listPage keeps the tenant and customer scope inside the query (D-82)', async () => {
     prisma._convStore.push(
       conversationRow('conv-a'),
       conversationRow('conv-b', { tenantId: TENANT_B }),
+      conversationRow('conv-c', { customerId: 'customer-b' }),
     );
-    const result = await service.listConversations(TENANT_A);
-    expect(result).toHaveLength(1);
-    expect(result[0]!.tenantId).toBe(TENANT_A);
+
+    const page = await service.listPage(TENANT_A, {
+      customerId: CUSTOMER_A,
+    });
+
+    expect(page.items.map((row) => row.id)).toEqual(['conv-a']);
+    expect(page.total).toBe(1);
+    const scopedWhere = { tenantId: TENANT_A, customerId: CUSTOMER_A };
+    expect(prisma.conversation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: scopedWhere }),
+    );
+    expect(prisma.conversation.count).toHaveBeenCalledWith({
+      where: scopedWhere,
+    });
   });
 
   it('finds one conversation or reports not found across tenants', async () => {

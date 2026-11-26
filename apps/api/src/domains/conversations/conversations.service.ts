@@ -54,6 +54,13 @@ const CONVERSATION_TRANSITIONS: Record<
   CLOSED: [],
 };
 
+/** One page of the tenant conversation list (D-82). */
+export interface ConversationPageOptions {
+  customerId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 /** Input for a status change; expectedVersion guards lost updates. */
 export interface UpdateConversationInput {
   status: string;
@@ -115,13 +122,39 @@ export class ConversationsService {
     });
   }
 
-  /** Tenant-scoped list, most recently changed first. */
-  listConversations(tenantId: string) {
+  /**
+   * One bounded page of the tenant list, most recently changed first (D-82).
+   *
+   * The per-customer scope is part of the where clause, so a page holds only
+   * that customer's rows and `total` counts those rows, not the whole tenant
+   * table. A filter after the read would return short pages.
+   */
+  async listPage(tenantId: string, options: ConversationPageOptions = {}) {
     requireText(tenantId, 'tenantId');
-    return this.prisma.conversation.findMany({
-      where: { tenantId },
-      orderBy: { updatedAt: 'desc' },
-    });
+    const page = requirePositiveInteger(options.page ?? DEFAULT_PAGE, 'page');
+    const pageSize = requirePositiveInteger(
+      options.pageSize ?? DEFAULT_PAGE_SIZE,
+      'pageSize',
+    );
+    if (pageSize > MAX_PAGE_SIZE) {
+      throw new BadRequestException(
+        'pageSize must be at most ' + MAX_PAGE_SIZE,
+      );
+    }
+    const where: Prisma.ConversationWhereInput = {
+      tenantId,
+      ...(options.customerId ? { customerId: options.customerId } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.conversation.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.conversation.count({ where }),
+    ]);
+    return { items, total, page, pageSize };
   }
 
   async findOne(id: string, tenantId: string) {
@@ -376,3 +409,16 @@ function requireText(value: string | undefined, field: string): void {
     throw new BadRequestException(field + ' is required');
   }
 }
+
+function requirePositiveInteger(value: number, field: string): number {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new BadRequestException(field + ' must be a positive integer');
+  }
+  return value;
+}
+
+/** Page and size defaults for the conversation list (D-82). */
+const DEFAULT_PAGE = 1;
+const DEFAULT_PAGE_SIZE = 25;
+/** Largest page a caller may ask for, so one request stays bounded. */
+export const MAX_PAGE_SIZE = 100;

@@ -454,11 +454,13 @@ export default function InboxPage() {
         // match by customerId alone can show the wrong conversation.
         let ownId = ticket.primaryConversationId ?? null;
         if (!ownId) {
-          const conversations = await apiFetch<Conversation[]>(
-            `/conversations?${tenantQuery}`,
+          // The list route answers one bounded page with its total (D-82), so
+          // ask for the widest page the API allows instead of every row.
+          const page = await apiFetch<{ items: Conversation[] }>(
+            `/conversations?${tenantQuery}&pageSize=100`,
           );
           ownId =
-            conversations.find(
+            page.items.find(
               (conversation) => conversation.customerId === ticket.customerId,
             )?.id ?? null;
         }

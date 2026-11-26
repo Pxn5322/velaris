@@ -352,7 +352,14 @@ async function prepare(page, response = sessionResponse) {
     ),
   );
   await page.route("**/conversations?*", (route) =>
-    route.fulfill(json(conversations)),
+    route.fulfill(
+      json({
+        items: conversations,
+        total: conversations.length,
+        page: 1,
+        pageSize: 25,
+      }),
+    ),
   );
   await page.route("**/conversations/conv-1*", (route) =>
     route.fulfill(json(timeline)),

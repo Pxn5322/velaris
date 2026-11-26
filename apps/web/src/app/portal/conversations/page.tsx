@@ -40,6 +40,17 @@ interface Conversation {
   createdAt: string;
 }
 
+/** Rows the page asks for per read, the same default the API uses (D-82). */
+const PAGE_SIZE = 25;
+
+/** One bounded page of the list plus the total that matched (D-82). */
+interface ConversationPage {
+  items: Conversation[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 interface Message {
   id: string;
   body: string;
@@ -64,6 +75,9 @@ export default function PortalConversationsPage() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [failure, setFailure] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [paging, setPaging] = useState(false);
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
@@ -74,7 +88,7 @@ export default function PortalConversationsPage() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [aiNotice, setAiNotice] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (pageNumber = 1) => {
     try {
       const auth = await apiFetch<AuthSessionResponse>("/auth/session");
       const tenants = auth.tenantContext?.tenants ?? [];
@@ -84,11 +98,13 @@ export default function PortalConversationsPage() {
         return;
       }
       setTenantId(tenants[0].tenantId);
-      const rows = await apiFetch<Conversation[]>(
-        `/conversations?tenantId=${encodeURIComponent(tenants[0].tenantId)}`,
+      const result = await apiFetch<ConversationPage>(
+        `/conversations?tenantId=${encodeURIComponent(tenants[0].tenantId)}&page=${pageNumber}&pageSize=${PAGE_SIZE}`,
       );
-      setConversations(rows);
-      setPhase(rows.length === 0 ? "empty" : "ready");
+      setConversations(result.items);
+      setTotal(result.total);
+      setPage(result.page);
+      setPhase(result.items.length === 0 ? "empty" : "ready");
     } catch (error) {
       if (
         error instanceof ApiError &&
@@ -119,6 +135,22 @@ export default function PortalConversationsPage() {
     }, 0);
     return () => clearTimeout(timer);
   }, [load]);
+
+  /** Move to another page of the list; the API reads that window (D-82). */
+  const goToPage = useCallback(
+    async (nextPage: number) => {
+      const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      const clamped = Math.min(Math.max(1, nextPage), lastPage);
+      if (clamped === page) return;
+      setPaging(true);
+      try {
+        await load(clamped);
+      } finally {
+        setPaging(false);
+      }
+    },
+    [load, page, total],
+  );
 
   const openTimeline = useCallback(
     async (conversation: Conversation) => {
@@ -191,6 +223,10 @@ export default function PortalConversationsPage() {
     }
   }, [draft, selected, tenantId]);
 
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const shownFrom = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const shownTo = Math.min(page * PAGE_SIZE, total);
+
   return (
     <section
       className="flex-1 flex flex-col gap-4"
@@ -206,7 +242,7 @@ export default function PortalConversationsPage() {
           onClick={() => {
             setFailure(null);
             setPhase("loading");
-            void load();
+            void load(page);
           }}
           className="text-xs underline text-slate-400"
           data-testid="portal-refresh"
@@ -254,7 +290,7 @@ export default function PortalConversationsPage() {
             onClick={() => {
               setFailure(null);
               setPhase("loading");
-              void load();
+              void load(page);
             }}
             className="mt-2 underline"
           >
@@ -278,26 +314,61 @@ export default function PortalConversationsPage() {
 
       {phase === "ready" && (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,4fr)_minmax(0,8fr)]">
-          <ul className="rounded-lg border border-slate-800 overflow-hidden">
-            {conversations.map((conversation) => (
-              <li key={conversation.id}>
-                <button
-                  type="button"
-                  data-testid="portal-conversation"
-                  onClick={() => void openTimeline(conversation)}
-                  className={`w-full text-left px-4 py-3 border-b border-slate-800 hover:bg-slate-900 ${selected?.id === conversation.id ? "bg-slate-900" : ""}`}
-                >
-                  <span className="text-sm font-medium">
-                    {conversation.channel} conversation
-                  </span>
-                  <span className="block text-xs text-slate-400">
-                    {conversation.status} ·{" "}
-                    {new Date(conversation.createdAt).toLocaleDateString()}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-2">
+            <ul className="rounded-lg border border-slate-800 overflow-hidden">
+              {conversations.map((conversation) => (
+                <li key={conversation.id}>
+                  <button
+                    type="button"
+                    data-testid="portal-conversation"
+                    onClick={() => void openTimeline(conversation)}
+                    className={`w-full text-left px-4 py-3 border-b border-slate-800 hover:bg-slate-900 ${selected?.id === conversation.id ? "bg-slate-900" : ""}`}
+                  >
+                    <span className="text-sm font-medium">
+                      {conversation.channel} conversation
+                    </span>
+                    <span className="block text-xs text-slate-400">
+                      {conversation.status} ·{" "}
+                      {new Date(conversation.createdAt).toLocaleDateString()}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            {total > PAGE_SIZE && (
+              <div
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 px-3 py-2 text-xs text-slate-400"
+                data-testid="portal-conversation-pager"
+              >
+                <span data-testid="portal-conversation-range">
+                  {shownFrom}-{shownTo} of {total}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => void goToPage(page - 1)}
+                    disabled={paging || page <= 1}
+                    aria-label="Previous page of conversations"
+                    data-testid="portal-conversation-prev"
+                    className="rounded border border-slate-700 px-2 py-1 disabled:opacity-40"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void goToPage(page + 1)}
+                    disabled={paging || page >= pageCount}
+                    aria-label="Next page of conversations"
+                    data-testid="portal-conversation-next"
+                    className="rounded border border-slate-700 px-2 py-1 disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div
             className="rounded-lg border border-slate-800 p-4"

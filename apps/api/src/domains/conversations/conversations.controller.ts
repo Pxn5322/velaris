@@ -186,22 +186,41 @@ export class ConversationsController {
       : conversation;
   }
 
+  /**
+   * One bounded page of the tenant conversations (D-82), newest change first.
+   *
+   * The caller asks for `page` rows of `pageSize`; the answer carries the slice
+   * and the total that matched. Tenant scope and per-customer scope are part of
+   * the query, so a customer page holds only that customer's rows.
+   */
   @Get()
   @RequirePermission(PERMISSIONS.TICKET_READ)
   async findAll(
     @Query('tenantId') tenantId: string,
+    @Query('page') page: string | undefined,
+    @Query('pageSize') pageSize: string | undefined,
     @Req() request: AuthedRequest,
   ) {
     await this.requireTenantScope(request, tenantId);
+    const paging = {
+      page: optionalNumber(page, 'page'),
+      pageSize: optionalNumber(pageSize, 'pageSize'),
+    };
     // Per-customer scope (T2.04): an R-customer sees only their own rows.
     const scope = await this.resolveScope(request, tenantId);
     if (scope.kind === 'none') {
-      return [];
+      return {
+        items: [],
+        total: 0,
+        page: paging.page ?? 1,
+        pageSize: paging.pageSize ?? 25,
+      };
     }
-    const rows = await this.conversations.listConversations(tenantId);
-    return scope.kind === 'customer'
-      ? rows.filter((row) => row.customerId === scope.customerId)
-      : rows;
+    return this.conversations.listPage(tenantId, {
+      ...(scope.kind === 'customer' ? { customerId: scope.customerId } : {}),
+      ...(paging.page !== undefined ? { page: paging.page } : {}),
+      ...(paging.pageSize !== undefined ? { pageSize: paging.pageSize } : {}),
+    });
   }
 
   @Get(':conversationId')
@@ -446,4 +465,18 @@ export class ConversationsController {
       request.user?.email,
     );
   }
+}
+
+/**
+ * Read one numeric query parameter. An empty or missing value stays undefined
+ * so the service applies its default; anything else must be an integer, which
+ * the service refuses with 400 when it is not.
+ */
+function optionalNumber(value: string | undefined, field: string) {
+  if (value === undefined || value.trim() === '') return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new BadRequestException(field + ' must be a positive integer');
+  }
+  return parsed;
 }
