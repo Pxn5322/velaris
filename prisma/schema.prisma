@@ -388,7 +388,8 @@ model Conversation {
   tickets  Ticket[]
 
   @@index([tenantId, updatedAt(sort: Desc)])
-  @@index([tenantId, customerId])
+  /// Customer page in read order (D-84).
+  @@index([tenantId, customerId, updatedAt(sort: Desc)])
   @@map("conversations")
 }
 
@@ -452,6 +453,8 @@ model Ticket {
   @@index([tenantId, status])
   @@index([tenantId, assigneeMembershipId, status])
   @@index([tenantId, updatedAt(sort: Desc)])
+  /// Customer page in read order (D-84).
+  @@index([tenantId, customerId, updatedAt(sort: Desc)])
   @@map("tickets")
 }
 
