@@ -58,6 +58,12 @@ const MEMBERSHIP_STATUSES = [
  */
 export const TEXT_MATCH_LIMIT = 2000;
 
+/**
+ * Shortest phrase that produces a trigram. A shorter phrase cannot use the
+ * trigram indexes, so the directory skips the lookups for it (D-87).
+ */
+const MIN_TRIGRAM_LENGTH = 3;
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -151,7 +157,9 @@ export class TenantUsersService {
    *
    * A text filter resolves the matching accounts and tenants first and then
    * filters on their identifiers, so the membership read uses its own indexes
-   * instead of matching joined text per row (migration 0024).
+   * instead of matching joined text per row (migration 0024). A one- or
+   * two-character phrase skips both lookups, because it produces no trigram and
+   * the trigram indexes cannot help it.
    */
   async listPage(
     options: PlatformDirectoryQuery = {},
@@ -177,7 +185,10 @@ export class TenantUsersService {
       ...(role ? { roles: { some: { role: { code: role } } } } : {}),
     };
     if (needle) {
-      const matches = await this.textMatches(needle);
+      const matches =
+        needle.length < MIN_TRIGRAM_LENGTH
+          ? null
+          : await this.textMatches(needle);
       if (matches) {
         if (matches.userIds.length === 0 && matches.tenantIds.length === 0) {
           return { items: [], total: 0, ...window };

@@ -170,6 +170,24 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
     expect(fake.count).not.toHaveBeenCalled();
   });
 
+  it('skips the trigram lookups for a one- or two-character phrase', async () => {
+    const fake = fakePrisma();
+    const service = serviceWith(fake.prisma);
+
+    await service.listPage({ q: 'ab' });
+
+    // A short phrase produces no trigram, so the lookups cannot help it.
+    expect(fake.userFindMany).not.toHaveBeenCalled();
+    expect(fake.tenantFindMany).not.toHaveBeenCalled();
+    expect(queryOf(fake.findMany).where).toEqual({
+      OR: [
+        { user: { emailNormalized: { contains: 'ab', mode: 'insensitive' } } },
+        { user: { displayName: { contains: 'ab', mode: 'insensitive' } } },
+        { tenant: { name: { contains: 'ab', mode: 'insensitive' } } },
+      ],
+    });
+  });
+
   it('keeps the relation filter when a phrase matches too many rows', async () => {
     const fake = fakePrisma({
       users: Array.from(
@@ -179,7 +197,7 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
     });
     const service = serviceWith(fake.prisma);
 
-    await service.listPage({ q: 'a' });
+    await service.listPage({ q: 'abc' });
 
     // A phrase this broad cannot be turned into a bounded id set, so the
     // query keeps the joined-text filter rather than losing matches.
@@ -187,11 +205,11 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
       OR: [
         {
           user: {
-            emailNormalized: { contains: 'a', mode: 'insensitive' },
+            emailNormalized: { contains: 'abc', mode: 'insensitive' },
           },
         },
-        { user: { displayName: { contains: 'a', mode: 'insensitive' } } },
-        { tenant: { name: { contains: 'a', mode: 'insensitive' } } },
+        { user: { displayName: { contains: 'abc', mode: 'insensitive' } } },
+        { tenant: { name: { contains: 'abc', mode: 'insensitive' } } },
       ],
     });
   });
