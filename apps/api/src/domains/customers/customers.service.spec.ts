@@ -71,8 +71,7 @@ function fakePrisma(rows: CustomerRow[]) {
         async ({ where }: { where: { tenantId: string; id?: string } }) =>
           store.filter(
             (c) =>
-              c.tenantId === where.tenantId &&
-              (!where.id || c.id === where.id),
+              c.tenantId === where.tenantId && (!where.id || c.id === where.id),
           ).length,
       ),
       create: vi.fn(async ({ data }: { data: Partial<CustomerRow> }) => {
