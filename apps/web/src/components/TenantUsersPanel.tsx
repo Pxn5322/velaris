@@ -56,6 +56,14 @@ interface InviteResult {
   message?: string;
 }
 
+/** One page of the platform-wide directory (D-87). */
+interface TenantMemberPage {
+  items: TenantMember[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 const ASSIGNABLE_ROLES = [
   { code: "R-tenant-admin", label: "Tenant admin" },
   { code: "R-agent", label: "Agent" },
@@ -104,6 +112,24 @@ function initialsFor(member: TenantMember): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+/** Query string for one platform directory page (D-87). */
+function directoryQuery(params: {
+  page: number;
+  pageSize: number;
+  q: string;
+  role: string;
+  status: string;
+}): string {
+  const query = new URLSearchParams({
+    page: String(params.page),
+    pageSize: String(params.pageSize),
+  });
+  if (params.q) query.set("q", params.q);
+  if (params.role !== "ALL") query.set("role", params.role);
+  if (params.status !== "ALL") query.set("status", params.status);
+  return query.toString();
+}
+
 /**
  * Tenant-scoped user directory (F-03, AC-F03-1).
  *
@@ -130,10 +156,12 @@ export function TenantUsersPanel({
   const [tenants, setTenants] = useState<TenantOption[]>([]);
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [members, setMembers] = useState<TenantMember[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -169,14 +197,37 @@ export function TenantUsersPanel({
     };
   }, [platformWide]);
 
+  // The platform directory reads one page per request (D-87). The tenant list
+  // is small, so that path still filters and pages in the browser.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   useEffect(() => {
     if (!platformWide && !tenantId) return;
     let cancelled = false;
-    const path = platformWide ? "/tenants/users" : `/tenants/${tenantId}/users`;
-    void apiFetch<TenantMember[]>(path)
-      .then((rows) => {
-        if (!cancelled) setMembers(rows);
-      })
+    const request = platformWide
+      ? apiFetch<TenantMemberPage>(
+          "/tenants/users?" +
+            directoryQuery({
+              page,
+              pageSize: rowsPerPage,
+              q: debouncedSearch,
+              role: roleFilter,
+              status: statusFilter,
+            }),
+        ).then((result) => {
+          if (cancelled) return;
+          setMembers(result.items);
+          setTotal(result.total);
+        })
+      : apiFetch<TenantMember[]>(`/tenants/${tenantId}/users`).then((rows) => {
+          if (cancelled) return;
+          setMembers(rows);
+          setTotal(rows.length);
+        });
+    void request
       .catch((loadError) => {
         if (!cancelled) setError(describeError(loadError));
       })
@@ -186,7 +237,16 @@ export function TenantUsersPanel({
     return () => {
       cancelled = true;
     };
-  }, [tenantId, reloadToken, platformWide]);
+  }, [
+    tenantId,
+    reloadToken,
+    platformWide,
+    page,
+    rowsPerPage,
+    debouncedSearch,
+    roleFilter,
+    statusFilter,
+  ]);
 
   const ownMembershipId =
     tenants.find((tenant) => tenant.tenantId === tenantId)?.membershipId ??
@@ -204,8 +264,10 @@ export function TenantUsersPanel({
         codes.add(code);
       }
     }
+    // Keep the active filter selectable when no row on this page holds it.
+    if (roleFilter !== "ALL") codes.add(roleFilter);
     return Array.from(codes);
-  }, [members]);
+  }, [members, roleFilter]);
 
   const filteredMembers = members.filter((member) => {
     const needle = search.trim().toLowerCase();
@@ -221,18 +283,20 @@ export function TenantUsersPanel({
     return matchesSearch && matchesRole && matchesStatus;
   });
 
-  const pageCount = Math.max(
-    1,
-    Math.ceil(filteredMembers.length / rowsPerPage),
-  );
+  const totalCount = platformWide ? total : filteredMembers.length;
+
+  const pageCount = Math.max(1, Math.ceil(totalCount / rowsPerPage));
   const currentPage = Math.min(page, pageCount);
-  const startIndex = (currentPage - 1) * rowsPerPage;
-  const pageMembers = filteredMembers.slice(
-    startIndex,
-    startIndex + rowsPerPage,
-  );
-  const shownFrom = filteredMembers.length === 0 ? 0 : startIndex + 1;
-  const shownTo = Math.min(startIndex + rowsPerPage, filteredMembers.length);
+  /** Platform rows arrive filtered and sliced by the server (D-87). */
+  const pageMembers = platformWide
+    ? members
+    : filteredMembers.slice(
+        (currentPage - 1) * rowsPerPage,
+        currentPage * rowsPerPage,
+      );
+  const shownFrom = totalCount === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1;
+  const shownTo =
+    totalCount === 0 ? 0 : (currentPage - 1) * rowsPerPage + pageMembers.length;
 
   const refresh = () => {
     setError(null);
@@ -680,7 +744,7 @@ export function TenantUsersPanel({
               className="block sm:table-row-group sm:divide-y"
               style={{ borderColor: "var(--card-border)" }}
             >
-              {!loading && filteredMembers.length === 0 ? (
+              {!loading && totalCount === 0 ? (
                 <tr className="block sm:table-row">
                   <td
                     colSpan={platformWide ? 5 : 4}
@@ -694,8 +758,10 @@ export function TenantUsersPanel({
                         No data found
                       </span>
                       <span className="text-[11px] font-medium">
-                        {members.length === 0
-                          ? "This tenant has no users yet."
+                        {totalCount === 0
+                          ? platformWide
+                            ? "No memberships exist yet."
+                            : "This tenant has no users yet."
                           : "No users match your current search or filter criteria."}
                       </span>
                     </span>
@@ -942,7 +1008,7 @@ export function TenantUsersPanel({
           data-testid="tenant-users-pagination"
         >
           <span>
-            Showing {shownFrom} to {shownTo} of {filteredMembers.length} entries
+            Showing {shownFrom} to {shownTo} of {totalCount} entries
           </span>
           <div className="flex items-center gap-1">
             <button

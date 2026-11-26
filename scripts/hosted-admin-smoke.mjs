@@ -141,7 +141,11 @@ async function main() {
   );
   const directoryBody = await readJson(directory);
   checks.directory = directory.status;
-  const directoryRows = Array.isArray(directoryBody) ? directoryBody : [];
+  // The platform directory answers one page plus the total (D-87).
+  const directoryRows = Array.isArray(directoryBody)
+    ? directoryBody
+    : (directoryBody?.items ?? []);
+  checks.directoryTotal = directoryBody?.total ?? directoryRows.length;
   checks.directoryRows = directoryRows.length;
   checks.directoryTenants = new Set(
     directoryRows.map((row) => row.tenantName).filter(Boolean),

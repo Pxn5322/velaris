@@ -136,7 +136,7 @@ test.describe("tenant administrator user directory (F-03)", () => {
   test("shows every tenant's users to the platform administrator", async ({
     page,
   }) => {
-    let listUrl = null;
+    const requests = [];
     await seedSession(page);
     await routeSession(page, {
       ...sessionResponse,
@@ -145,41 +145,78 @@ test.describe("tenant administrator user directory (F-03)", () => {
     await page.route("**/audit/events*", (route) =>
       route.fulfill(json({ items: [], limit: 8, hasMore: false })),
     );
+    const platformRows = Array.from({ length: 12 }, (_, index) => ({
+      membershipId: `membership-platform-${index + 1}`,
+      userId: `user-platform-${index + 1}`,
+      email:
+        index === 11 ? "owner@globex.test" : `member${index + 1}@acme.test`,
+      displayName: index === 11 ? "Globex Owner" : `Acme Member ${index + 1}`,
+      status: "ACTIVE",
+      roles: ["R-tenant-admin"],
+      tenantId: index === 11 ? "tenant-b" : "tenant-a",
+      tenantName: index === 11 ? "Globex" : "Acme",
+    }));
+    // The platform directory answers one page plus the total (D-87).
     await page.route("**/tenants/users*", (route) => {
-      listUrl = new URL(route.request().url());
+      const url = new URL(route.request().url());
+      requests.push(url);
+      const pageNumber = Number(url.searchParams.get("page") ?? "1");
+      const pageSize = Number(url.searchParams.get("pageSize") ?? "25");
+      const needle = url.searchParams.get("q");
+      const rows = needle
+        ? platformRows.filter(
+            (row) =>
+              row.email.includes(needle) || row.displayName.includes(needle),
+          )
+        : platformRows;
+      const start = (pageNumber - 1) * pageSize;
       return route.fulfill(
-        json([
-          {
-            ...members[0],
-            tenantId: "tenant-a",
-            tenantName: "Acme",
-          },
-          {
-            membershipId: "membership-globex",
-            userId: "user-globex",
-            email: "owner@globex.test",
-            displayName: "Globex Owner",
-            status: "ACTIVE",
-            roles: ["R-tenant-admin"],
-            tenantId: "tenant-b",
-            tenantName: "Globex",
-          },
-        ]),
+        json({
+          items: rows.slice(start, start + pageSize),
+          total: rows.length,
+          page: pageNumber,
+          pageSize,
+        }),
       );
     });
 
     await openUserDirectory(page);
 
-    expect(listUrl?.pathname).toBe("/tenants/users");
+    expect(requests[0]?.pathname).toBe("/tenants/users");
+    expect(requests[0]?.searchParams.get("page")).toBe("1");
+    expect(requests[0]?.searchParams.get("pageSize")).toBe("10");
+    await expect(page.getByTestId("tenant-user-row")).toHaveCount(10);
+    await expect(page.getByTestId("tenant-users-pagination")).toContainText(
+      "Showing 1 to 10 of 12 entries",
+    );
+    await expect(page.getByTestId("tenant-invite-card")).toHaveCount(0);
+    await expect(page.getByText("Add System User")).toHaveCount(0);
+
+    // The pager reads the next page from the API instead of rows held here.
+    await page.getByTestId("tenant-users-next").click();
     await expect(page.getByTestId("tenant-user-row")).toHaveCount(2);
+    await expect(page.getByTestId("tenant-users-pagination")).toContainText(
+      "Showing 11 to 12 of 12 entries",
+    );
+    expect(requests.at(-1)?.searchParams.get("page")).toBe("2");
     await expect(
       page.getByTestId("tenant-users-panel").getByText("Globex", {
         exact: true,
       }),
     ).toBeVisible();
     await expect(page.getByText("owner@globex.test")).toBeVisible();
-    await expect(page.getByTestId("tenant-invite-card")).toHaveCount(0);
-    await expect(page.getByText("Add System User")).toHaveCount(0);
+
+    // A search runs in the API query, so it is not limited to the loaded page.
+    await page.getByTestId("tenant-users-search").fill("owner@globex");
+    await expect(page.getByTestId("tenant-user-row")).toHaveCount(1);
+    await expect(page.getByTestId("tenant-user-row")).toContainText(
+      "owner@globex.test",
+    );
+    await expect(page.getByTestId("tenant-users-pagination")).toContainText(
+      "Showing 1 to 1 of 1 entries",
+    );
+    expect(requests.at(-1)?.searchParams.get("q")).toBe("owner@globex");
+    expect(requests.at(-1)?.searchParams.get("page")).toBe("1");
   });
 
   test("lists only members of the signed-in tenant", async ({ page }) => {

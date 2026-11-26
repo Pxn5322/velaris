@@ -29,6 +29,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
+import { pageOffset, resolvePageWindow } from '../../common/paging.js';
 import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import { SupabaseAdminService } from '../auth/supabase-admin.service.js';
@@ -40,6 +42,14 @@ import { hasMembershipRole, isTenantAssignableRole } from './tenant-roles.js';
 
 /** Membership states an administrator may set (docs/DATABASE.md E-tenant). */
 const SETTABLE_MEMBERSHIP_STATUS = ['ACTIVE', 'SUSPENDED'] as const;
+
+/** Every membership state a platform directory filter may name. */
+const MEMBERSHIP_STATUSES = [
+  'ACTIVE',
+  'INVITED',
+  'SUSPENDED',
+  'REVOKED',
+] as const;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -56,6 +66,26 @@ export interface TenantMemberView {
   /** Included by the platform-wide directory. */
   tenantId?: string;
   tenantName?: string;
+}
+
+/** One page of the platform-wide directory (D-87). */
+export interface TenantMemberPage {
+  items: TenantMemberView[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** Filters and window for one platform directory page (D-87). */
+export interface PlatformDirectoryQuery {
+  page?: number;
+  pageSize?: number;
+  /** Matches the user's email, display name or the tenant name. */
+  q?: string;
+  /** Exact role code the membership holds. */
+  role?: string;
+  /** Exact membership status. */
+  status?: string;
 }
 
 export interface AddMemberResult extends TenantMemberView {
@@ -101,31 +131,85 @@ export class TenantUsersService {
   }
 
   /**
-   * Every user membership on the platform, grouped by tenant for the platform
-   * administrator's User Directory. The route requires
+   * One bounded page of every membership on the platform for the platform
+   * administrator's User Directory (D-87). The route requires
    * TENANT_MANAGE_PLATFORM; tenant administrators keep `list`, which can only
    * read their own tenant.
+   *
+   * The filters are part of the query, so `total` counts the matching rows and
+   * a page never filters after the read. The order is `(createdAt, id)`, which
+   * the committed indexes serve; the id breaks a tie on equal creation time so
+   * offset pages stay stable.
    */
-  async listAll(): Promise<TenantMemberView[]> {
-    const memberships = await this.prisma.tenantMembership.findMany({
-      include: {
-        user: true,
-        tenant: true,
-        roles: { include: { role: true } },
-      },
-      orderBy: [{ tenant: { name: 'asc' } }, { createdAt: 'asc' }],
-    });
-    return memberships.map((membership) => ({
-      membershipId: membership.id,
-      userId: membership.userId,
-      email: membership.user.emailNormalized,
-      displayName: membership.user.displayName,
-      avatarDataUrl: membership.user.avatarDataUrl || null,
-      status: membership.status,
-      roles: membership.roles.map((assignment) => assignment.role.code),
-      tenantId: membership.tenantId,
-      tenantName: membership.tenant.name,
-    }));
+  async listPage(
+    options: PlatformDirectoryQuery = {},
+  ): Promise<TenantMemberPage> {
+    const window = resolvePageWindow(options);
+    const status = options.status?.trim() ?? '';
+    if (
+      status.length > 0 &&
+      !MEMBERSHIP_STATUSES.includes(
+        status as (typeof MEMBERSHIP_STATUSES)[number],
+      )
+    ) {
+      throw new BadRequestException(
+        `status must be one of ${MEMBERSHIP_STATUSES.join(', ')}`,
+      );
+    }
+    const needle = options.q?.trim() ?? '';
+    const role = options.role?.trim() ?? '';
+    const where: Prisma.TenantMembershipWhereInput = {
+      ...(status
+        ? { status: status as (typeof MEMBERSHIP_STATUSES)[number] }
+        : {}),
+      ...(role ? { roles: { some: { role: { code: role } } } } : {}),
+      ...(needle
+        ? {
+            OR: [
+              {
+                user: {
+                  emailNormalized: { contains: needle, mode: 'insensitive' },
+                },
+              },
+              {
+                user: {
+                  displayName: { contains: needle, mode: 'insensitive' },
+                },
+              },
+              { tenant: { name: { contains: needle, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    };
+    const [memberships, total] = await Promise.all([
+      this.prisma.tenantMembership.findMany({
+        where,
+        include: {
+          user: true,
+          tenant: true,
+          roles: { include: { role: true } },
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        skip: pageOffset(window),
+        take: window.pageSize,
+      }),
+      this.prisma.tenantMembership.count({ where }),
+    ]);
+    return {
+      items: memberships.map((membership) => ({
+        membershipId: membership.id,
+        userId: membership.userId,
+        email: membership.user.emailNormalized,
+        displayName: membership.user.displayName,
+        avatarDataUrl: membership.user.avatarDataUrl || null,
+        status: membership.status,
+        roles: membership.roles.map((assignment) => assignment.role.code),
+        tenantId: membership.tenantId,
+        tenantName: membership.tenant.name,
+      })),
+      total,
+      ...window,
+    };
   }
 
   /**

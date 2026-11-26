@@ -22,6 +22,12 @@ const MIGRATION_PATH = fileURLToPath(
     import.meta.url,
   ),
 );
+const PLATFORM_MIGRATION_PATH = fileURLToPath(
+  new URL(
+    '../../../../prisma/migrations/0023_platform_directory_page/migration.sql',
+    import.meta.url,
+  ),
+);
 const SCHEMA_PATH = fileURLToPath(
   new URL('../../../../prisma/schema.prisma', import.meta.url),
 );
@@ -29,6 +35,11 @@ const SCHEMA_PATH = fileURLToPath(
 function migrationSql(): string {
   expect(existsSync(MIGRATION_PATH)).toBe(true);
   return readFileSync(MIGRATION_PATH, 'utf8');
+}
+
+function platformMigrationSql(): string {
+  expect(existsSync(PLATFORM_MIGRATION_PATH)).toBe(true);
+  return readFileSync(PLATFORM_MIGRATION_PATH, 'utf8');
 }
 
 function modelBlock(name: string): string {
@@ -57,5 +68,25 @@ describe('D-86 list read indexes', () => {
       '@@index([tenantId, action, createdAt(sort: Desc)])',
     );
     expect(modelBlock('Customer')).toContain('@@index([tenantId, createdAt])');
+  });
+});
+
+describe('D-87 platform directory page indexes', () => {
+  it('orders the membership page by the sort columns', () => {
+    expect(platformMigrationSql()).toMatch(
+      /CREATE INDEX "tenant_memberships_created_at_id_idx"\s+ON "tenant_memberships"\("created_at", "id"\)/,
+    );
+  });
+
+  it('keeps the status-filtered page in the same order', () => {
+    expect(platformMigrationSql()).toMatch(
+      /CREATE INDEX "tenant_memberships_status_created_at_id_idx"\s+ON "tenant_memberships"\("status", "created_at", "id"\)/,
+    );
+  });
+
+  it('declares both membership indexes in the Prisma schema', () => {
+    const membership = modelBlock('TenantMembership');
+    expect(membership).toContain('@@index([createdAt, id])');
+    expect(membership).toContain('@@index([status, createdAt, id])');
   });
 });
