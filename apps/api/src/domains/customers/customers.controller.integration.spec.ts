@@ -71,8 +71,7 @@ function fakePrisma(rows: Record<string, unknown>[]) {
       }) => {
         const rows = store.filter(
           (c) =>
-            c.tenantId === where.tenantId &&
-            (!where.id || c.id === where.id),
+            c.tenantId === where.tenantId && (!where.id || c.id === where.id),
         );
         const from = skip ?? 0;
         return rows.slice(from, take === undefined ? undefined : from + take);
@@ -80,8 +79,7 @@ function fakePrisma(rows: Record<string, unknown>[]) {
       count: async ({ where }: { where: { tenantId: string; id?: string } }) =>
         store.filter(
           (c) =>
-            c.tenantId === where.tenantId &&
-            (!where.id || c.id === where.id),
+            c.tenantId === where.tenantId && (!where.id || c.id === where.id),
         ).length,
       findUnique: async ({ where }: { where: { id: string } }) =>
         store.find((c) => c.id === where.id) ?? null,
