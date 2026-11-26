@@ -25,7 +25,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
-import { resolvePageWindow } from '../../common/paging.js';
+import { pageOffset, resolvePageWindow } from '../../common/paging.js';
 import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import { CreateTicketDto } from './dto/create-ticket.dto.js';
@@ -130,7 +130,7 @@ export class TicketsService {
    */
   async findPage(tenantId: string, options: TicketQueueOptions = {}) {
     const query = options.query?.trim() ?? '';
-    const { page, pageSize } = resolvePageWindow(options);
+    const window = resolvePageWindow(options);
     if (options.priority !== undefined) {
       requireOneOf(options.priority, TICKET_PRIORITIES, 'priority');
     }
@@ -160,8 +160,8 @@ export class TicketsService {
       this.prisma.ticket.findMany({
         where,
         orderBy: { updatedAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip: pageOffset(window),
+        take: window.pageSize,
         include: {
           primaryConversation: {
             select: {
@@ -195,8 +195,7 @@ export class TicketsService {
         matchPreview: matchPreviews.get(ticket.id) ?? null,
       })),
       total,
-      page,
-      pageSize,
+      ...window,
     };
   }
 
