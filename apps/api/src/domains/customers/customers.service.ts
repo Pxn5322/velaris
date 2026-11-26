@@ -12,23 +12,48 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
+import { pageOffset, resolvePageWindow } from '../../common/paging.js';
 import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import type { CreateCustomerDto } from './dto/create-customer.dto.js';
+
+/** One page of the tenant customer list (D-86). */
+export interface CustomerPageOptions {
+  customerId?: string;
+  page?: number;
+  pageSize?: number;
+}
 
 @Injectable()
 export class CustomersService {
   constructor(@Inject(PRISMA_SERVICE) private readonly prisma: PrismaService) {}
 
-  /** Tenant-scoped list of active customer rows. */
-  findAll(tenantId: string) {
+  /**
+   * One bounded page of the tenant customers, oldest first (D-86).
+   *
+   * The per-customer scope is part of the where clause, so a page holds only
+   * that customer's row and `total` counts it, not the whole tenant table.
+   */
+  async findPage(tenantId: string, options: CustomerPageOptions = {}) {
     if (typeof tenantId !== 'string' || tenantId.trim().length === 0) {
       throw new BadRequestException('tenantId is required');
     }
-    return this.prisma.customer.findMany({
-      where: { tenantId },
-      orderBy: { createdAt: 'asc' },
-    });
+    const window = resolvePageWindow(options);
+    const where: Prisma.CustomerWhereInput = {
+      tenantId,
+      ...(options.customerId ? { id: options.customerId } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.customer.findMany({
+        where,
+        orderBy: { createdAt: 'asc' },
+        skip: pageOffset(window),
+        take: window.pageSize,
+      }),
+      this.prisma.customer.count({ where }),
+    ]);
+    return { items, total, ...window };
   }
 
   /** Create a customer inside the scoped tenant. */

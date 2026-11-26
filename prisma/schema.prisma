@@ -186,6 +186,8 @@ model AuditEvent {
   tenant Tenant? @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, createdAt(sort: Desc)])
+  /// Action-filtered audit page in read order (D-86).
+  @@index([tenantId, action, createdAt(sort: Desc)])
   @@index([resourceType, resourceId, createdAt(sort: Desc)])
   @@map("audit_events")
 }
@@ -367,6 +369,8 @@ model Customer {
 
   @@index([tenantId, email])
   @@index([tenantId, externalRef])
+  /// Customer page in read order (D-86).
+  @@index([tenantId, createdAt])
   @@map("customers")
 }
 
