@@ -450,8 +450,9 @@ model Ticket {
   primaryConversation Conversation? @relation(fields: [primaryConversationId], references: [id])
   assignments         TicketAssignment[]
 
-  @@index([tenantId, status])
-  @@index([tenantId, assigneeMembershipId, status])
+  /// Queue filter pages in read order (D-85).
+  @@index([tenantId, status, updatedAt(sort: Desc)])
+  @@index([tenantId, assigneeMembershipId, status, updatedAt(sort: Desc)])
   @@index([tenantId, updatedAt(sort: Desc)])
   /// Customer page in read order (D-84).
   @@index([tenantId, customerId, updatedAt(sort: Desc)])
