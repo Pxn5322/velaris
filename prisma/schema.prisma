@@ -82,6 +82,9 @@ model Tenant {
   toolApprovals          ToolApprovalRequest[]
   ticketAssignments      TicketAssignment[]
 
+  // Migration 0024_directory_text_search adds a pg_trgm GIN index on name
+  // for the platform directory search (D-87). Prisma cannot model GIN or
+  // trigram indexes, so it lives in the migration; do not drop it.
   @@unique([slug])
   @@map("tenants")
 }
@@ -106,6 +109,11 @@ model User {
   updatedAt       DateTime   @updatedAt @map("updated_at")
 
   memberships TenantMembership[]
+
+  // Migration 0024_directory_text_search adds pg_trgm GIN indexes on
+  // email_normalized and display_name for the platform directory search
+  // (D-87). Prisma cannot model GIN or trigram indexes, so they live in
+  // the migration; do not drop them.
 
   // External subject is unique per identity provider (DATABASE.md section 3).
   @@unique([provider, externalSubject])

@@ -51,6 +51,13 @@ const MEMBERSHIP_STATUSES = [
   'REVOKED',
 ] as const;
 
+/**
+ * Largest text match set the directory turns into identifiers. A broader
+ * phrase keeps the joined-text filter, because a truncated set would lose
+ * rows (D-87).
+ */
+export const TEXT_MATCH_LIMIT = 2000;
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -137,9 +144,14 @@ export class TenantUsersService {
    * read their own tenant.
    *
    * The filters are part of the query, so `total` counts the matching rows and
-   * a page never filters after the read. The order is `(createdAt, id)`, which
-   * the committed indexes serve; the id breaks a tie on equal creation time so
-   * offset pages stay stable.
+   * a page never filters after the read. The order is `(createdAt desc, id
+   * desc)`, so a new membership appears on page 1; the committed indexes serve
+   * that order and the id breaks a tie on equal creation time so offset pages
+   * stay stable.
+   *
+   * A text filter resolves the matching accounts and tenants first and then
+   * filters on their identifiers, so the membership read uses its own indexes
+   * instead of matching joined text per row (migration 0024).
    */
   async listPage(
     options: PlatformDirectoryQuery = {},
@@ -163,24 +175,33 @@ export class TenantUsersService {
         ? { status: status as (typeof MEMBERSHIP_STATUSES)[number] }
         : {}),
       ...(role ? { roles: { some: { role: { code: role } } } } : {}),
-      ...(needle
-        ? {
-            OR: [
-              {
-                user: {
-                  emailNormalized: { contains: needle, mode: 'insensitive' },
-                },
-              },
-              {
-                user: {
-                  displayName: { contains: needle, mode: 'insensitive' },
-                },
-              },
-              { tenant: { name: { contains: needle, mode: 'insensitive' } } },
-            ],
-          }
-        : {}),
     };
+    if (needle) {
+      const matches = await this.textMatches(needle);
+      if (matches) {
+        if (matches.userIds.length === 0 && matches.tenantIds.length === 0) {
+          return { items: [], total: 0, ...window };
+        }
+        where.OR = [
+          ...(matches.userIds.length > 0
+            ? [{ userId: { in: matches.userIds } }]
+            : []),
+          ...(matches.tenantIds.length > 0
+            ? [{ tenantId: { in: matches.tenantIds } }]
+            : []),
+        ];
+      } else {
+        where.OR = [
+          {
+            user: {
+              emailNormalized: { contains: needle, mode: 'insensitive' },
+            },
+          },
+          { user: { displayName: { contains: needle, mode: 'insensitive' } } },
+          { tenant: { name: { contains: needle, mode: 'insensitive' } } },
+        ];
+      }
+    }
     const [memberships, total] = await Promise.all([
       this.prisma.tenantMembership.findMany({
         where,
@@ -189,7 +210,7 @@ export class TenantUsersService {
           tenant: true,
           roles: { include: { role: true } },
         },
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: pageOffset(window),
         take: window.pageSize,
       }),
@@ -209,6 +230,48 @@ export class TenantUsersService {
       })),
       total,
       ...window,
+    };
+  }
+
+  /**
+   * Resolve the accounts and tenants whose text matches `needle` (D-87).
+   *
+   * Both lookups run the case-insensitive `contains` that the directory used to
+   * apply through the relation, and migration 0024 gives each column a pg_trgm
+   * index, so the planner reads a match set instead of the table. The page then
+   * filters memberships on `userId` and `tenantId`, which their own indexes
+   * serve.
+   *
+   * Returns null when either side matches more rows than TEXT_MATCH_LIMIT: a
+   * phrase that broad is not a bounded identifier set, and truncating it would
+   * drop real matches, so the caller keeps the joined-text filter.
+   */
+  private async textMatches(
+    needle: string,
+  ): Promise<{ userIds: string[]; tenantIds: string[] } | null> {
+    const [users, tenants] = await Promise.all([
+      this.prisma.user.findMany({
+        where: {
+          OR: [
+            { emailNormalized: { contains: needle, mode: 'insensitive' } },
+            { displayName: { contains: needle, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+        take: TEXT_MATCH_LIMIT + 1,
+      }),
+      this.prisma.tenant.findMany({
+        where: { name: { contains: needle, mode: 'insensitive' } },
+        select: { id: true },
+        take: TEXT_MATCH_LIMIT + 1,
+      }),
+    ]);
+    if (users.length > TEXT_MATCH_LIMIT || tenants.length > TEXT_MATCH_LIMIT) {
+      return null;
+    }
+    return {
+      userIds: users.map((row) => row.id),
+      tenantIds: tenants.map((row) => row.id),
     };
   }
 

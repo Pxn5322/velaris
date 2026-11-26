@@ -28,6 +28,12 @@ const PLATFORM_MIGRATION_PATH = fileURLToPath(
     import.meta.url,
   ),
 );
+const TEXT_SEARCH_MIGRATION_PATH = fileURLToPath(
+  new URL(
+    '../../../../prisma/migrations/0024_directory_text_search/migration.sql',
+    import.meta.url,
+  ),
+);
 const SCHEMA_PATH = fileURLToPath(
   new URL('../../../../prisma/schema.prisma', import.meta.url),
 );
@@ -40,6 +46,11 @@ function migrationSql(): string {
 function platformMigrationSql(): string {
   expect(existsSync(PLATFORM_MIGRATION_PATH)).toBe(true);
   return readFileSync(PLATFORM_MIGRATION_PATH, 'utf8');
+}
+
+function textSearchMigrationSql(): string {
+  expect(existsSync(TEXT_SEARCH_MIGRATION_PATH)).toBe(true);
+  return readFileSync(TEXT_SEARCH_MIGRATION_PATH, 'utf8');
 }
 
 function modelBlock(name: string): string {
@@ -88,5 +99,32 @@ describe('D-87 platform directory page indexes', () => {
     const membership = modelBlock('TenantMembership');
     expect(membership).toContain('@@index([createdAt, id])');
     expect(membership).toContain('@@index([status, createdAt, id])');
+  });
+});
+
+describe('D-87 platform directory text search indexes', () => {
+  it('indexes the account email and name for a leading-wildcard match', () => {
+    const sql = textSearchMigrationSql();
+    expect(sql).toMatch(
+      /CREATE INDEX "users_email_normalized_trgm_idx"\s+ON "users" USING GIN \("email_normalized" gin_trgm_ops\)/,
+    );
+    expect(sql).toMatch(
+      /CREATE INDEX "users_display_name_trgm_idx"\s+ON "users" USING GIN \("display_name" gin_trgm_ops\)/,
+    );
+  });
+
+  it('indexes the tenant name for the same match', () => {
+    expect(textSearchMigrationSql()).toMatch(
+      /CREATE INDEX "tenants_name_trgm_idx"\s+ON "tenants" USING GIN \("name" gin_trgm_ops\)/,
+    );
+  });
+
+  it('enables pg_trgm and names the migration in the schema', () => {
+    expect(textSearchMigrationSql()).toMatch(
+      /CREATE EXTENSION IF NOT EXISTS pg_trgm/,
+    );
+    // Prisma cannot model GIN or trigram indexes, so the models carry a note.
+    expect(modelBlock('User')).toContain('0024_directory_text_search');
+    expect(modelBlock('Tenant')).toContain('0024_directory_text_search');
   });
 });

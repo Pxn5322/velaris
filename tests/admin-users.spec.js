@@ -145,17 +145,23 @@ test.describe("tenant administrator user directory (F-03)", () => {
     await page.route("**/audit/events*", (route) =>
       route.fulfill(json({ items: [], limit: 8, hasMore: false })),
     );
-    const platformRows = Array.from({ length: 12 }, (_, index) => ({
-      membershipId: `membership-platform-${index + 1}`,
-      userId: `user-platform-${index + 1}`,
-      email:
-        index === 11 ? "owner@globex.test" : `member${index + 1}@acme.test`,
-      displayName: index === 11 ? "Globex Owner" : `Acme Member ${index + 1}`,
-      status: "ACTIVE",
-      roles: ["R-tenant-admin"],
-      tenantId: index === 11 ? "tenant-b" : "tenant-a",
-      tenantName: index === 11 ? "Globex" : "Acme",
-    }));
+    // The API answers the newest membership first (D-87), so this fixture is
+    // newest first: position 12 is the Globex owner and lands on page 1.
+    const platformRows = Array.from({ length: 12 }, (_, index) => {
+      const position = 12 - index;
+      return {
+        membershipId: `membership-platform-${position}`,
+        userId: `user-platform-${position}`,
+        email:
+          position === 12 ? "owner@globex.test" : `member${position}@acme.test`,
+        displayName:
+          position === 12 ? "Globex Owner" : `Acme Member ${position}`,
+        status: "ACTIVE",
+        roles: ["R-tenant-admin"],
+        tenantId: position === 12 ? "tenant-b" : "tenant-a",
+        tenantName: position === 12 ? "Globex" : "Acme",
+      };
+    });
     // The platform directory answers one page plus the total (D-87).
     await page.route("**/tenants/users*", (route) => {
       const url = new URL(route.request().url());
@@ -186,6 +192,10 @@ test.describe("tenant administrator user directory (F-03)", () => {
     expect(requests[0]?.searchParams.get("page")).toBe("1");
     expect(requests[0]?.searchParams.get("pageSize")).toBe("10");
     await expect(page.getByTestId("tenant-user-row")).toHaveCount(10);
+    // Newest first: the most recent membership is the first row of page 1.
+    await expect(page.getByTestId("tenant-user-row").first()).toContainText(
+      "owner@globex.test",
+    );
     await expect(page.getByTestId("tenant-users-pagination")).toContainText(
       "Showing 1 to 10 of 12 entries",
     );
@@ -199,12 +209,10 @@ test.describe("tenant administrator user directory (F-03)", () => {
       "Showing 11 to 12 of 12 entries",
     );
     expect(requests.at(-1)?.searchParams.get("page")).toBe("2");
-    await expect(
-      page.getByTestId("tenant-users-panel").getByText("Globex", {
-        exact: true,
-      }),
-    ).toBeVisible();
-    await expect(page.getByText("owner@globex.test")).toBeVisible();
+    // The two oldest memberships close the list.
+    await expect(page.getByTestId("tenant-user-row").last()).toContainText(
+      "member1@acme.test",
+    );
 
     // A search runs in the API query, so it is not limited to the loaded page.
     await page.getByTestId("tenant-users-search").fill("owner@globex");
