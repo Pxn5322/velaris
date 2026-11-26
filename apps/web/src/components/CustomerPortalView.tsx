@@ -36,6 +36,9 @@ interface CustomerTicket {
   primaryConversationId?: string | null;
 }
 
+/** Rows the portal asks for per read, the same default the API uses (D-81). */
+const PAGE_SIZE = 25;
+
 /** One bounded page of the ticket list plus the total that matched (D-81). */
 interface CustomerTicketPage {
   items: CustomerTicket[];
@@ -75,12 +78,15 @@ export function CustomerPortalView() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [failure, setFailure] = useState<string | null>(null);
   const [tickets, setTickets] = useState<CustomerTicket[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [paging, setPaging] = useState(false);
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [tenantName, setTenantName] = useState<string | null>(null);
   const { theme } = useRole();
   const isLight = theme === "light";
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (pageNumber = 1) => {
     try {
       const auth = await apiFetch<AuthSessionResponse>("/auth/session");
       const tenant = auth.tenantContext?.tenants?.[0];
@@ -91,12 +97,14 @@ export function CustomerPortalView() {
       }
       setTenantId(tenant.tenantId);
       setTenantName(tenant.name ?? null);
-      // The list route answers one bounded page with its total (D-81). The
-      // portal shows the first page; it needs no pager of its own.
-      const page = await apiFetch<CustomerTicketPage>(
-        `/tickets?tenantId=${encodeURIComponent(tenant.tenantId)}`,
+      // The list route answers one bounded page with its total (D-81), so the
+      // portal asks for the page it shows and reads the total from the answer.
+      const result = await apiFetch<CustomerTicketPage>(
+        `/tickets?tenantId=${encodeURIComponent(tenant.tenantId)}&page=${pageNumber}&pageSize=${PAGE_SIZE}`,
       );
-      setTickets(page.items);
+      setTickets(result.items);
+      setTotal(result.total);
+      setPage(result.page);
       setPhase("ready");
     } catch (error) {
       setFailure(
@@ -112,10 +120,26 @@ export function CustomerPortalView() {
     // The kick-off runs in a scheduled callback so the effect body never
     // starts a synchronous setState cascade (react-hooks/set-state-in-effect).
     const timer = setTimeout(() => {
-      void load();
+      void load(1);
     }, 0);
     return () => clearTimeout(timer);
   }, [load]);
+
+  /** Move to another page of the list; the API reads that window (D-81). */
+  const goToPage = useCallback(
+    async (nextPage: number) => {
+      const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      const clamped = Math.min(Math.max(1, nextPage), lastPage);
+      if (clamped === page) return;
+      setPaging(true);
+      try {
+        await load(clamped);
+      } finally {
+        setPaging(false);
+      }
+    },
+    [load, page, total],
+  );
 
   const handleSearchChange = (q: string) => {
     setDeflectionQuery(q);
@@ -188,8 +212,9 @@ export function CustomerPortalView() {
       setNewCategory("General");
       setNewDescription("");
       setIsModalOpen(false);
-      // Reload instead of pushing a local row: the list is server state.
-      await load();
+      // Reload instead of pushing a local row: the list is server state. A new
+      // ticket sorts first, so the first page shows it.
+      await load(1);
     } catch (error) {
       const denied =
         error instanceof ApiError &&
@@ -219,6 +244,10 @@ export function CustomerPortalView() {
 
   const isResolved = (status: string) =>
     status === "RESOLVED" || status === "CLOSED";
+
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const shownFrom = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const shownTo = Math.min(page * PAGE_SIZE, total);
 
   return (
     <div className="flex-1 p-6 md:p-10 overflow-y-auto">
@@ -358,7 +387,7 @@ export function CustomerPortalView() {
               className="w-4 h-4"
               style={{ color: "var(--accent-cyan)" }}
             />{" "}
-            My Support Requests ({tickets.length})
+            My Support Requests ({total})
           </h2>
 
           {phase === "loading" && (
@@ -487,6 +516,44 @@ export function CustomerPortalView() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {total > PAGE_SIZE && (
+            <div
+              className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 font-mono text-[11px]"
+              style={{
+                borderColor: "var(--card-border)",
+                color: "var(--text-muted)",
+              }}
+            >
+              <span data-testid="portal-ticket-range">
+                {shownFrom}-{shownTo} of {total}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => void goToPage(page - 1)}
+                  disabled={paging || page <= 1}
+                  aria-label="Previous page of requests"
+                  data-testid="portal-prev-page"
+                  className="px-2 py-1 rounded border disabled:opacity-40"
+                  style={{ borderColor: "var(--card-border)" }}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void goToPage(page + 1)}
+                  disabled={paging || page >= pageCount}
+                  aria-label="Next page of requests"
+                  data-testid="portal-next-page"
+                  className="px-2 py-1 rounded border disabled:opacity-40"
+                  style={{ borderColor: "var(--card-border)" }}
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </div>
