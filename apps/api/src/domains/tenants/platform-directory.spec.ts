@@ -30,6 +30,7 @@ type QueryArgs = {
   orderBy?: Record<string, string>[];
   skip?: number;
   take?: number;
+  select?: Record<string, boolean>;
 };
 
 /**
@@ -48,7 +49,8 @@ function fakePrisma(
   const emails = options.emails ?? ['user-1'];
   const names = options.names ?? ['user-1'];
   const tenantIds = options.tenants ?? [TENANT_ID];
-  const findMany = vi.fn(async (args: QueryArgs) => {
+  // The mock answers both reads, so its rows stay untyped here.
+  const findMany = vi.fn(async (args: QueryArgs): Promise<unknown[]> => {
     expect(args).toBeDefined();
     return [
       {
@@ -89,12 +91,34 @@ function fakePrisma(
   };
 }
 
+/** One membership row as the row read returns it. */
+function membershipRow(id: string, email: string) {
+  return {
+    id,
+    userId: `user-${id}`,
+    tenantId: TENANT_ID,
+    status: 'ACTIVE',
+    user: {
+      id: `user-${id}`,
+      emailNormalized: email,
+      displayName: email,
+      avatarDataUrl: null,
+    },
+    tenant: { id: TENANT_ID, name: 'Acme' },
+    roles: [{ role: { code: 'R-agent' } }],
+  };
+}
+
 function serviceWith(prisma: PrismaService) {
   return new TenantUsersService(prisma, {} as unknown as SupabaseAdminService);
 }
 
 function queryOf(findMany: ReturnType<typeof vi.fn>): QueryArgs {
-  return findMany.mock.calls[0]?.[0] as QueryArgs;
+  return queryAt(findMany, 0);
+}
+
+function queryAt(findMany: ReturnType<typeof vi.fn>, index: number): QueryArgs {
+  return findMany.mock.calls[index]?.[0] as QueryArgs;
 }
 
 /** The account lookup that names one column, or undefined when it did not run. */
@@ -114,12 +138,24 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
 
     const page = await service.listPage({ page: 3, pageSize: 10 });
 
-    const query = queryOf(fake.findMany);
-    expect(query.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
-    expect(query.skip).toBe(20);
-    expect(query.take).toBe(10);
-    expect(query.where).toEqual({});
+    // First the identifier page, which walks the index without joining it.
+    const ids = queryOf(fake.findMany);
+    expect(ids.select).toEqual({ id: true });
+    expect(ids.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+    expect(ids.skip).toBe(20);
+    expect(ids.take).toBe(10);
+    expect(ids.where).toEqual({});
     expect(fake.count).toHaveBeenCalledWith({ where: {} });
+    // Then the rows for those identifiers, with the includes and the order.
+    expect(fake.findMany).toHaveBeenCalledTimes(2);
+    expect(queryAt(fake.findMany, 1)).toEqual({
+      where: { id: { in: [MEMBERSHIP_ID] } },
+      include: {
+        user: true,
+        tenant: true,
+        roles: { include: { role: true } },
+      },
+    });
     expect(fake.userFindMany).not.toHaveBeenCalled();
     expect(page).toMatchObject({ total: 42, page: 3, pageSize: 10 });
     expect(page.items).toEqual([
@@ -135,6 +171,38 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
         tenantName: 'Acme',
       },
     ]);
+  });
+
+  it('keeps the identifier page order when the row read returns another', async () => {
+    const fake = fakePrisma();
+    fake.findMany
+      .mockResolvedValueOnce([{ id: 'member-b' }, { id: 'member-a' }])
+      .mockResolvedValueOnce([
+        membershipRow('member-a', 'a@acme.test'),
+        membershipRow('member-b', 'b@acme.test'),
+      ]);
+    const service = serviceWith(fake.prisma);
+
+    const page = await service.listPage({ pageSize: 2 });
+
+    // The row read carries no order, so the page order cannot change here.
+    expect(queryAt(fake.findMany, 1).orderBy).toBeUndefined();
+    expect(page.items.map((item) => item.membershipId)).toEqual([
+      'member-b',
+      'member-a',
+    ]);
+  });
+
+  it('answers an empty page without reading any row', async () => {
+    const fake = fakePrisma();
+    fake.findMany.mockResolvedValueOnce([]);
+    const service = serviceWith(fake.prisma);
+
+    const page = await service.listPage({ page: 5, pageSize: 10 });
+
+    expect(page).toEqual({ items: [], total: 42, page: 5, pageSize: 10 });
+    expect(fake.findMany).toHaveBeenCalledTimes(1);
+    expect(fake.count).toHaveBeenCalledWith({ where: {} });
   });
 
   it('puts the status and role filters inside the query', async () => {

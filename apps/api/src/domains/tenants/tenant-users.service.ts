@@ -163,6 +163,10 @@ export class TenantUsersService {
    * instead of matching joined text per row (migration 0024). A one- or
    * two-character phrase skips both lookups, because it produces no trigram and
    * the trigram indexes cannot help it.
+   *
+   * The page reads identifiers first and then the rows for them, so a deep
+   * offset walks the index for the skipped rows without joining or reading
+   * roles for each of them.
    */
   async listPage(
     options: PlatformDirectoryQuery = {},
@@ -216,22 +220,38 @@ export class TenantUsersService {
         ];
       }
     }
-    const [memberships, total] = await Promise.all([
+    // The identifier page walks the index only, so a deep offset does not join
+    // or read roles for every skipped row (D-87; measured 2026-11-26).
+    const [page, total] = await Promise.all([
       this.prisma.tenantMembership.findMany({
         where,
-        include: {
-          user: true,
-          tenant: true,
-          roles: { include: { role: true } },
-        },
+        select: { id: true },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: pageOffset(window),
         take: window.pageSize,
       }),
       this.prisma.tenantMembership.count({ where }),
     ]);
+    if (page.length === 0) {
+      return { items: [], total, ...window };
+    }
+    const memberships = await this.prisma.tenantMembership.findMany({
+      where: { id: { in: page.map((row) => row.id) } },
+      include: {
+        user: true,
+        tenant: true,
+        roles: { include: { role: true } },
+      },
+    });
+    // The identifier page holds the order. A `sort` on the row read would only
+    // re-sort 25 rows, and it costs more than the read itself.
+    const rowsById = new Map(memberships.map((row) => [row.id, row]));
+    const ordered = page.flatMap((row) => {
+      const found = rowsById.get(row.id);
+      return found ? [found] : [];
+    });
     return {
-      items: memberships.map((membership) => ({
+      items: ordered.map((membership) => ({
         membershipId: membership.id,
         userId: membership.userId,
         email: membership.user.emailNormalized,
