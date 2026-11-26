@@ -100,8 +100,40 @@ function fakeTicketPrisma(tickets: FakeTicket[]) {
         const row = store.find((r) => r.id === where.id);
         return row ? { ...row } : null;
       },
-      findMany: async ({ where }: { where: { tenantId: string } }) =>
-        store.filter((r) => r.tenantId === where.tenantId),
+      findMany: vi.fn(
+        async ({
+          where,
+          skip,
+          take,
+        }: {
+          where: { tenantId: string; customerId?: string };
+          skip?: number;
+          take?: number;
+        }) => {
+          const rows = store.filter(
+            (r) =>
+              r.tenantId === where.tenantId &&
+              (!where.customerId || r.customerId === where.customerId),
+          );
+          const start = skip ?? 0;
+          return rows.slice(
+            start,
+            take === undefined ? undefined : start + take,
+          );
+        },
+      ),
+      count: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { tenantId: string; customerId?: string };
+        }) =>
+          store.filter(
+            (r) =>
+              r.tenantId === where.tenantId &&
+              (!where.customerId || r.customerId === where.customerId),
+          ).length,
+      ),
       create: async ({ data }: { data: FakeTicket }) => {
         const row: FakeTicket = {
           id:
@@ -323,7 +355,51 @@ describe('Tickets routes (integration)', () => {
       .set('Authorization', 'Bearer valid-token');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([]);
+    expect(res.body).toEqual({ items: [], total: 0, page: 1, pageSize: 25 });
+  });
+
+  it('returns one bounded page with the total that matched (D-81)', async () => {
+    role = 'R-agent';
+    for (let index = 1; index <= 5; index += 1) {
+      prismaFake._store.push(
+        seededTicket({
+          id: 'aaaaaaaa-0000-4000-8000-00000000010' + index,
+          title: 'Ticket ' + index,
+          updatedAt: new Date(Date.UTC(2026, 0, index)),
+        }),
+      );
+    }
+
+    const first = await request(app.getHttpServer())
+      .get('/tickets?tenantId=tenant-a&page=1&pageSize=2')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({ total: 5, page: 1, pageSize: 2 });
+    expect(first.body.items).toHaveLength(2);
+
+    const last = await request(app.getHttpServer())
+      .get('/tickets?tenantId=tenant-a&page=3&pageSize=2')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(last.status).toBe(200);
+    expect(last.body.items).toHaveLength(1);
+    expect(last.body.total).toBe(5);
+    // The read carries a window, so one request never returns every row.
+    expect(prismaFake.ticket.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ skip: 4, take: 2 }),
+    );
+  });
+
+  it('refuses a page size above the cap with 400 (D-81)', async () => {
+    role = 'R-agent';
+
+    const res = await request(app.getHttpServer())
+      .get('/tickets?tenantId=tenant-a&pageSize=101')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(400);
+    expect(prismaFake.ticket.findMany).not.toHaveBeenCalled();
   });
 
   it('lists eligible assignees for an agent', async () => {
@@ -465,8 +541,8 @@ describe('Tickets routes (integration)', () => {
       .set('Authorization', 'Bearer valid-token');
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0]).toMatchObject({
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0]).toMatchObject({
       id: 'aaaaaaaa-0000-4000-8000-000000000001',
     });
   });
@@ -646,8 +722,8 @@ describe('Tickets routes (integration)', () => {
       .get('/tickets?tenantId=tenant-a')
       .set('Authorization', 'Bearer valid-token');
     expect(list.status).toBe(200);
-    expect(list.body).toHaveLength(1);
-    expect(list.body[0]).toMatchObject({
+    expect(list.body.items).toHaveLength(1);
+    expect(list.body.items[0]).toMatchObject({
       title: 'Printer on floor 3 is offline',
       customerId: 'customer-1',
     });

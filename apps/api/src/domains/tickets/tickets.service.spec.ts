@@ -28,6 +28,7 @@ import {
   tenantAFixture,
 } from 'test-utils';
 import { TicketsService } from './tickets.service.js';
+import type { TicketQueueOptions } from './tickets.service.js';
 
 type TicketRow = {
   id: string;
@@ -81,10 +82,28 @@ function fakePrisma(tickets: TicketRow[], memberships: MembershipRow[] = []) {
         return row ? { ...row } : null;
       }),
       findMany: vi.fn(
+        async ({
+          where,
+          skip,
+          take,
+        }: {
+          where?: { tenantId: string };
+          skip?: number;
+          take?: number;
+        } = {}) => {
+          const rows = store.filter(
+            (r) => !where?.tenantId || r.tenantId === where.tenantId,
+          );
+          const start = skip ?? 0;
+          return rows
+            .slice(start, take === undefined ? undefined : start + take)
+            .map((r) => ({ ...r }));
+        },
+      ),
+      count: vi.fn(
         async ({ where }: { where?: { tenantId: string } } = {}) =>
-          store
-            .filter((r) => !where?.tenantId || r.tenantId === where.tenantId)
-            .map((r) => ({ ...r })),
+          store.filter((r) => !where?.tenantId || r.tenantId === where.tenantId)
+            .length,
       ),
       create: vi.fn(async ({ data }: { data: Partial<TicketRow> }) => {
         const row: TicketRow = {
@@ -237,6 +256,9 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
       tenantId,
     });
 
+  const listPage = async (options: TicketQueueOptions = {}) =>
+    (await service.findPage(tenantA.id, options)).items;
+
   beforeEach(() => {
     prisma = fakePrisma([]);
     service = new TicketsService(prisma as unknown as PrismaService);
@@ -271,9 +293,68 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
       ticketRow('a-1'),
       ticketRow('b-1', { tenantId: tenantB.id }),
     );
-    const result = await service.findAll(tenantA.id);
+    const result = await listPage();
     expect(result).toHaveLength(1);
     expect(result[0]!.tenantId).toBe(tenantA.id);
+  });
+
+  it('findPage returns one page and the total that matched (D-81)', async () => {
+    prisma._store.push(
+      ticketRow('p-1'),
+      ticketRow('p-2'),
+      ticketRow('p-3'),
+      ticketRow('p-4'),
+    );
+
+    const first = await service.findPage(tenantA.id, { page: 1, pageSize: 2 });
+    expect(first.items.map((row) => row.id)).toEqual(['p-1', 'p-2']);
+    expect(first).toMatchObject({ total: 4, page: 1, pageSize: 2 });
+
+    const second = await service.findPage(tenantA.id, { page: 2, pageSize: 2 });
+    expect(second.items.map((row) => row.id)).toEqual(['p-3', 'p-4']);
+    expect(second.total).toBe(4);
+
+    // The window is part of the read, so the database returns one page only.
+    expect(prisma.ticket.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ skip: 2, take: 2 }),
+    );
+    expect(prisma.ticket.count).toHaveBeenCalledTimes(2);
+  });
+
+  it('findPage refuses a page size above the cap and a non-positive page (D-81)', async () => {
+    await expect(
+      service.findPage(tenantA.id, { pageSize: 101 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.findPage(tenantA.id, { page: 0 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('findPage applies the queue filters inside the query (D-81)', async () => {
+    await service.findPage(tenantA.id, {
+      statuses: ['OPEN', 'IN_PROGRESS'],
+      priority: 'HIGH',
+      assigneeMembershipId: 'membership-1',
+      customerId: 'customer-1',
+    });
+
+    expect(prisma.ticket.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          tenantId: tenantA.id,
+          customerId: 'customer-1',
+          status: { in: ['OPEN', 'IN_PROGRESS'] },
+          priority: 'HIGH',
+          assigneeMembershipId: 'membership-1',
+        },
+      }),
+    );
+  });
+
+  it('findPage refuses an unknown status (D-81)', async () => {
+    await expect(
+      service.findPage(tenantA.id, { statuses: ['NONSENSE'] }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('findAll previews the linked conversation for the queue (D-75)', async () => {
@@ -289,7 +370,7 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
       ticketRow('t-agent-first', { primaryConversation: { messages: [] } }),
     );
 
-    const result = await service.findAll(tenantA.id);
+    const result = await listPage();
     const byId = new Map(result.map((row) => [row.id, row]));
 
     expect(byId.get('t-linked')!.descriptionPreview).toBe(
@@ -332,7 +413,7 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
       }),
     );
 
-    const [row] = await service.findAll(tenantA.id);
+    const [row] = await listPage();
 
     expect(row!.customerName).toBe('Priya Raman');
     expect(row!.customerEmail).toBe('priya@example.test');
@@ -347,7 +428,7 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
       }),
     );
 
-    const [row] = await service.findAll(tenantA.id);
+    const [row] = await listPage();
 
     expect(row!.descriptionPreview).toHaveLength(140);
     expect(row!.descriptionPreview!.endsWith('…')).toBe(true);
@@ -368,7 +449,7 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
       body: 'It still fails after the retry on 2 December.',
     });
 
-    const [row] = await service.findAll(tenantA.id, {
+    const [row] = await listPage({
       query: 'retry on 2 December',
     });
 
@@ -409,7 +490,7 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
     prisma.$queryRaw.mockResolvedValueOnce([{ id: 'ticket-1' }]);
     prisma._store.push(ticketRow('ticket-1'));
 
-    await service.findAll(tenantA.id, { query: 'ticket-1' });
+    await listPage({ query: 'ticket-1' });
 
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
     expect(prisma.ticket.findMany).toHaveBeenCalledWith(
@@ -424,7 +505,7 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
   it('findAll search matches the customer name and email (D-78)', async () => {
     prisma._store.push(ticketRow('t-person'));
 
-    await service.findAll(tenantA.id, { query: 'priya' });
+    await listPage({ query: 'priya' });
 
     expect(prisma.ticket.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -455,7 +536,7 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
       }),
     );
 
-    const [row] = await service.findAll(tenantA.id, { query: 'refund' });
+    const [row] = await listPage({ query: 'refund' });
 
     expect(row!.descriptionPreview).toBe('My refund has not arrived.');
     expect(row!.matchPreview).toBeNull();
@@ -464,7 +545,7 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
   it('findAll reads no thread and sets no match without a query (D-77)', async () => {
     prisma._store.push(ticketRow('t-plain'));
 
-    const [row] = await service.findAll(tenantA.id);
+    const [row] = await listPage();
 
     expect(row!.matchPreview).toBeNull();
     expect(prisma.message.findMany).not.toHaveBeenCalled();
@@ -481,7 +562,7 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
       }),
     );
 
-    await service.findAll(tenantA.id, { query: 'churn risk' });
+    await listPage({ query: 'churn risk' });
 
     expect(prisma.message.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -508,7 +589,7 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
       }),
     );
 
-    await service.findAll(tenantA.id, { query: 'text' });
+    await listPage({ query: 'text' });
 
     expect(prisma.message.findMany).toHaveBeenCalledWith(
       expect.objectContaining({

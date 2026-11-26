@@ -139,6 +139,57 @@ function json(body, status = 200) {
   };
 }
 
+function jsonTicketPage(rows) {
+  return json({
+    items: rows,
+    total: rows.length,
+    page: 1,
+    pageSize: rows.length || 25,
+  });
+}
+
+/**
+ * Answers GET /tickets the way the server does (D-81): the filters narrow the
+ * set in the database, then one page of `pageSize` rows comes back with the
+ * total that matched. A journey that asserts a filter or a page therefore
+ * proves the browser asked the API for that page.
+ */
+async function serveTicketQueue(route, rows) {
+  const params = new URL(route.request().url()).searchParams;
+  const needle = (params.get("q") ?? "").trim().toLowerCase();
+  const statuses = (params.get("status") ?? "").split(",").filter(Boolean);
+  const priority = params.get("priority");
+  const assignee = params.get("assignee");
+  const page = Number(params.get("page") ?? "1");
+  const pageSize = Number(params.get("pageSize") ?? "25");
+  const matched = rows.filter((row) => {
+    if (statuses.length > 0 && !statuses.includes(row.status)) return false;
+    if (priority && row.priority !== priority) return false;
+    if (assignee && row.assigneeMembershipId !== assignee) return false;
+    if (!needle) return true;
+    return [
+      row.title,
+      row.id,
+      row.customerName,
+      row.customerEmail,
+      row.descriptionPreview,
+      row.matchPreview,
+    ].some(
+      (value) =>
+        typeof value === "string" && value.toLowerCase().includes(needle),
+    );
+  });
+  const start = (page - 1) * pageSize;
+  await route.fulfill(
+    json({
+      items: matched.slice(start, start + pageSize),
+      total: matched.length,
+      page,
+      pageSize,
+    }),
+  );
+}
+
 async function seedSession(page) {
   await page.addInitScript(
     ([key, value]) => window.localStorage.setItem(key, value),
@@ -165,7 +216,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     );
     await page.route("**/tickets*", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 1500));
-      await route.fulfill(json(tickets));
+      await route.fulfill(jsonTicketPage(tickets));
     });
 
     await page.goto("/inbox");
@@ -182,7 +233,9 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/tickets*", (route) => route.fulfill(json([])));
+    await page.route("**/tickets*", (route) =>
+      route.fulfill(jsonTicketPage([])),
+    );
 
     await page.goto("/inbox");
     await expect(page.getByTestId("inbox-empty")).toBeVisible();
@@ -203,7 +256,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await expect(page.getByTestId("inbox-error")).toBeVisible();
 
     // Retry after the API recovers.
-    await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
+    await page.route("**/tickets*", (route) => route.fulfill(jsonTicketPage(tickets)));
     await page.getByRole("button", { name: "Retry" }).click();
     await expect(page.getByTestId("inbox-ticket")).toHaveCount(2);
   });
@@ -226,7 +279,9 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
+    // The scope tab is a query parameter, so the stub filters like the server
+    // and the page holds only the caller membership rows (D-81).
+    await page.route("**/tickets*", (route) => serveTicketQueue(route, tickets));
 
     await page.goto("/inbox");
     await expect(page.getByTestId("inbox-ticket")).toHaveCount(2);
@@ -249,7 +304,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
+    await page.route("**/tickets*", (route) => route.fulfill(jsonTicketPage(tickets)));
     await page.route("**/tickets/assignees*", (route) =>
       route.fulfill(json(assignees)),
     );
@@ -285,7 +340,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     });
   });
 
-  test("renders the admin-v2.7 workspace and paginates the queue", async ({
+  test("pages the queue on the server so one request never returns every row", async ({
     page,
   }) => {
     const manyTickets = Array.from({ length: 5 }, (_, index) => ({
@@ -298,14 +353,18 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
       assigneeMembershipId: "membership-1",
       updatedAt: new Date().toISOString(),
     }));
+    const pages = [];
 
     await seedSession(page);
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/tickets*", (route) =>
-      route.fulfill(json(manyTickets)),
-    );
+    // The stub answers like the server: the filters narrow the set, then one
+    // bounded page comes back with the total that matched (D-81).
+    await page.route("**/tickets*", (route) => {
+      pages.push(new URL(route.request().url()).searchParams);
+      return serveTicketQueue(route, manyTickets);
+    });
 
     await page.goto("/inbox");
 
@@ -315,10 +374,27 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await expect(page.getByTestId("inbox-layout")).toBeVisible();
     await expect(page.getByTestId("inbox-queue")).toBeVisible();
     await expect(page.getByTestId("inbox-copilot")).toBeVisible();
-    await expect(page.getByTestId("inbox-ticket")).toHaveCount(3);
 
+    // The first page holds three rows plus the tenant total, not five rows.
+    const rows = page.getByTestId("inbox-ticket");
+    await expect(rows).toHaveCount(3);
+    await expect(page.getByTestId("inbox-count")).toHaveText("5");
+    await expect(page.getByTestId("inbox-range")).toHaveText("1-3 of 5");
+    await expect.poll(() => pages.at(-1)?.get("pageSize")).toBe("3");
+
+    // Next asks the API for the second page instead of drawing the rest here.
+    await page.getByRole("button", { name: "Next ticket page" }).click();
+    await expect(rows).toHaveCount(2);
+    await expect(page.getByTestId("inbox-range")).toHaveText("4-5 of 5");
+    await expect
+      .poll(() => pages.some((params) => params.get("page") === "2"))
+      .toBe(true);
+
+    // A bigger page keeps the same total and asks for the wider window.
     await page.getByTestId("inbox-rows").selectOption("5");
-    await expect(page.getByTestId("inbox-ticket")).toHaveCount(5);
+    await expect(rows).toHaveCount(5);
+    await expect(page.getByTestId("inbox-range")).toHaveText("1-5 of 5");
+    await expect.poll(() => pages.at(-1)?.get("pageSize")).toBe("5");
 
     await page.getByTestId("inbox-toggle-copilot").click();
     await expect(page.getByTestId("inbox-copilot")).toHaveCount(0);
@@ -338,7 +414,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
+    await page.route("**/tickets*", (route) => route.fulfill(jsonTicketPage(tickets)));
     await page.route("**/conversations?*", (route) =>
       route.fulfill(json(conversations)),
     );
@@ -423,7 +499,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     );
     await page.route(/\/tickets\?tenantId=/, (route) =>
       route.fulfill(
-        json([
+        jsonTicketPage([
           { ...tickets[0], primaryConversationId: "conv-linked" },
           tickets[1],
         ]),
@@ -471,7 +547,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     );
     await page.route(/\/tickets\?tenantId=/, (route) =>
       route.fulfill(
-        json([
+        jsonTicketPage([
           {
             ...tickets[0],
             primaryConversationId: "conv-linked",
@@ -565,7 +641,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
           row.id.toLowerCase().includes(needle) ||
           row.descriptionPreview.toLowerCase().includes(needle),
       );
-      return route.fulfill(json(matches));
+      return route.fulfill(jsonTicketPage(matches));
     });
 
     await page.goto("/inbox");
@@ -640,7 +716,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
           row.descriptionPreview.toLowerCase().includes(needle) ||
           (row.matchPreview ?? "").toLowerCase().includes(needle),
       );
-      return route.fulfill(json(matches));
+      return route.fulfill(jsonTicketPage(matches));
     });
 
     await page.goto("/inbox");
@@ -718,7 +794,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
           row.customerEmail.toLowerCase().includes(needle)
         );
       });
-      return route.fulfill(json(matches));
+      return route.fulfill(jsonTicketPage(matches));
     });
 
     await page.goto("/inbox");
@@ -811,8 +887,10 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
+    // The status filter is a query parameter, so the stub answers the page the
+    // API returns for that status (D-81).
     await page.route(/\/tickets\?tenantId=/, (route) =>
-      route.fulfill(json(triageTickets)),
+      serveTicketQueue(route, triageTickets),
     );
 
     await page.goto("/inbox");
@@ -887,7 +965,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
           row.id.toLowerCase().includes(needle) ||
           row.descriptionPreview.toLowerCase().includes(needle),
       );
-      return route.fulfill(json(matches));
+      return route.fulfill(jsonTicketPage(matches));
     });
 
     await page.goto("/inbox");
@@ -934,7 +1012,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
+    await page.route("**/tickets*", (route) => route.fulfill(jsonTicketPage(tickets)));
     await page.route("**/conversations?*", (route) => {
       if (route.request().method() === "POST") {
         createdConversation = route.request().postDataJSON();
@@ -987,7 +1065,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
+    await page.route("**/tickets*", (route) => route.fulfill(jsonTicketPage(tickets)));
     await page.route("**/conversations?*", (route) =>
       route.fulfill(json(conversations)),
     );
@@ -1013,7 +1091,7 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await page.route("**/auth/session*", (route) =>
       route.fulfill(json(sessionResponse)),
     );
-    await page.route("**/tickets*", (route) => route.fulfill(json(tickets)));
+    await page.route("**/tickets*", (route) => route.fulfill(jsonTicketPage(tickets)));
     await page.route("**/conversations?*", (route) =>
       route.fulfill(json(conversations)),
     );

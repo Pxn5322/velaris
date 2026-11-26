@@ -79,7 +79,9 @@ test.describe("session and role route gates", () => {
     page,
   }) => {
     await seed(page, "R-agent", "agent@acme.test");
-    await page.route("**/tickets*", (route) => route.fulfill(json([])));
+    await page.route("**/tickets*", (route) =>
+      route.fulfill(json({ items: [], total: 0, page: 1, pageSize: 25 })),
+    );
     await page.route("**/conversations*", (route) => route.fulfill(json([])));
 
     await page.goto("/inbox");

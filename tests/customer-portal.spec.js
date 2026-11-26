@@ -358,17 +358,22 @@ test.describe("customer portal (J-03)", () => {
     );
     await page.route(/\/tickets\?tenantId=/, (route) =>
       route.fulfill(
-        json([
-          {
-            id: "ticket-1111",
-            customerId: "customer-1",
-            title: "Printer on floor 3 is offline",
-            status: "OPEN",
-            priority: "MEDIUM",
-            tags: ["Hardware"],
-            createdAt: "2026-11-20T08:00:00Z",
-          },
-        ]),
+        json({
+          items: [
+            {
+              id: "ticket-1111",
+              customerId: "customer-1",
+              title: "Printer on floor 3 is offline",
+              status: "OPEN",
+              priority: "MEDIUM",
+              tags: ["Hardware"],
+              createdAt: "2026-11-20T08:00:00Z",
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 25,
+        }),
       ),
     );
 
@@ -411,7 +416,9 @@ test.describe("customer portal (J-03)", () => {
       await route.fulfill(json(row, 201));
     });
     await page.route(/\/tickets\?tenantId=/, (route) =>
-      route.fulfill(json(stored)),
+      route.fulfill(
+        json({ items: stored, total: stored.length, page: 1, pageSize: 25 }),
+      ),
     );
 
     await page.goto("/portal");
@@ -486,7 +493,9 @@ test.describe("customer portal (J-03)", () => {
       await route.fulfill(json(row, 201));
     });
     await page.route(/\/tickets\?tenantId=/, (route) =>
-      route.fulfill(json(stored)),
+      route.fulfill(
+        json({ items: stored, total: stored.length, page: 1, pageSize: 25 }),
+      ),
     );
 
     await page.goto("/portal");
@@ -532,7 +541,7 @@ test.describe("customer portal (J-03)", () => {
       route.fulfill(json({ message: "Forbidden" }, 403)),
     );
     await page.route(/\/tickets\?tenantId=/, (route) =>
-      route.fulfill(json([])),
+      route.fulfill(json({ items: [], total: 0, page: 1, pageSize: 25 })),
     );
 
     await page.goto("/portal");
