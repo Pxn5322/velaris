@@ -388,7 +388,83 @@ test.describe("customer portal (J-03)", () => {
     await expect(page.getByTestId("portal-ticket-row")).toHaveCount(1);
     // The two demo rows of the old mock are gone.
     await expect(page.getByText("Unable to configure SAML 2.0")).toHaveCount(0);
+    // One short page needs no pager, so the portal does not show one.
+    await expect(page.getByTestId("portal-ticket-range")).toHaveCount(0);
     await expectNoSeriousA11yViolations(page, "customer support page");
+  });
+
+  test("the support page pages through requests past the first 25 (D-81)", async ({
+    page,
+  }) => {
+    const requests = [];
+    const many = Array.from({ length: 30 }, (_, index) => ({
+      id: `ticket-${String(index + 1).padStart(4, "0")}`,
+      customerId: "customer-1",
+      title: `Request ${index + 1}`,
+      status: "OPEN",
+      priority: "MEDIUM",
+      tags: ["General"],
+      createdAt: "2026-11-20T08:00:00Z",
+    }));
+
+    await seedSession(page);
+    await page.route("**/auth/session*", (route) =>
+      route.fulfill(json(sessionResponse)),
+    );
+    // The stub answers like the server: one bounded page plus the total (D-81).
+    await page.route(/\/tickets\?tenantId=/, (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      requests.push(params);
+      const requested = Number(params.get("page") ?? "1");
+      const size = Number(params.get("pageSize") ?? "25");
+      const start = (requested - 1) * size;
+      return route.fulfill(
+        json({
+          items: many.slice(start, start + size),
+          total: many.length,
+          page: requested,
+          pageSize: size,
+        }),
+      );
+    });
+
+    await page.goto("/portal");
+
+    const rows = page.getByTestId("portal-ticket-row");
+    // The first read holds one page and names the total, so the rest is
+    // reachable instead of silently missing.
+    await expect(rows).toHaveCount(25);
+    await expect(page.getByTestId("portal-ticket-range")).toHaveText(
+      "1-25 of 30",
+    );
+    await expect(page.getByTestId("portal-prev-page")).toBeDisabled();
+
+    await page.getByTestId("portal-next-page").click();
+    await expect(rows).toHaveCount(5);
+    await expect(page.getByTestId("portal-ticket-range")).toHaveText(
+      "26-30 of 30",
+    );
+    await expect(page.getByTestId("portal-ticket-title").first()).toHaveText(
+      "Request 26",
+    );
+    await expect(page.getByTestId("portal-ticket-title").last()).toHaveText(
+      "Request 30",
+    );
+    await expect(page.getByTestId("portal-next-page")).toBeDisabled();
+
+    // The later page came from the API; the browser did not slice a cache.
+    await expect
+      .poll(() => requests.some((params) => params.get("page") === "2"))
+      .toBe(true);
+    expect(requests.every((params) => params.get("pageSize") === "25")).toBe(
+      true,
+    );
+
+    await page.getByTestId("portal-prev-page").click();
+    await expect(rows).toHaveCount(25);
+    await expect(page.getByTestId("portal-ticket-range")).toHaveText(
+      "1-25 of 30",
+    );
   });
 
   test("a submitted ticket is persisted by the API and survives a reload", async ({
