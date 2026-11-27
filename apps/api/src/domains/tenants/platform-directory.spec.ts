@@ -24,6 +24,7 @@ import {
 } from './tenant-users.service.js';
 
 const MEMBERSHIP_ID = '34343434-3434-4434-8434-343434343434';
+const ANCHOR_TIME = new Date('2026-01-01T00:00:00.000Z');
 const TENANT_ID = '12121212-1212-4212-8212-121212121212';
 
 type QueryArgs = {
@@ -73,12 +74,21 @@ function fakePrisma(
     ];
   });
   const count = vi.fn(async () => total);
-  const findUnique = vi.fn(async () => ({
-    id: MEMBERSHIP_ID,
-    tenantId: TENANT_ID,
-    status: 'ACTIVE',
-    roles: [],
-  }));
+  const findUnique = vi.fn(
+    async (): Promise<{
+      id: string;
+      tenantId: string;
+      status: string;
+      roles: unknown[];
+      createdAt: Date;
+    } | null> => ({
+      id: MEMBERSHIP_ID,
+      tenantId: TENANT_ID,
+      status: 'ACTIVE',
+      roles: [],
+      createdAt: ANCHOR_TIME,
+    }),
+  );
   const update = vi.fn(async () => ({
     id: MEMBERSHIP_ID,
     tenantId: TENANT_ID,
@@ -96,6 +106,7 @@ function fakePrisma(
   return {
     findMany,
     count,
+    findUnique,
     userFindMany,
     tenantFindMany,
     roleFindMany,
@@ -264,6 +275,61 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
     await service.listPage({ page: 3 });
 
     expect(fake.count).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads the page after the cursor without an offset', async () => {
+    const fake = fakePrisma();
+    const service = serviceWith(fake.prisma);
+
+    await service.listPage({ page: 3, pageSize: 10, cursor: MEMBERSHIP_ID });
+
+    // The cursor names one membership, and its position replaces the offset.
+    expect(fake.findUnique).toHaveBeenCalledWith({
+      where: { id: MEMBERSHIP_ID },
+      select: { createdAt: true, id: true },
+    });
+    const ids = queryOf(fake.findMany);
+    expect(ids.skip).toBe(0);
+    // One range condition gives the read an index start position, and the NOT
+    // prunes the anchor's own millisecond in front of it. An OR over the two
+    // tie branches would leave the scan without an index condition.
+    expect(ids.where).toEqual({
+      AND: [
+        {},
+        { createdAt: { lte: ANCHOR_TIME } },
+        { NOT: { createdAt: ANCHOR_TIME, id: { gte: MEMBERSHIP_ID } } },
+      ],
+    });
+    // The total still counts the whole filtered set, not the rest of it.
+    expect(fake.count).toHaveBeenCalledWith({ where: {} });
+  });
+
+  it('refuses a cursor that is not a membership identifier', async () => {
+    const fake = fakePrisma();
+    const service = serviceWith(fake.prisma);
+
+    await expect(service.listPage({ cursor: 'not-a-uuid' })).rejects.toThrow(
+      'cursor must be a membership identifier',
+    );
+    expect(fake.findUnique).not.toHaveBeenCalled();
+    expect(fake.findMany).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the offset when the cursor names no membership', async () => {
+    const fake = fakePrisma();
+    fake.findUnique.mockResolvedValueOnce(null);
+    const service = serviceWith(fake.prisma);
+
+    const page = await service.listPage({
+      page: 2,
+      pageSize: 10,
+      cursor: MEMBERSHIP_ID,
+    });
+
+    // A membership removed since the cursor was issued must not fail the read.
+    expect(queryOf(fake.findMany).skip).toBe(10);
+    expect(queryOf(fake.findMany).where).toEqual({});
+    expect(page.page).toBe(2);
   });
 
   it('answers an empty page without reading any row', async () => {
@@ -481,6 +547,7 @@ describe('GovernanceController platform directory (D-87)', () => {
       ' globex ',
       'R-agent',
       'ACTIVE',
+      MEMBERSHIP_ID,
     );
 
     expect(listPage).toHaveBeenCalledWith({
@@ -489,6 +556,7 @@ describe('GovernanceController platform directory (D-87)', () => {
       q: 'globex',
       role: 'R-agent',
       status: 'ACTIVE',
+      cursor: MEMBERSHIP_ID,
     });
   });
 
@@ -500,7 +568,7 @@ describe('GovernanceController platform directory (D-87)', () => {
       pageSize: 25,
     });
 
-    await controllerWith(listPage).listAllUsers(undefined, '', '', '', '');
+    await controllerWith(listPage).listAllUsers(undefined, '', '', '', '', ' ');
 
     expect(listPage).toHaveBeenCalledWith({});
   });
