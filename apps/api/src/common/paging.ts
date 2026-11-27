@@ -47,6 +47,46 @@ export function pageOffset(window: PageWindow): number {
   return (window.page - 1) * window.pageSize;
 }
 
+/** Position of a cursor row: the identifier and the column the page orders by. */
+export interface PageAnchor {
+  id: string;
+  at: Date;
+}
+
+/** A cursor is the identifier of one row. */
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Read one cursor value, which must name a row of the noun's table. */
+export function requireCursorId(cursor: string, noun: string): string {
+  if (!UUID_PATTERN.test(cursor)) {
+    throw new BadRequestException('cursor must be a ' + noun + ' identifier');
+  }
+  return cursor;
+}
+
+/**
+ * Filter for the rows after `anchor` in `(column desc, id desc)` order (D-87).
+ *
+ * The range is one index condition, so the scan starts at the anchor instead
+ * of at the newest row. The NOT prunes the rows of the anchor's own value that
+ * come first in the id order. An OR over the two tie branches would be a
+ * filter with no index condition, and the scan would walk every skipped row.
+ */
+export function keysetBefore<K extends 'createdAt' | 'updatedAt'>(
+  column: K,
+  anchor: PageAnchor,
+): { [P in K]: { lte: Date } } & {
+  NOT: { [P in K]: Date } & { id: { gte: string } };
+} {
+  return {
+    [column]: { lte: anchor.at },
+    NOT: { [column]: anchor.at, id: { gte: anchor.id } },
+  } as { [P in K]: { lte: Date } } & {
+    NOT: { [P in K]: Date } & { id: { gte: string } };
+  };
+}
+
 export function requirePositiveInteger(value: number, field: string): number {
   if (!Number.isInteger(value) || value < 1) {
     throw new BadRequestException(field + ' must be a positive integer');

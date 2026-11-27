@@ -30,7 +30,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
-import { pageOffset, resolvePageWindow } from '../../common/paging.js';
+import {
+  keysetBefore,
+  pageOffset,
+  requireCursorId,
+  resolvePageWindow,
+  type PageAnchor,
+} from '../../common/paging.js';
 import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import { SupabaseAdminService } from '../auth/supabase-admin.service.js';
@@ -76,10 +82,6 @@ export const TOTAL_CACHE_TTL_MS = 15_000;
 
 /** Largest number of filter totals kept, so the memory stays bounded. */
 const TOTAL_CACHE_LIMIT = 64;
-
-/** A cursor is the identifier of one membership row. */
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -280,18 +282,7 @@ export class TenantUsersService {
     // the two tie branches would be a filter with no index condition, and the
     // scan would then walk every skipped row (D-87; measured 2026-11-27).
     const pageWhere: Prisma.TenantMembershipWhereInput = anchor
-      ? {
-          AND: [
-            where,
-            { createdAt: { lte: anchor.createdAt } },
-            {
-              NOT: {
-                createdAt: anchor.createdAt,
-                id: { gte: anchor.id },
-              },
-            },
-          ],
-        }
+      ? { AND: [where, keysetBefore('createdAt', anchor)] }
       : where;
     // A search carries its own identifiers and changes with each phrase, so
     // only a status and role shape reuses a total.
@@ -356,16 +347,13 @@ export class TenantUsersService {
    * Position of the cursor row, or null when that row no longer exists. A value
    * that is not a membership identifier is a 400 before any read runs.
    */
-  private async anchorFor(
-    cursor: string,
-  ): Promise<{ id: string; createdAt: Date } | null> {
-    if (!UUID_PATTERN.test(cursor)) {
-      throw new BadRequestException('cursor must be a membership identifier');
-    }
-    return this.prisma.tenantMembership.findUnique({
-      where: { id: cursor },
+  private async anchorFor(cursor: string): Promise<PageAnchor | null> {
+    const id = requireCursorId(cursor, 'membership');
+    const row = await this.prisma.tenantMembership.findUnique({
+      where: { id },
       select: { createdAt: true, id: true },
     });
+    return row ? { id: row.id, at: row.createdAt } : null;
   }
 
   /** Drop expired totals and keep the map bounded. */

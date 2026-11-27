@@ -296,8 +296,10 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
     expect(ids.where).toEqual({
       AND: [
         {},
-        { createdAt: { lte: ANCHOR_TIME } },
-        { NOT: { createdAt: ANCHOR_TIME, id: { gte: MEMBERSHIP_ID } } },
+        {
+          createdAt: { lte: ANCHOR_TIME },
+          NOT: { createdAt: ANCHOR_TIME, id: { gte: MEMBERSHIP_ID } },
+        },
       ],
     });
     // The total still counts the whole filtered set, not the rest of it.

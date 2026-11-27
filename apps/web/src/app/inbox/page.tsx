@@ -265,6 +265,11 @@ export default function InboxPage() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const searchSequence = useRef(0);
+  /**
+   * Anchor for each page past the first: the last ticket of the page before
+   * it, so the API reads from that row instead of skipping a window (D-87).
+   */
+  const pageCursors = useRef<Map<number, string>>(new Map());
   // Set once a queue read has answered, so a later failure stays a search
   // message while a first failure takes over the page (AC-F06-1).
   const queueLoaded = useRef(false);
@@ -365,12 +370,16 @@ export default function InboxPage() {
       const sequence = ++searchSequence.current;
       setSearchError(null);
       setSearching(true);
+      // The first page needs no anchor, and a new filter list starts over.
+      if (page === 1) pageCursors.current.clear();
+      const cursor = page > 1 ? pageCursors.current.get(page) : undefined;
       try {
         const params = new URLSearchParams({
           tenantId: scope.tenantId,
           page: String(page),
           pageSize: String(rowsPerPage),
         });
+        if (cursor) params.set("cursor", cursor);
         if (needle) params.set("q", needle);
         if (statusFilter === "ACTIVE") {
           params.set("status", ACTIVE_STATUSES.join(","));
@@ -384,6 +393,13 @@ export default function InboxPage() {
         );
         if (sequence === searchSequence.current) {
           queueLoaded.current = true;
+          // Only this page's anchor is fresh: a later page's cursor came from
+          // an earlier read, which a change may have moved.
+          for (const key of [...pageCursors.current.keys()]) {
+            if (key > page + 1) pageCursors.current.delete(key);
+          }
+          const lastTicket = result.items[result.items.length - 1];
+          if (lastTicket) pageCursors.current.set(page + 1, lastTicket.id);
           setTickets(result.items);
           setTotal(result.total);
           // A filter can leave fewer pages than the one requested; move back
