@@ -183,6 +183,14 @@ export class TenantUsersService {
    * The page reads identifiers first and then the rows for them, so a deep
    * offset walks the index for the skipped rows without joining or reading
    * roles for each of them.
+   *
+   * A role code resolves to its role identifiers before the page is built, so
+   * each candidate row probes the assignment table alone instead of hopping to
+   * `roles` as well. A rare role then reads its few assignments and sorts them
+   * instead of walking the ordered memberships until the page fills (D-87;
+   * measured 2026-11-27: 129.6 ms against 0.7 ms for a role held by 115 of
+   * 100,000 memberships). A code that names no role answers an empty page from
+   * one indexed lookup.
    */
   async listPage(
     options: PlatformDirectoryQuery = {},
@@ -201,11 +209,21 @@ export class TenantUsersService {
     }
     const needle = options.q?.trim() ?? '';
     const role = options.role?.trim() ?? '';
+    let roleIds: string[] | null = null;
+    if (role) {
+      roleIds = (
+        await this.prisma.role.findMany({
+          where: { code: role },
+          select: { id: true },
+        })
+      ).map((row) => row.id);
+      if (roleIds.length === 0) return { items: [], total: 0, ...window };
+    }
     const where: Prisma.TenantMembershipWhereInput = {
       ...(status
         ? { status: status as (typeof MEMBERSHIP_STATUSES)[number] }
         : {}),
-      ...(role ? { roles: { some: { role: { code: role } } } } : {}),
+      ...(roleIds ? { roles: { some: { roleId: { in: roleIds } } } } : {}),
     };
     if (needle) {
       const matches =
