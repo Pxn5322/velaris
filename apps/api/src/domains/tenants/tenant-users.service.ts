@@ -77,6 +77,10 @@ export const TOTAL_CACHE_TTL_MS = 15_000;
 /** Largest number of filter totals kept, so the memory stays bounded. */
 const TOTAL_CACHE_LIMIT = 64;
 
+/** A cursor is the identifier of one membership row. */
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -112,6 +116,11 @@ export interface PlatformDirectoryQuery {
   role?: string;
   /** Exact membership status. */
   status?: string;
+  /**
+   * Identifier of the last row of the previous page. The page then starts at
+   * that position instead of skipping the rows in front of it (D-87).
+   */
+  cursor?: string;
 }
 
 export interface AddMemberResult extends TenantMemberView {
@@ -184,6 +193,12 @@ export class TenantUsersService {
    * offset walks the index for the skipped rows without joining or reading
    * roles for each of them.
    *
+   * A `cursor` names the last row of the previous page, so the identifier read
+   * starts at that position and skips nothing. A deep page of a large filtered
+   * set therefore never sorts the whole match set (D-87). The page number and
+   * the total keep their meaning: the total counts the filtered set, and the
+   * page number is the one the caller asked for.
+   *
    * A role code resolves to its role identifiers before the page is built, so
    * each candidate row probes the assignment table alone instead of hopping to
    * `roles` as well. A rare role then reads its few assignments and sorts them
@@ -254,6 +269,30 @@ export class TenantUsersService {
         ];
       }
     }
+    // A cursor replaces the offset. The anchor row supplies the position; a
+    // row that no longer exists falls back to the offset, so a stale cursor
+    // cannot fail the page after a membership is removed.
+    const cursor = options.cursor?.trim() ?? '';
+    const anchor = cursor ? await this.anchorFor(cursor) : null;
+    // `createdAt <= anchor` is one index condition, so the scan starts at the
+    // anchor instead of at the newest row. The NOT prunes the rows of the
+    // anchor's own millisecond that come before it in the id order. An OR over
+    // the two tie branches would be a filter with no index condition, and the
+    // scan would then walk every skipped row (D-87; measured 2026-11-27).
+    const pageWhere: Prisma.TenantMembershipWhereInput = anchor
+      ? {
+          AND: [
+            where,
+            { createdAt: { lte: anchor.createdAt } },
+            {
+              NOT: {
+                createdAt: anchor.createdAt,
+                id: { gte: anchor.id },
+              },
+            },
+          ],
+        }
+      : where;
     // A search carries its own identifiers and changes with each phrase, so
     // only a status and role shape reuses a total.
     const cacheKey = needle ? null : `${status}|${role}`;
@@ -264,10 +303,10 @@ export class TenantUsersService {
     // or read roles for every skipped row (D-87; measured 2026-11-26).
     const [page, total] = await Promise.all([
       this.prisma.tenantMembership.findMany({
-        where,
+        where: pageWhere,
         select: { id: true },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        skip: pageOffset(window),
+        skip: anchor ? 0 : pageOffset(window),
         take: window.pageSize,
       }),
       cachedTotal !== null
@@ -311,6 +350,22 @@ export class TenantUsersService {
       total,
       ...window,
     };
+  }
+
+  /**
+   * Position of the cursor row, or null when that row no longer exists. A value
+   * that is not a membership identifier is a 400 before any read runs.
+   */
+  private async anchorFor(
+    cursor: string,
+  ): Promise<{ id: string; createdAt: Date } | null> {
+    if (!UUID_PATTERN.test(cursor)) {
+      throw new BadRequestException('cursor must be a membership identifier');
+    }
+    return this.prisma.tenantMembership.findUnique({
+      where: { id: cursor },
+      select: { createdAt: true, id: true },
+    });
   }
 
   /** Drop expired totals and keep the map bounded. */

@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, type FormEvent } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   Ban,
   CheckCircle2,
@@ -119,6 +125,7 @@ function directoryQuery(params: {
   q: string;
   role: string;
   status: string;
+  cursor?: string;
 }): string {
   const query = new URLSearchParams({
     page: String(params.page),
@@ -127,6 +134,7 @@ function directoryQuery(params: {
   if (params.q) query.set("q", params.q);
   if (params.role !== "ALL") query.set("role", params.role);
   if (params.status !== "ALL") query.set("status", params.status);
+  if (params.cursor) query.set("cursor", params.cursor);
   return query.toString();
 }
 
@@ -166,6 +174,11 @@ export function TenantUsersPanel({
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [page, setPage] = useState(1);
+  /**
+   * Anchor for each page past the first: the last row of the page before it.
+   * The API then reads from that position instead of skipping rows (D-87).
+   */
+  const cursors = useRef<Map<number, string>>(new Map());
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<string>("R-agent");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -207,6 +220,9 @@ export function TenantUsersPanel({
   useEffect(() => {
     if (!platformWide && !tenantId) return;
     let cancelled = false;
+    // The first page needs no anchor, and a new filter list starts over.
+    if (page === 1) cursors.current.clear();
+    const cursor = page > 1 ? cursors.current.get(page) : undefined;
     const request = platformWide
       ? apiFetch<TenantMemberPage>(
           "/tenants/users?" +
@@ -216,9 +232,17 @@ export function TenantUsersPanel({
               q: debouncedSearch,
               role: roleFilter,
               status: statusFilter,
+              ...(cursor ? { cursor } : {}),
             }),
         ).then((result) => {
           if (cancelled) return;
+          // Only this page's anchor is fresh: a later page's cursor came from
+          // an earlier read, which a change may have moved.
+          for (const key of [...cursors.current.keys()]) {
+            if (key > page + 1) cursors.current.delete(key);
+          }
+          const last = result.items[result.items.length - 1];
+          if (last) cursors.current.set(page + 1, last.membershipId);
           setMembers(result.items);
           setTotal(result.total);
         })

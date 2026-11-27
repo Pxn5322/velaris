@@ -119,7 +119,9 @@ export class GovernanceController {
    *
    * The route reads one page (D-87): `page` default 1, `pageSize` default 25
    * capped at 100, and optional `q`, `role` and `status` filters that run
-   * inside the query.
+   * inside the query. An optional `cursor` names the last row of the previous
+   * page, so a deep page reads from that position instead of sorting the whole
+   * filtered set.
    */
   @Get('users')
   @RequirePermission(PERMISSIONS.TENANT_MANAGE_PLATFORM)
@@ -129,6 +131,7 @@ export class GovernanceController {
     @Query('q') q: string | undefined,
     @Query('role') role: string | undefined,
     @Query('status') status: string | undefined,
+    @Query('cursor') cursor: string | undefined,
   ): Promise<TenantMemberPage> {
     const window = {
       page: optionalNumber(page, 'page'),
@@ -137,12 +140,14 @@ export class GovernanceController {
     const search = q?.trim() ?? '';
     const roleCode = role?.trim() ?? '';
     const membershipStatus = status?.trim() ?? '';
+    const pageCursor = cursor?.trim() ?? '';
     return this.users.listPage({
       ...(window.page !== undefined ? { page: window.page } : {}),
       ...(window.pageSize !== undefined ? { pageSize: window.pageSize } : {}),
       ...(search ? { q: search } : {}),
       ...(roleCode ? { role: roleCode } : {}),
       ...(membershipStatus ? { status: membershipStatus } : {}),
+      ...(pageCursor ? { cursor: pageCursor } : {}),
     });
   }
 
