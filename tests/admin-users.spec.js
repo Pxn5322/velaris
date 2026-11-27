@@ -168,6 +168,7 @@ test.describe("tenant administrator user directory (F-03)", () => {
       requests.push(url);
       const pageNumber = Number(url.searchParams.get("page") ?? "1");
       const pageSize = Number(url.searchParams.get("pageSize") ?? "25");
+      const cursor = url.searchParams.get("cursor");
       const needle = url.searchParams.get("q");
       const rows = needle
         ? platformRows.filter(
@@ -175,7 +176,11 @@ test.describe("tenant administrator user directory (F-03)", () => {
               row.email.includes(needle) || row.displayName.includes(needle),
           )
         : platformRows;
-      const start = (pageNumber - 1) * pageSize;
+      // A cursor page starts after the row it names (D-87), so the fixture
+      // proves the panel sent the right anchor instead of trusting `page`.
+      const start = cursor
+        ? rows.findIndex((row) => row.membershipId === cursor) + 1
+        : (pageNumber - 1) * pageSize;
       return route.fulfill(
         json({
           items: rows.slice(start, start + pageSize),
@@ -191,6 +196,8 @@ test.describe("tenant administrator user directory (F-03)", () => {
     expect(requests[0]?.pathname).toBe("/tenants/users");
     expect(requests[0]?.searchParams.get("page")).toBe("1");
     expect(requests[0]?.searchParams.get("pageSize")).toBe("10");
+    // The first page has nothing in front of it, so it sends no cursor.
+    expect(requests[0]?.searchParams.get("cursor")).toBeNull();
     await expect(page.getByTestId("tenant-user-row")).toHaveCount(10);
     // Newest first: the most recent membership is the first row of page 1.
     await expect(page.getByTestId("tenant-user-row").first()).toContainText(
@@ -209,6 +216,11 @@ test.describe("tenant administrator user directory (F-03)", () => {
       "Showing 11 to 12 of 12 entries",
     );
     expect(requests.at(-1)?.searchParams.get("page")).toBe("2");
+    // Page 2 names the last row of page 1 as its anchor, so the API reads the
+    // rows after it instead of skipping a window (D-87).
+    expect(requests.at(-1)?.searchParams.get("cursor")).toBe(
+      "membership-platform-3",
+    );
     // The two oldest memberships close the list.
     await expect(page.getByTestId("tenant-user-row").last()).toContainText(
       "member1@acme.test",

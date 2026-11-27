@@ -25,7 +25,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
-import { pageOffset, resolvePageWindow } from '../../common/paging.js';
+import {
+  keysetBefore,
+  pageOffset,
+  requireCursorId,
+  resolvePageWindow,
+  type PageAnchor,
+} from '../../common/paging.js';
 import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 
@@ -60,6 +66,8 @@ export interface ConversationPageOptions {
   customerId?: string;
   page?: number;
   pageSize?: number;
+  /** Identifier of the last conversation of the previous page (D-87). */
+  cursor?: string;
 }
 
 /** Input for a status change; expectedVersion guards lost updates. */
@@ -137,16 +145,41 @@ export class ConversationsService {
       tenantId,
       ...(options.customerId ? { customerId: options.customerId } : {}),
     };
+    // A cursor names the last conversation of the previous page, so the read
+    // starts at that position instead of skipping a window (D-87). A cursor
+    // that names no conversation of this tenant falls back to the offset.
+    const cursor = options.cursor?.trim() ?? '';
+    const anchor = cursor ? await this.listAnchor(tenantId, cursor) : null;
+    const pageWhere: Prisma.ConversationWhereInput = anchor
+      ? { AND: [where, keysetBefore('updatedAt', anchor)] }
+      : where;
     const [items, total] = await Promise.all([
       this.prisma.conversation.findMany({
-        where,
-        orderBy: { updatedAt: 'desc' },
-        skip: pageOffset(window),
+        where: pageWhere,
+        // The id breaks a tie on equal change time, so a cursor page is stable.
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        skip: anchor ? 0 : pageOffset(window),
         take: window.pageSize,
       }),
       this.prisma.conversation.count({ where }),
     ]);
     return { items, total, ...window };
+  }
+
+  /**
+   * Position of the cursor conversation, or null when this tenant has no such
+   * row, which makes the caller fall back to the page offset.
+   */
+  private async listAnchor(
+    tenantId: string,
+    cursor: string,
+  ): Promise<PageAnchor | null> {
+    const id = requireCursorId(cursor, 'conversation');
+    const row = await this.prisma.conversation.findFirst({
+      where: { id, tenantId },
+      select: { id: true, updatedAt: true },
+    });
+    return row ? { id: row.id, at: row.updatedAt } : null;
   }
 
   async findOne(id: string, tenantId: string) {

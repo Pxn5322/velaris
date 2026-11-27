@@ -49,6 +49,9 @@ type MessageRow = {
 };
 
 const TENANT_A = 'tenant-a';
+
+/** A cursor is a row identifier, so the fixtures use a UUID (D-87). */
+const CURSOR_ID = '33333333-3333-4333-8333-333333333333';
 const TENANT_B = 'tenant-b';
 const CUSTOMER_A = 'customer-a';
 
@@ -111,6 +114,18 @@ function fakePrisma(
       findUnique: vi.fn(
         async ({ where }: { where: { id: string } }) =>
           convStore.find((c) => c.id === where.id) ?? null,
+      ),
+      findFirst: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { id: string; tenantId: string };
+        }): Promise<ConversationRow | null> => {
+          const row = convStore.find(
+            (c) => c.id === where.id && c.tenantId === where.tenantId,
+          );
+          return row ? { ...row } : null;
+        },
       ),
       findMany: vi.fn(
         async ({
@@ -319,6 +334,51 @@ describe('ConversationsService (T2.03)', () => {
     expect(prisma.conversation.count).toHaveBeenCalledWith({
       where: scopedWhere,
     });
+  });
+
+  it('listPage reads the page after the cursor without an offset (D-87)', async () => {
+    const anchorTime = new Date('2026-11-21T08:00:00Z');
+    prisma._convStore.push(
+      conversationRow(CURSOR_ID, { updatedAt: anchorTime }),
+      conversationRow('conv-z'),
+    );
+
+    await service.listPage(TENANT_A, {
+      page: 3,
+      pageSize: 2,
+      cursor: CURSOR_ID,
+    });
+
+    expect(prisma.conversation.findFirst).toHaveBeenCalledWith({
+      where: { id: CURSOR_ID, tenantId: TENANT_A },
+      select: { id: true, updatedAt: true },
+    });
+    expect(prisma.conversation.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 2,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        where: {
+          AND: [
+            { tenantId: TENANT_A },
+            {
+              updatedAt: { lte: anchorTime },
+              NOT: { updatedAt: anchorTime, id: { gte: CURSOR_ID } },
+            },
+          ],
+        },
+      }),
+    );
+    expect(prisma.conversation.count).toHaveBeenCalledWith({
+      where: { tenantId: TENANT_A },
+    });
+  });
+
+  it('listPage refuses a cursor that is not a conversation identifier (D-87)', async () => {
+    await expect(
+      service.listPage(TENANT_A, { cursor: 'not-a-uuid' }),
+    ).rejects.toThrow('cursor must be a conversation identifier');
+    expect(prisma.conversation.findMany).not.toHaveBeenCalled();
   });
 
   it('finds one conversation or reports not found across tenants', async () => {

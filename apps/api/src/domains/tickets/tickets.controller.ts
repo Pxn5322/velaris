@@ -166,6 +166,7 @@ export class TicketsController {
     @Query('assignee') assignee: string | undefined,
     @Query('page') page: string | undefined,
     @Query('pageSize') pageSize: string | undefined,
+    @Query('cursor') cursor: string | undefined,
     @Req() request: AuthedRequest,
   ) {
     await this.requireTenantScope(request, tenantId);
@@ -173,6 +174,7 @@ export class TicketsController {
       page: optionalNumber(page, 'page'),
       pageSize: optionalNumber(pageSize, 'pageSize'),
     };
+    const pageCursor = cursor?.trim() ?? '';
     // Per-customer scope (T2.04): an R-customer sees only their own tickets.
     const scope = await this.resolveScope(request, tenantId);
     if (scope.kind === 'none') {
@@ -191,6 +193,7 @@ export class TicketsController {
       ...(scope.kind === 'customer' ? { customerId: scope.customerId } : {}),
       ...(paging.page !== undefined ? { page: paging.page } : {}),
       ...(paging.pageSize !== undefined ? { pageSize: paging.pageSize } : {}),
+      ...(pageCursor ? { cursor: pageCursor } : {}),
     });
   }
 

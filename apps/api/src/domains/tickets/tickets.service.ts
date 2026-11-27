@@ -25,7 +25,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
-import { pageOffset, resolvePageWindow } from '../../common/paging.js';
+import {
+  keysetBefore,
+  pageOffset,
+  requireCursorId,
+  resolvePageWindow,
+  type PageAnchor,
+} from '../../common/paging.js';
 import { PRISMA_SERVICE } from '../../infrastructure/prisma/prisma.service.js';
 import type { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import { CreateTicketDto } from './dto/create-ticket.dto.js';
@@ -53,6 +59,8 @@ export interface TicketQueueOptions {
   customerId?: string;
   page?: number;
   pageSize?: number;
+  /** Identifier of the last ticket of the previous page (D-87). */
+  cursor?: string;
 }
 
 export interface TicketAssignee {
@@ -156,11 +164,20 @@ export class TicketsService {
         : {}),
       ...(query ? { OR: await this.searchConditions(tenantId, query) } : {}),
     };
+    // A cursor names the last ticket of the previous page, so the read starts
+    // at that position and the queue never walks the skipped rows (D-87). A
+    // cursor that names no ticket of this tenant falls back to the offset.
+    const cursor = options.cursor?.trim() ?? '';
+    const anchor = cursor ? await this.queueAnchor(tenantId, cursor) : null;
+    const pageWhere: Prisma.TicketWhereInput = anchor
+      ? { AND: [where, keysetBefore('updatedAt', anchor)] }
+      : where;
     const [rows, total] = await Promise.all([
       this.prisma.ticket.findMany({
-        where,
-        orderBy: { updatedAt: 'desc' },
-        skip: pageOffset(window),
+        where: pageWhere,
+        // The id breaks a tie on equal change time, so a cursor page is stable.
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        skip: anchor ? 0 : pageOffset(window),
         take: window.pageSize,
         include: {
           primaryConversation: {
@@ -197,6 +214,19 @@ export class TicketsService {
       total,
       ...window,
     };
+  }
+
+  /** Position of the cursor ticket, or null when this tenant has no such row. */
+  private async queueAnchor(
+    tenantId: string,
+    cursor: string,
+  ): Promise<PageAnchor | null> {
+    const id = requireCursorId(cursor, 'ticket');
+    const row = await this.prisma.ticket.findFirst({
+      where: { id, tenantId },
+      select: { id: true, updatedAt: true },
+    });
+    return row ? { id: row.id, at: row.updatedAt } : null;
   }
 
   /**

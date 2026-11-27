@@ -54,6 +54,9 @@ type TicketRow = {
 
 type MessageRow = { conversationId: string; body: string };
 
+/** A cursor is a row identifier, so the fixtures use a UUID (D-87). */
+const CURSOR_ID = '22222222-2222-4222-8222-222222222222';
+
 type MembershipRow = {
   id: string;
   tenantId: string;
@@ -81,6 +84,18 @@ function fakePrisma(tickets: TicketRow[], memberships: MembershipRow[] = []) {
         const row = store.find((r) => r.id === where.id);
         return row ? { ...row } : null;
       }),
+      findFirst: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { id: string; tenantId: string };
+        }): Promise<TicketRow | null> => {
+          const row = store.find(
+            (r) => r.id === where.id && r.tenantId === where.tenantId,
+          );
+          return row ? { ...row } : null;
+        },
+      ),
       findMany: vi.fn(
         async ({
           where,
@@ -354,6 +369,67 @@ describe('TicketsService (Prisma-backed domain, T2.02)', () => {
           assigneeMembershipId: 'membership-1',
         },
       }),
+    );
+  });
+
+  it('findPage reads the page after the cursor without an offset (D-87)', async () => {
+    const anchorTime = new Date('2026-11-20T08:00:00Z');
+    prisma._store.push(
+      ticketRow(CURSOR_ID, { updatedAt: anchorTime }),
+      ticketRow('p-1'),
+    );
+
+    await service.findPage(tenantA.id, {
+      page: 3,
+      pageSize: 2,
+      cursor: CURSOR_ID,
+    });
+
+    // The anchor is read inside the tenant, so a foreign id cannot move it.
+    expect(prisma.ticket.findFirst).toHaveBeenCalledWith({
+      where: { id: CURSOR_ID, tenantId: tenantA.id },
+      select: { id: true, updatedAt: true },
+    });
+    expect(prisma.ticket.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 2,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        where: {
+          AND: [
+            expect.objectContaining({ tenantId: tenantA.id }),
+            {
+              updatedAt: { lte: anchorTime },
+              NOT: { updatedAt: anchorTime, id: { gte: CURSOR_ID } },
+            },
+          ],
+        },
+      }),
+    );
+    // The total still counts the whole filtered queue, not the rest of it.
+    expect(prisma.ticket.count).toHaveBeenCalledWith({
+      where: { tenantId: tenantA.id },
+    });
+  });
+
+  it('findPage refuses a cursor that is not a ticket identifier (D-87)', async () => {
+    await expect(
+      service.findPage(tenantA.id, { cursor: 'not-a-uuid' }),
+    ).rejects.toThrow('cursor must be a ticket identifier');
+    expect(prisma.ticket.findMany).not.toHaveBeenCalled();
+  });
+
+  it('findPage falls back to the offset when the cursor names no ticket (D-87)', async () => {
+    prisma.ticket.findFirst.mockResolvedValueOnce(null);
+
+    await service.findPage(tenantA.id, {
+      page: 2,
+      pageSize: 2,
+      cursor: CURSOR_ID,
+    });
+
+    expect(prisma.ticket.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ skip: 2, where: { tenantId: tenantA.id } }),
     );
   });
 

@@ -16,7 +16,7 @@
  * handoff notice. It never invents an answer itself.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api/client";
@@ -77,6 +77,11 @@ export default function PortalConversationsPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  /**
+   * Anchor for each page past the first: the last conversation of the page
+   * before it, so the API reads from that row instead of skipping (D-87).
+   */
+  const pageCursors = useRef<Map<number, string>>(new Map());
   const [paging, setPaging] = useState(false);
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -89,6 +94,10 @@ export default function PortalConversationsPage() {
   const [aiNotice, setAiNotice] = useState<string | null>(null);
 
   const load = useCallback(async (pageNumber = 1) => {
+    // The first page needs no anchor, and a new list starts over.
+    if (pageNumber === 1) pageCursors.current.clear();
+    const cursor =
+      pageNumber > 1 ? pageCursors.current.get(pageNumber) : undefined;
     try {
       const auth = await apiFetch<AuthSessionResponse>("/auth/session");
       const tenants = auth.tenantContext?.tenants ?? [];
@@ -99,8 +108,16 @@ export default function PortalConversationsPage() {
       }
       setTenantId(tenants[0].tenantId);
       const result = await apiFetch<ConversationPage>(
-        `/conversations?tenantId=${encodeURIComponent(tenants[0].tenantId)}&page=${pageNumber}&pageSize=${PAGE_SIZE}`,
+        `/conversations?tenantId=${encodeURIComponent(tenants[0].tenantId)}&page=${pageNumber}&pageSize=${PAGE_SIZE}` +
+          (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""),
       );
+      for (const key of [...pageCursors.current.keys()]) {
+        if (key > result.page + 1) pageCursors.current.delete(key);
+      }
+      const lastConversation = result.items[result.items.length - 1];
+      if (lastConversation) {
+        pageCursors.current.set(result.page + 1, lastConversation.id);
+      }
       setConversations(result.items);
       setTotal(result.total);
       setPage(result.page);
