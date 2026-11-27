@@ -475,6 +475,48 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
     });
   });
 
+  it('resolves a phrase matching about ten thousand accounts to identifiers', async () => {
+    const fake = fakePrisma({
+      emails: [],
+      tenants: [],
+      names: Array.from({ length: 9_999 }, (_, index) => `user-${index}`),
+    });
+    const service = serviceWith(fake.prisma);
+
+    await service.listPage({ q: 'abc' });
+
+    // A phrase this broad still has an indexable page: the cap is 10,000, so
+    // the page filters on identifiers instead of walking joined text.
+    const where = queryOf(fake.findMany).where as {
+      OR: { userId?: { in: string[] } }[];
+    };
+    expect(where.OR).toHaveLength(1);
+    expect(where.OR[0].userId?.in).toHaveLength(9_999);
+  });
+
+  it('resolves a phrase that matches exactly the cap to identifiers', async () => {
+    const fake = fakePrisma({
+      emails: [],
+      tenants: [],
+      names: Array.from(
+        { length: TEXT_MATCH_LIMIT },
+        (_, index) => `user-${index}`,
+      ),
+    });
+    const service = serviceWith(fake.prisma);
+
+    await service.listPage({ q: 'abc' });
+
+    // The cap is inclusive: a set of exactly TEXT_MATCH_LIMIT accounts is still
+    // bounded, so the page filters memberships on identifiers.
+    const where = queryOf(fake.findMany).where as {
+      OR: { userId?: { in: string[] } }[];
+    };
+    expect(where.OR).toHaveLength(1);
+    expect(where.OR[0].userId?.in).toHaveLength(TEXT_MATCH_LIMIT);
+    expect(where.OR[0].userId?.in?.[0]).toBe('user-0');
+  });
+
   it('keeps the relation filter when a phrase matches too many accounts', async () => {
     const fake = fakePrisma({
       emails: Array.from(
@@ -486,8 +528,8 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
 
     await service.listPage({ q: 'abc' });
 
-    // A phrase this broad cannot be turned into a bounded id set, so the
-    // query keeps the joined-text filter rather than losing matches.
+    // One identifier above the cap cannot be turned into a bounded id set, so
+    // the query keeps the joined-text filter rather than losing matches.
     expect(queryOf(fake.findMany).where).toEqual({
       OR: [
         {
