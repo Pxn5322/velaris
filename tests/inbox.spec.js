@@ -184,7 +184,12 @@ async function serveTicketQueue(route, rows) {
         typeof value === "string" && value.toLowerCase().includes(needle),
     );
   });
-  const start = (page - 1) * pageSize;
+  // A cursor page starts after the row it names (D-87), so a journey that
+  // checks the rows proves the panel sent the right anchor.
+  const cursor = params.get("cursor");
+  const start = cursor
+    ? matched.findIndex((row) => row.id === cursor) + 1
+    : (page - 1) * pageSize;
   await route.fulfill(
     json({
       items: matched.slice(start, start + pageSize),
@@ -392,6 +397,8 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await expect(page.getByTestId("inbox-count")).toHaveText("5");
     await expect(page.getByTestId("inbox-range")).toHaveText("1-3 of 5");
     await expect.poll(() => pages.at(-1)?.get("pageSize")).toBe("3");
+    // The first page has nothing in front of it, so it sends no cursor.
+    expect(pages[0]?.get("cursor")).toBeNull();
 
     // Next asks the API for the second page instead of drawing the rest here.
     await page.getByRole("button", { name: "Next ticket page" }).click();
@@ -400,6 +407,8 @@ test.describe("agent inbox (AC-F06, J-04)", () => {
     await expect
       .poll(() => pages.some((params) => params.get("page") === "2"))
       .toBe(true);
+    // Page 2 names the last row of page 1 as its anchor (D-87).
+    expect(pages.at(-1)?.get("cursor")).toBe("ticket-3");
 
     // A bigger page keeps the same total and asks for the wider window.
     await page.getByTestId("inbox-rows").selectOption("5");

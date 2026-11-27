@@ -364,7 +364,12 @@ test.describe("customer portal (J-03)", () => {
       requests.push(params);
       const requested = Number(params.get("page") ?? "1");
       const size = Number(params.get("pageSize") ?? "25");
-      const start = (requested - 1) * size;
+      // A cursor page starts after the row it names (D-87), so the stub proves
+      // the panel sent the right anchor instead of trusting `page`.
+      const cursor = params.get("cursor");
+      const start = cursor
+        ? many.findIndex((row) => row.id === cursor) + 1
+        : (requested - 1) * size;
       return route.fulfill(
         json({
           items: many.slice(start, start + size),
@@ -385,6 +390,8 @@ test.describe("customer portal (J-03)", () => {
       "1-25 of 30",
     );
     await expect(page.getByTestId("portal-conversation-prev")).toBeDisabled();
+    // The first page has nothing in front of it, so it sends no cursor.
+    expect(requests[0]?.get("cursor")).toBeNull();
 
     await page.getByTestId("portal-conversation-next").click();
     await expect(items).toHaveCount(5);
@@ -393,10 +400,12 @@ test.describe("customer portal (J-03)", () => {
     );
     await expect(page.getByTestId("portal-conversation-next")).toBeDisabled();
 
-    // The later page came from the API; the browser did not slice a cache.
+    // The later page came from the API; the browser did not slice a cache, and
+    // it names the last row of page 1 as its anchor (D-87).
     await expect
       .poll(() => requests.some((params) => params.get("page") === "2"))
       .toBe(true);
+    expect(requests.at(-1)?.get("cursor")).toBe("conv-0025");
     expect(requests.every((params) => params.get("pageSize") === "25")).toBe(
       true,
     );
