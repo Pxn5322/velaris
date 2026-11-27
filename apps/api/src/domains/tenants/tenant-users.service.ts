@@ -61,8 +61,13 @@ const MEMBERSHIP_STATUSES = [
  * Largest text match set the directory turns into identifiers. A broader
  * phrase keeps the joined-text filter, because a truncated set would lose
  * rows (D-87).
+ *
+ * The cap is 10,000 rather than 2,000 because the joined-text filter has no
+ * index condition: on 100,000 memberships it cost 287.3 ms at page 201 by
+ * offset and 538.9 ms at the same page by cursor, while a 10,000-identifier
+ * set cost 0.6 ms and 16.1 ms (D-87; measured 2026-11-27).
  */
-export const TEXT_MATCH_LIMIT = 2000;
+export const TEXT_MATCH_LIMIT = 10_000;
 
 /**
  * Shortest phrase that produces a trigram. A shorter phrase cannot use the
