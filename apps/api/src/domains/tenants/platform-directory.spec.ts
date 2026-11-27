@@ -44,12 +44,14 @@ function fakePrisma(
     emails?: string[];
     names?: string[];
     tenants?: string[];
+    roleIds?: string[];
   } = {},
 ) {
   const total = options.total ?? 42;
   const emails = options.emails ?? ['user-1'];
   const names = options.names ?? ['user-1'];
   const tenantIds = options.tenants ?? [TENANT_ID];
+  const roleIds = options.roleIds ?? ['role-agent'];
   // The mock answers both reads, so its rows stay untyped here.
   const findMany = vi.fn(async (args: QueryArgs): Promise<unknown[]> => {
     expect(args).toBeDefined();
@@ -90,15 +92,18 @@ function fakePrisma(
     },
   );
   const tenantFindMany = vi.fn(async () => tenantIds.map((id) => ({ id })));
+  const roleFindMany = vi.fn(async () => roleIds.map((id) => ({ id })));
   return {
     findMany,
     count,
     userFindMany,
     tenantFindMany,
+    roleFindMany,
     prisma: {
       tenantMembership: { findMany, count, findUnique, update },
       user: { findMany: userFindMany },
       tenant: { findMany: tenantFindMany },
+      role: { findMany: roleFindMany },
     } as unknown as PrismaService,
   };
 }
@@ -274,7 +279,7 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
   });
 
   it('puts the status and role filters inside the query', async () => {
-    const fake = fakePrisma();
+    const fake = fakePrisma({ roleIds: ['role-a', 'role-b'] });
     const service = serviceWith(fake.prisma);
 
     await service.listPage({
@@ -282,12 +287,31 @@ describe('TenantUsersService.listPage (platform directory, D-87)', () => {
       status: 'SUSPENDED',
     } satisfies PlatformDirectoryQuery);
 
+    // The code resolves once to its identifiers, so every page probe reads the
+    // join table alone instead of hopping to `roles` for each candidate row.
+    expect(fake.roleFindMany).toHaveBeenCalledWith({
+      where: { code: 'R-agent' },
+      select: { id: true },
+    });
     const query = queryOf(fake.findMany);
     expect(query.where).toEqual({
       status: 'SUSPENDED',
-      roles: { some: { role: { code: 'R-agent' } } },
+      roles: { some: { roleId: { in: ['role-a', 'role-b'] } } },
     });
     expect(fake.count).toHaveBeenCalledWith({ where: query.where });
+  });
+
+  it('answers an empty page when the role code names no role', async () => {
+    const fake = fakePrisma({ roleIds: [] });
+    const service = serviceWith(fake.prisma);
+
+    const page = await service.listPage({ role: 'R-unknown', page: 2 });
+
+    // No membership can hold a role that does not exist, so the page costs one
+    // indexed lookup on `roles` and nothing else.
+    expect(page).toEqual({ items: [], total: 0, page: 2, pageSize: 25 });
+    expect(fake.findMany).not.toHaveBeenCalled();
+    expect(fake.count).not.toHaveBeenCalled();
   });
 
   it('resolves the text filter one column at a time', async () => {
