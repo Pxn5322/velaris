@@ -262,6 +262,13 @@ E2E_LIVE_API_URL=https://velaris-api-aral.onrender.com E2E_BASE_URL=https://vela
 | `SMOKE_ADMIN_EMAIL` | no | Enterprise email; the script defaults to `admin1@velaris.test` |
 
 The workflow stops before any hosted action when a required secret is missing and names the missing secret in the log. It never prints a value. On 2026-11-15 the repository reported zero Actions secrets, so the workflow has not run yet; add the secrets before the first dispatch. The workflow is manual, not a push or pull-request check.
+**Scheduled audit jobs (2026-11-28).** `.github/workflows/audit-jobs.yml` runs `npm run audit:partitions` and `npm run audit:verify` every day at 03:17 UTC (`17 3 * * *`), and on demand from Actions -> Audit jobs -> Run workflow. D-60 needs integrity verification on a schedule, and the partition horizon falls behind the calendar without one. The workflow needs one repository secret:
+
+| Secret | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | yes | Deployed database connection string, read by both jobs |
+
+Use the repository-root form of the connection string, because the runner checks out the repository at the workspace root: add `?sslmode=verify-full&sslrootcert=certs/supabase-root-2021.crt`. The Render start command runs in `apps/api`, so its deployed copy uses `../../certs/supabase-root-2021.crt`; do not copy that path into the secret. The workflow stops before the install and before any database read when the secret is missing, and names the secret in the log. It never prints a value. Both commands exit non-zero on any fault and neither writes an audit row, so a red run is an operator action: the partition job creates only the missing months, and the verification job only reads. The workflow is not a push or pull-request check, so the database is not part of the build gate.
 - [x] The retention panel has a ten-change recent history and links to the full filtered audit trail. Seven local retention journeys pass; the hosted panel was inspected on 2026-11-10 with a signed-in synthetic tenant, and `KNOWLEDGE 365` and `MEMORY 30` produced two history rows.
 - [x] `node scripts/load-profile.mjs --auth-signup` recorded a warm p95 of 1350.52 ms at concurrency 8 with 90/90 responses, zero errors and 9 req/s. The budget is 200 ms, so NFR-04 is not met. Report: `.agents/evidence-t6.03-load-hosted.json`.
 - [x] The same-region candidate run on 2026-11-10 measured p95 1094.14 ms and 994.47 ms at concurrency 8 with zero errors. Both are over the budget, so NFR-04 is still not met (section 6.4).
