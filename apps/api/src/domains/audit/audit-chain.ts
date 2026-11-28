@@ -170,3 +170,93 @@ export class ChainVerifier {
     };
   }
 }
+
+/** The stored head of one scope's chain. */
+export interface AuditChainHead {
+  lastSeq: bigint;
+  lastHash: string | null;
+}
+
+/**
+ * The read side a verification run needs. `auditChainStore` implements it for
+ * the database, and a test can supply it in memory, so the walk is one
+ * implementation for the API service and the scheduled or manual job.
+ */
+export interface AuditChainStore {
+  /** Every scope to check: each tenant chain and the platform chain. */
+  scopes(): Promise<string[]>;
+  /** Sealed rows in chain order, starting after `afterSeq` when it is given. */
+  sealedRows(
+    scopeKey: string,
+    afterSeq: bigint | null,
+    take: number,
+  ): Promise<SealedAuditRow[]>;
+  chainHead(scopeKey: string): Promise<AuditChainHead | null>;
+  unsealedCount(scopeKey: string): Promise<number>;
+}
+
+/** One scope's verification result, with the unsealed legacy rows counted. */
+export interface AuditChainReport extends ChainCheck {
+  unsealed: number;
+}
+
+/** Rows read per page while a scope is walked. */
+export const DEFAULT_CHAIN_BATCH = 500;
+
+/**
+ * Walks one scope in pages, then compares the last accepted row with the chain
+ * head. Rows written before the seal are counted, never claimed as verified.
+ */
+export async function verifyScope(
+  store: AuditChainStore,
+  scopeKey: string,
+  batchSize: number = DEFAULT_CHAIN_BATCH,
+): Promise<AuditChainReport> {
+  const verifier = new ChainVerifier(scopeKey);
+  let cursor: bigint | null = null;
+
+  for (;;) {
+    const rows = await store.sealedRows(scopeKey, cursor, batchSize);
+    for (const row of rows) verifier.push(row);
+    if (rows.length < batchSize) break;
+    cursor = rows[rows.length - 1].chainSeq;
+  }
+
+  const [head, unsealed] = await Promise.all([
+    store.chainHead(scopeKey),
+    store.unsealedCount(scopeKey),
+  ]);
+
+  const check = verifier.result();
+  const headSeq = verifier.lastConsistentSeq;
+  const headMatches =
+    head === null
+      ? headSeq === null
+      : head.lastSeq === headSeq &&
+        head.lastHash === verifier.lastConsistentHash;
+
+  if (!check.ok || headMatches) return { ...check, unsealed };
+  return {
+    ...check,
+    ok: false,
+    unsealed,
+    problem: 'head',
+    firstMismatchSeq: (headSeq ?? 0n) + 1n,
+  };
+}
+
+/**
+ * Verifies every scope the store reports, in order. One failed scope does not
+ * stop the run: the job reports all of them and fails afterwards.
+ */
+export async function verifyAllScopes(
+  store: AuditChainStore,
+  batchSize: number = DEFAULT_CHAIN_BATCH,
+): Promise<AuditChainReport[]> {
+  const scopes = await store.scopes();
+  const reports: AuditChainReport[] = [];
+  for (const scopeKey of scopes) {
+    reports.push(await verifyScope(store, scopeKey, batchSize));
+  }
+  return reports;
+}

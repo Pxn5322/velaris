@@ -21,6 +21,8 @@
     "test:api": "npm run test --workspace apps/api",
     "test:cov": "npm run test:cov --workspaces --if-present",
     "audit:check": "node scripts/check-audit-baseline.mjs",
+    "audit:verify": "node --env-file-if-exists=.env scripts/verify-audit-chains.mjs",
+    "audit:partitions": "node --env-file-if-exists=.env scripts/ensure-audit-partitions.mjs",
     "inventory:check": "node scripts/check-route-inventory.mjs",
     "inventory:test": "node --test scripts/check-route-inventory.spec.mjs",
     "e2e": "npm run test:e2e --workspace apps/api",
