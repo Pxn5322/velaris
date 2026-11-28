@@ -36,6 +36,7 @@ export function auditChainStore(prisma: ChainClient): AuditChainStore {
       return rows.map((row) => ({
         id: row.id,
         tenantId: row.tenantId,
+        scopeKey: row.scopeKey,
         actorId: row.actorId,
         actorSnapshot: (row.actorSnapshot ?? null) as AuditActorSnapshot | null,
         snapshotVersion: row.snapshotVersion,
@@ -58,8 +59,23 @@ export function auditChainStore(prisma: ChainClient): AuditChainStore {
         : null;
     },
 
-    async unsealedCount(scopeKey: string): Promise<number> {
-      return prisma.auditEvent.count({ where: { scopeKey, chainSeq: null } });
+    async unsealedCount(scopeKey: string, sealStartedAt: Date | null) {
+      const where = { scopeKey, chainSeq: null };
+      if (sealStartedAt === null) {
+        return {
+          legacy: await prisma.auditEvent.count({ where }),
+          afterSeal: 0,
+        };
+      }
+      const [legacy, afterSeal] = await Promise.all([
+        prisma.auditEvent.count({
+          where: { ...where, createdAt: { lt: sealStartedAt } },
+        }),
+        prisma.auditEvent.count({
+          where: { ...where, createdAt: { gte: sealStartedAt } },
+        }),
+      ]);
+      return { legacy, afterSeal };
     },
 
     async scopes(): Promise<string[]> {

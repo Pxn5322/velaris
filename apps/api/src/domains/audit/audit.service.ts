@@ -83,6 +83,7 @@ export class AuditService {
         {
           id,
           tenantId: event.tenantId ?? null,
+          scopeKey,
           actorId: event.actorId ?? null,
           actorSnapshot: snapshot,
           snapshotVersion,

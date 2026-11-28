@@ -210,7 +210,9 @@ model AuditEvent {
   eventHash       String?  @map("event_hash") @db.Char(64)
   createdAt       DateTime @default(now()) @map("created_at")
 
-  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  // Migration 0026 (D-88) makes the relation NO ACTION on delete and update:
+  // the tenant id is not hashed, but a rewrite of it must still not happen.
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([id, createdAt])
   @@index([tenantId, createdAt(sort: Desc)])

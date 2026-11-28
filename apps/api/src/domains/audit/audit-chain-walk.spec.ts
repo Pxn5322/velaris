@@ -22,6 +22,7 @@ import type { AuditChainReport } from './audit-chain.js';
 const BASE = {
   id: '11111111-1111-4111-8111-111111111111',
   tenantId: 'tenant-a',
+  scopeKey: 'tenant:tenant-a',
   actorId: null,
   actorSnapshot: null,
   snapshotVersion: 1,
@@ -51,10 +52,18 @@ class MemoryStore implements AuditChainStore {
     take: number;
   }> = [];
 
+  readonly unsealedReads: Array<{
+    scopeKey: string;
+    sealStartedAt: Date | null;
+  }> = [];
+
   constructor(
     private readonly rows: Record<string, SealedAuditRow[]>,
     private readonly heads: Record<string, AuditChainHead>,
-    private readonly unsealed: Record<string, number> = {},
+    private readonly unsealed: Record<
+      string,
+      { legacy: number; afterSeal: number }
+    > = {},
   ) {}
 
   async scopes(): Promise<string[]> {
@@ -76,8 +85,12 @@ class MemoryStore implements AuditChainStore {
     return this.heads[scopeKey] ?? null;
   }
 
-  async unsealedCount(scopeKey: string): Promise<number> {
-    return this.unsealed[scopeKey] ?? 0;
+  async unsealedCount(
+    scopeKey: string,
+    sealStartedAt: Date | null,
+  ): Promise<{ legacy: number; afterSeal: number }> {
+    this.unsealedReads.push({ scopeKey, sealStartedAt });
+    return this.unsealed[scopeKey] ?? { legacy: 0, afterSeal: 0 };
   }
 }
 
@@ -146,16 +159,25 @@ describe('verifyScope', () => {
     const store = new MemoryStore(
       { platform: [one] },
       { platform: headOf([one]) },
-      { platform: 195 },
+      { platform: { legacy: 195, afterSeal: 0 } },
     );
 
     const report = await verifyScope(store, 'platform');
 
-    expect(report).toMatchObject({ ok: true, sealed: 1, unsealed: 195 });
+    expect(report).toMatchObject({
+      ok: true,
+      sealed: 1,
+      unsealed: 195,
+      unsealedAfterSeal: 0,
+    });
   });
 
   it('accepts a scope whose only rows predate the seal', async () => {
-    const store = new MemoryStore({ platform: [] }, {}, { platform: 3 });
+    const store = new MemoryStore(
+      { platform: [] },
+      {},
+      { platform: { legacy: 3, afterSeal: 0 } },
+    );
 
     const report = await verifyScope(store, 'platform');
 
@@ -164,6 +186,43 @@ describe('verifyScope', () => {
       sealed: 0,
       unsealed: 3,
       problem: null,
+    });
+  });
+
+  // The seal starts at the scope's first sealed row. A row that has no seal and
+  // was written after that instant did not come through AuditService, so the
+  // chain is incomplete and the run must fail instead of counting it up.
+  it('reads the unsealed rows against the first sealed row of the scope', async () => {
+    const one = sealed(1n, null, 'row-1');
+    const store = new MemoryStore(
+      { 'tenant:tenant-a': [one] },
+      { 'tenant:tenant-a': headOf([one]) },
+    );
+
+    await verifyScope(store, 'tenant:tenant-a');
+
+    expect(store.unsealedReads).toEqual([
+      { scopeKey: 'tenant:tenant-a', sealStartedAt: one.createdAt },
+    ]);
+  });
+
+  it('fails a scope that gained an unsealed row after the seal', async () => {
+    const one = sealed(1n, null, 'row-1');
+    const store = new MemoryStore(
+      { 'tenant:tenant-a': [one] },
+      { 'tenant:tenant-a': headOf([one]) },
+      { 'tenant:tenant-a': { legacy: 4, afterSeal: 1 } },
+    );
+
+    const report = await verifyScope(store, 'tenant:tenant-a');
+
+    expect(report).toMatchObject({
+      ok: false,
+      problem: 'unsealed',
+      sealed: 1,
+      unsealed: 4,
+      unsealedAfterSeal: 1,
+      firstMismatchSeq: null,
     });
   });
 
@@ -197,7 +256,7 @@ describe('verifyAllScopes', () => {
         platform: headOf([one]),
         'tenant:tenant-a': headOf([one]),
       },
-      { platform: 195 },
+      { platform: { legacy: 195, afterSeal: 0 } },
     );
 
     const reports = await verifyAllScopes(store);

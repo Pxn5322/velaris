@@ -17,6 +17,7 @@ import { AuditIntegrityService } from './audit-integrity.service.js';
 const BASE = {
   id: '11111111-1111-4111-8111-111111111111',
   tenantId: 'tenant-a',
+  scopeKey: 'tenant:tenant-a',
   actorId: null,
   actorSnapshot: null,
   snapshotVersion: 1,
@@ -38,9 +39,23 @@ function sealed(seq: bigint, prevHash: string | null, id: string) {
   } satisfies SealedAuditRow;
 }
 
-function buildService(rows: unknown[], head: unknown, unsealed = 0) {
+function buildService(
+  rows: unknown[],
+  head: unknown,
+  unsealed: { legacy: number; afterSeal: number } = {
+    legacy: 0,
+    afterSeal: 0,
+  },
+) {
   const findMany = vi.fn().mockResolvedValue(rows);
-  const count = vi.fn().mockResolvedValue(unsealed);
+  const count = vi.fn(async (args: unknown) => {
+    const filter = (args as { where?: Record<string, unknown> }).where;
+    return filter && 'createdAt' in filter
+      ? (filter.createdAt as { gte?: Date }).gte
+        ? unsealed.afterSeal
+        : unsealed.legacy
+      : unsealed.legacy + unsealed.afterSeal;
+  });
   const findUnique = vi.fn().mockResolvedValue(head);
   const prisma = {
     auditEvent: { findMany, count },
@@ -111,12 +126,43 @@ describe('AuditIntegrityService', () => {
     const { service } = buildService(
       [one],
       { scopeKey: 'tenant:tenant-a', lastSeq: 1n, lastHash: one.eventHash },
-      3,
+      { legacy: 3, afterSeal: 0 },
     );
 
     const check = await service.verify('tenant:tenant-a');
 
-    expect(check).toMatchObject({ ok: true, sealed: 1, unsealed: 3 });
+    expect(check).toMatchObject({
+      ok: true,
+      sealed: 1,
+      unsealed: 3,
+      unsealedAfterSeal: 0,
+    });
+  });
+
+  it('fails when an unsealed row was written after the seal began', async () => {
+    const one = sealed(1n, null, 'row-1');
+    const { service, count } = buildService(
+      [one],
+      { scopeKey: 'tenant:tenant-a', lastSeq: 1n, lastHash: one.eventHash },
+      { legacy: 3, afterSeal: 2 },
+    );
+
+    const check = await service.verify('tenant:tenant-a');
+
+    expect(check).toMatchObject({
+      ok: false,
+      problem: 'unsealed',
+      sealed: 1,
+      unsealed: 3,
+      unsealedAfterSeal: 2,
+    });
+    expect(count).toHaveBeenCalledWith({
+      where: {
+        scopeKey: 'tenant:tenant-a',
+        chainSeq: null,
+        createdAt: { lt: one.createdAt },
+      },
+    });
   });
 
   it('reads one scope in chain order and pages with the sequence cursor', async () => {

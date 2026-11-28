@@ -22,6 +22,7 @@ import {
 const ROW: AuditChainRow = {
   id: '11111111-1111-4111-8111-111111111111',
   tenantId: 'tenant-a',
+  scopeKey: 'tenant:tenant-a',
   actorId: 'sub-1',
   actorSnapshot: {
     version: 1,
@@ -110,6 +111,23 @@ describe('auditEventHash', () => {
     const first = auditEventHash(ROW, 1n, null);
     expect(auditEventHash(ROW, 2n, null)).not.toBe(first);
     expect(auditEventHash(ROW, 1n, 'deadbeef')).not.toBe(first);
+  });
+
+  it('binds the row to its scope key, which is the immutable identity', () => {
+    const other: AuditChainRow = { ...ROW, scopeKey: 'tenant:tenant-b' };
+    expect(auditEventHash(other, 1n, null)).not.toBe(
+      auditEventHash(ROW, 1n, null),
+    );
+  });
+
+  // The tenant FK is a live relation. Deleting a tenant or changing its id
+  // rewrites `tenant_id`, so a row must not hash it: the scope key already
+  // names the tenant and it never changes (D-60, D-88).
+  it('ignores the live tenant id, so a tenant deletion cannot read as tampering', () => {
+    const afterTenantDelete: AuditChainRow = { ...ROW, tenantId: null };
+    expect(auditEventHash(afterTenantDelete, 1n, null)).toBe(
+      auditEventHash(ROW, 1n, null),
+    );
   });
 });
 

@@ -32,7 +32,10 @@ export interface AuditActorSnapshot {
 /** The content of one audit row, without its chain position. */
 export interface AuditChainRow {
   id: string;
+  /** Live relation to `tenants`; never hashed, because the relation rewrites it. */
   tenantId: string | null;
+  /** Immutable chain identity: `tenant:<id>`, or `platform`. Always hashed. */
+  scopeKey: string;
   actorId: string | null;
   actorSnapshot: AuditActorSnapshot | null;
   snapshotVersion: number;
@@ -51,7 +54,8 @@ export interface SealedAuditRow extends AuditChainRow {
   eventHash: string;
 }
 
-export type ChainProblem = 'sequence' | 'prev_hash' | 'hash' | 'head';
+export type ChainProblem =
+  'sequence' | 'prev_hash' | 'hash' | 'head' | 'unsealed';
 
 export interface ChainCheck {
   scopeKey: string;
@@ -91,6 +95,12 @@ export function canonicalJson(value: unknown): string {
 /**
  * The SHA-256 of one sealed row. `seq` and `prevHash` are part of the input,
  * so a moved row or a changed predecessor can never reproduce the hash.
+ *
+ * The input covers `scopeKey` and never `tenantId` (D-88). `tenantId` is a
+ * foreign key to `tenants`, so a tenant delete or an id change rewrites it,
+ * and a hashed column that the database can rewrite would turn an ordinary
+ * tenant deletion into a reported tamper. `scopeKey` names the same tenant and
+ * nothing updates it.
  */
 export function auditEventHash(
   row: AuditChainRow,
@@ -100,10 +110,9 @@ export function auditEventHash(
   const payload = [
     `v${AUDIT_CHAIN_VERSION}`,
     row.id,
-    auditScopeKey(row.tenantId),
+    row.scopeKey,
     String(seq),
     prevHash ?? '',
-    row.tenantId ?? '',
     row.actorId ?? '',
     String(row.snapshotVersion),
     row.actorSnapshot ? canonicalJson(row.actorSnapshot) : '',
@@ -127,6 +136,7 @@ export class ChainVerifier {
   private lastSealed: SealedAuditRow | null = null;
   private sealedCount = 0;
   private failure: { seq: bigint; problem: ChainProblem } | null = null;
+  private firstSealed: Date | null = null;
 
   constructor(scopeKey: string) {
     this.scopeKey = scopeKey;
@@ -147,8 +157,19 @@ export class ChainVerifier {
       this.failure = { seq: row.chainSeq, problem: 'hash' };
       return;
     }
+    if (this.firstSealed === null && row.chainSeq === 1n) {
+      this.firstSealed = row.createdAt;
+    }
     this.expectedSeq = row.chainSeq + 1n;
     this.lastSealed = row;
+  }
+
+  /**
+   * When the seal began for this scope: the time of its first sealed row. An
+   * unsealed row at or after this instant did not come through the write path.
+   */
+  get sealStartedAt(): Date | null {
+    return this.firstSealed;
   }
 
   /** Sequence of the last row accepted by the chain, null for an empty chain. */
@@ -192,12 +213,26 @@ export interface AuditChainStore {
     take: number,
   ): Promise<SealedAuditRow[]>;
   chainHead(scopeKey: string): Promise<AuditChainHead | null>;
-  unsealedCount(scopeKey: string): Promise<number>;
+  /**
+   * Unsealed rows, split at the scope's first sealed row. `legacy` rows predate
+   * the seal and can never be sealed; `afterSeal` rows are a broken chain.
+   * `sealStartedAt` is null while the scope has no sealed row.
+   */
+  unsealedCount(
+    scopeKey: string,
+    sealStartedAt: Date | null,
+  ): Promise<UnsealedRows>;
 }
 
-/** One scope's verification result, with the unsealed legacy rows counted. */
+export interface UnsealedRows {
+  legacy: number;
+  afterSeal: number;
+}
+
+/** One scope's verification result, with both unsealed counts. */
 export interface AuditChainReport extends ChainCheck {
   unsealed: number;
+  unsealedAfterSeal: number;
 }
 
 /** Rows read per page while a scope is walked. */
@@ -224,25 +259,39 @@ export async function verifyScope(
 
   const [head, unsealed] = await Promise.all([
     store.chainHead(scopeKey),
-    store.unsealedCount(scopeKey),
+    store.unsealedCount(scopeKey, verifier.sealStartedAt),
   ]);
 
   const check = verifier.result();
+  const report: AuditChainReport = {
+    ...check,
+    unsealed: unsealed.legacy,
+    unsealedAfterSeal: unsealed.afterSeal,
+  };
+  if (!check.ok) return report;
+
   const headSeq = verifier.lastConsistentSeq;
   const headMatches =
     head === null
       ? headSeq === null
       : head.lastSeq === headSeq &&
         head.lastHash === verifier.lastConsistentHash;
+  if (!headMatches) {
+    return {
+      ...report,
+      ok: false,
+      problem: 'head',
+      firstMismatchSeq: (headSeq ?? 0n) + 1n,
+    };
+  }
 
-  if (!check.ok || headMatches) return { ...check, unsealed };
-  return {
-    ...check,
-    ok: false,
-    unsealed,
-    problem: 'head',
-    firstMismatchSeq: (headSeq ?? 0n) + 1n,
-  };
+  // A row with no seal that was written after the seal began skipped the only
+  // write path, so the scope's history has a gap. Counting it as legacy would
+  // let the gap grow while every run still passed (D-88).
+  if (unsealed.afterSeal > 0) {
+    return { ...report, ok: false, problem: 'unsealed' };
+  }
+  return report;
 }
 
 /**

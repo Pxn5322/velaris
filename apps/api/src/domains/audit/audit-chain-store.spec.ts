@@ -61,6 +61,7 @@ describe('auditChainStore', () => {
       {
         id: 'row-1',
         tenantId: 'tenant-a',
+        scopeKey: 'tenant:tenant-a',
         actorId: 'sub-1',
         actorSnapshot: { userId: 'user-1', roles: ['R-agent'] },
         snapshotVersion: 1,
@@ -81,6 +82,7 @@ describe('auditChainStore', () => {
     expect(row).toEqual({
       id: 'row-1',
       tenantId: 'tenant-a',
+      scopeKey: 'tenant:tenant-a',
       actorId: 'sub-1',
       actorSnapshot: { userId: 'user-1', roles: ['R-agent'] },
       snapshotVersion: 1,
@@ -116,10 +118,35 @@ describe('auditChainStore', () => {
   it('counts the rows written before the seal', async () => {
     const { store, count } = buildStore();
 
-    await store.unsealedCount('platform');
+    await store.unsealedCount('platform', null);
 
+    expect(count).toHaveBeenCalledTimes(1);
     expect(count).toHaveBeenCalledWith({
       where: { scopeKey: 'platform', chainSeq: null },
+    });
+  });
+
+  it('splits the unsealed rows at the first sealed row of the scope', async () => {
+    const { store, count } = buildStore();
+    const sealStartedAt = new Date('2026-11-28T10:00:00.000Z');
+    count.mockResolvedValueOnce(2).mockResolvedValueOnce(1);
+
+    await expect(
+      store.unsealedCount('tenant:tenant-a', sealStartedAt),
+    ).resolves.toEqual({ legacy: 2, afterSeal: 1 });
+    expect(count).toHaveBeenNthCalledWith(1, {
+      where: {
+        scopeKey: 'tenant:tenant-a',
+        chainSeq: null,
+        createdAt: { lt: sealStartedAt },
+      },
+    });
+    expect(count).toHaveBeenNthCalledWith(2, {
+      where: {
+        scopeKey: 'tenant:tenant-a',
+        chainSeq: null,
+        createdAt: { gte: sealStartedAt },
+      },
     });
   });
 

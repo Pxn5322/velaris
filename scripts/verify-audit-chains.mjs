@@ -48,6 +48,10 @@ async function main() {
       (total, report) => total + report.unsealed,
       0,
     );
+    const afterSeal = reports.reduce(
+      (total, report) => total + report.unsealedAfterSeal,
+      0,
+    );
 
     console.log(`audit-verify: ${reports.length} scope(s)`);
     for (const report of reports) {
@@ -57,8 +61,12 @@ async function main() {
         : `  problem=${report.problem}  firstMismatchSeq=${
             report.firstMismatchSeq ?? '-'
           }`;
+      const gap =
+        report.unsealedAfterSeal > 0
+          ? `  afterSeal=${report.unsealedAfterSeal}`
+          : '';
       console.log(
-        `  ${state}  ${report.scopeKey}  sealed=${report.sealed}  unsealed=${report.unsealed}${detail}`,
+        `  ${state}  ${report.scopeKey}  sealed=${report.sealed}  unsealed=${report.unsealed}${gap}${detail}`,
       );
     }
 
@@ -67,6 +75,11 @@ async function main() {
       console.error(
         `audit-verify: FAIL - ${failed.length} of ${reports.length} scope(s) did not verify`,
       );
+      if (afterSeal > 0) {
+        console.error(
+          `audit-verify: FAIL - ${afterSeal} unsealed row(s) written after their chain was sealed`,
+        );
+      }
       process.exitCode = 1;
       return;
     }
