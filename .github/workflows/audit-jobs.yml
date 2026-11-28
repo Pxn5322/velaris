@@ -1,0 +1,72 @@
+name: Audit jobs
+
+# D-60 needs audit integrity verification on a schedule, and the monthly
+# partition horizon falls behind the calendar without one. Both commands were
+# manual only, so a broken chain or a missing month needed an operator to
+# notice. This workflow runs them nightly against the deployed database.
+#
+# Required repository secret: DATABASE_URL, the deployed connection string in
+# its repository-root form, because the runner checks it out at the workspace
+# root and the committed Supabase CA is relative:
+#   ...?sslmode=verify-full&sslrootcert=certs/supabase-root-2021.crt
+#
+# Both commands exit non-zero on any fault and neither writes an audit row, so
+# a red run means an operator must look. This is not a push or pull-request
+# check: the database is not part of the build gate.
+
+on:
+  schedule:
+    # 03:17 UTC every day. Not :00, so the run does not start with the other
+    # scheduled jobs.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run at a time: a slow verification must not overlap the next night.
+concurrency:
+  group: audit-jobs
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Audit chains and partition horizon
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail before the install and before any database read when the secret
+      # is absent. The message names the secret, never its value.
+      - name: Check the database secret
+        shell: bash
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL repository secret is not set"
+            echo "Add it under Settings, Secrets and variables, Actions, with the repository-root sslrootcert=certs/supabase-root-2021.crt path."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # npm install scripts are blocked, so @prisma/client exports no
+      # PrismaClient until this runs. Generate does not connect to the database.
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      # Idempotent: creates the missing months and never drops a partition.
+      - name: Keep the monthly partition horizon ahead
+        run: npm run audit:partitions
+
+      # One page walk per scope plus a head comparison; exits 1 on any break.
+      - name: Verify every audit chain
+        run: npm run audit:verify
