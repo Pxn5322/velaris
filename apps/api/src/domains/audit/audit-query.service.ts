@@ -17,6 +17,7 @@ import {
   PRISMA_SERVICE,
   type PrismaService,
 } from '../../infrastructure/prisma/prisma.service.js';
+import type { AuditActorSnapshot } from './audit-chain.js';
 
 export const DEFAULT_AUDIT_LIMIT = 25;
 export const MAX_AUDIT_LIMIT = 100;
@@ -116,13 +117,25 @@ export class AuditQueryService {
         const label = row.resourceId
           ? resourceLabels.get(row.resourceType + ':' + row.resourceId)
           : undefined;
+        // D-60 stores the labels as they were at the event, so the view
+        // prefers the snapshot; a row written before migration 0025 falls
+        // back to the live user row.
+        const snapshot = actorSnapshotOf(row.actorSnapshot);
         return {
           id: row.id,
           tenantId: row.tenantId,
           actorId: row.actorId,
-          actorName: actor?.displayName || actor?.email || null,
-          actorEmail: actor?.email ?? null,
-          actorRoles: actor?.roles ?? [],
+          actorName:
+            snapshot?.displayName ||
+            snapshot?.email ||
+            actor?.displayName ||
+            actor?.email ||
+            null,
+          actorEmail: snapshot?.email ?? actor?.email ?? null,
+          actorRoles:
+            snapshot && snapshot.roles.length > 0
+              ? snapshot.roles
+              : (actor?.roles ?? []),
           action: row.action,
           resourceType: row.resourceType,
           resourceId: row.resourceId,
@@ -379,6 +392,27 @@ export class AuditQueryService {
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Read the stored snapshot defensively: it is JSON written by an older build. */
+function actorSnapshotOf(value: unknown): AuditActorSnapshot | null {
+  if (!value || typeof value !== 'object') return null;
+  const snapshot = value as Partial<AuditActorSnapshot>;
+  if (typeof snapshot.displayName !== 'string') return null;
+  return {
+    version: typeof snapshot.version === 'number' ? snapshot.version : 1,
+    userId: typeof snapshot.userId === 'string' ? snapshot.userId : '',
+    displayName: snapshot.displayName,
+    email: typeof snapshot.email === 'string' ? snapshot.email : '',
+    membershipId:
+      typeof snapshot.membershipId === 'string' ? snapshot.membershipId : null,
+    tenantId: typeof snapshot.tenantId === 'string' ? snapshot.tenantId : null,
+    roles: Array.isArray(snapshot.roles)
+      ? snapshot.roles.filter(
+          (role): role is string => typeof role === 'string',
+        )
+      : [],
+  };
+}
 
 function isUuid(value: string): boolean {
   return UUID.test(value);

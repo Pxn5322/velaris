@@ -184,24 +184,80 @@ model MembershipRole {
 /// retention and restricted querying arrive with the audit query task.
 /// actor_id stores the identity provider subject and carries no FK, so
 /// audit rows survive local user changes.
+///
+/// T6.10 (D-60) adds the actor snapshot, the stable scope key and the sealed
+/// chain position. Migration 0025 rebuilds the table as monthly partitions, so
+/// retention drops a partition instead of deleting rows; that DDL lives in the
+/// migration because Prisma cannot declare partitioning. The primary key
+/// carries the partition column, which PostgreSQL requires.
 model AuditEvent {
-  id           String   @id @default(uuid()) @db.Uuid
-  tenantId     String?  @map("tenant_id") @db.Uuid
-  actorId      String?  @map("actor_id") @db.Uuid
-  action       String
-  resourceType String   @map("resource_type")
-  resourceId   String?  @map("resource_id")
-  metadataJson Json?    @map("metadata_json")
-  requestId    String?  @map("request_id")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id              String   @default(uuid()) @db.Uuid
+  tenantId        String?  @map("tenant_id") @db.Uuid
+  /// `tenant:<id>`, or `platform`; a stable text value, not a live FK (D-60).
+  scopeKey        String   @map("scope_key") @db.VarChar(80)
+  actorId         String?  @map("actor_id") @db.Uuid
+  /// Immutable actor labels (name, email, roles, membership, tenant, version).
+  actorSnapshot   Json?    @map("actor_snapshot")
+  snapshotVersion Int      @default(1) @map("snapshot_version")
+  action          String
+  resourceType    String   @map("resource_type")
+  resourceId      String?  @map("resource_id")
+  metadataJson    Json?    @map("metadata_json")
+  requestId       String?  @map("request_id")
+  /// Chain position, predecessor hash and sealed hash; all three or none.
+  chainSeq        BigInt?  @map("chain_seq")
+  prevHash        String?  @map("prev_hash") @db.Char(64)
+  eventHash       String?  @map("event_hash") @db.Char(64)
+  createdAt       DateTime @default(now()) @map("created_at")
 
   tenant Tenant? @relation(fields: [tenantId], references: [id])
 
+  @@id([id, createdAt])
   @@index([tenantId, createdAt(sort: Desc)])
   /// Action-filtered audit page in read order (D-86).
   @@index([tenantId, action, createdAt(sort: Desc)])
   @@index([resourceType, resourceId, createdAt(sort: Desc)])
+  /// Chain verification reads one scope in sequence order (D-60).
+  @@index([scopeKey, chainSeq])
   @@map("audit_events")
+}
+
+/// One chain head per audit scope (T6.10, D-60). A write reserves the next
+/// sequence here and holds the row lock until it stores the new hash, so two
+/// writers cannot take the same chain position.
+model AuditChain {
+  scopeKey  String   @id @map("scope_key") @db.VarChar(80)
+  lastSeq   BigInt   @map("last_seq")
+  lastHash  String?  @map("last_hash") @db.Char(64)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("audit_chains")
+}
+
+/// A legal hold blocks every audit purge until it is released (T6.10, D-60).
+/// A hold with a null scope key covers all scopes.
+model AuditLegalHold {
+  id         String    @id @default(uuid()) @db.Uuid
+  scopeKey   String?   @map("scope_key") @db.VarChar(80)
+  reason     String
+  placedBy   String    @map("placed_by") @db.VarChar(128)
+  placedAt   DateTime  @default(now()) @map("placed_at")
+  releasedAt DateTime? @map("released_at")
+
+  @@index([scopeKey, releasedAt])
+  @@map("audit_legal_holds")
+}
+
+/// The proposed audit retention period (T6.10, D-60). One platform row.
+/// `approved_at` stays null until the owner and legal review approve the
+/// period, and the purge function refuses to drop a partition while it is null.
+model AuditRetentionPolicy {
+  id          String    @id @db.VarChar(16)
+  periodYears Int       @map("period_years")
+  approvedBy  String?   @map("approved_by") @db.VarChar(128)
+  approvedAt  DateTime? @map("approved_at")
+
+  @@map("audit_retention_policy")
 }
 
 /// E-revoked-token: a signed-out access token (and its Supabase session) that

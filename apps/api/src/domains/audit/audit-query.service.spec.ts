@@ -192,6 +192,35 @@ describe('AuditQueryService', () => {
     });
   });
 
+  it('prefers the stored actor snapshot over a later rename or deletion', async () => {
+    const actorId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const { service, user } = buildService({
+      events: [
+        {
+          ...EVENT_ROW,
+          actorId,
+          actorSnapshot: {
+            version: 1,
+            displayName: 'Ada (left)',
+            email: 'ada.old@acme.test',
+            roles: ['Support Agent'],
+            membershipId: 'membership-a',
+            tenantId: 'tenant-a',
+          },
+        },
+      ],
+    });
+    user.findMany.mockResolvedValue([]);
+
+    const page = await service.listEvents('tenant-a', { limit: 10 });
+
+    expect(page.items[0]).toMatchObject({
+      actorName: 'Ada (left)',
+      actorEmail: 'ada.old@acme.test',
+      actorRoles: ['Support Agent'],
+    });
+  });
+
   it('reports hasMore when the page is full', async () => {
     const { service } = buildService({
       events: [EVENT_ROW, { ...EVENT_ROW, id: 'event-2' }],

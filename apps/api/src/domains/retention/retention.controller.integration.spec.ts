@@ -70,7 +70,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 function prismaFake() {
-  return {
+  const prisma = {
     retentionPolicy: {
       findMany: vi.fn().mockResolvedValue([TRACES_ROW]),
       upsert: vi.fn().mockImplementation(
@@ -96,8 +96,19 @@ function prismaFake() {
     auditEvent: {
       create: vi.fn().mockResolvedValue({ id: 'audit-1' }),
     },
-    user: { findUnique: vi.fn().mockResolvedValue(USER_ROW) },
+    user: {
+      findUnique: vi.fn().mockResolvedValue(USER_ROW),
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    // The audit writer seals each row into its scope chain (T6.10, D-60).
+    $queryRaw: vi.fn(async () => [{ last_seq: 1n, last_hash: null }]),
+    $executeRaw: vi.fn(async () => 1),
+    $transaction: vi.fn(),
   };
+  prisma.$transaction.mockImplementation(
+    async (work: (tx: typeof prisma) => Promise<unknown>) => work(prisma),
+  );
+  return prisma;
 }
 
 describe('Retention settings routes (integration)', () => {
